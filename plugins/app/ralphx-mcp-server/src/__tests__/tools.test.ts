@@ -1226,6 +1226,10 @@ describe('design steward tools', () => {
   const designTools = [
     'get_design_system',
     'get_design_source_manifest',
+    'list_design_source_files',
+    'read_design_source_file',
+    'search_design_source_files',
+    'publish_design_schema_version',
     'get_design_styleguide',
     'update_design_styleguide_item',
     'record_design_styleguide_feedback',

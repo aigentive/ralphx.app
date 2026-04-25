@@ -3,13 +3,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use tauri::{Emitter, State};
 
-use crate::application::chat_service::create_user_message;
-use crate::application::{AgentMessageCreatedPayload, AppState};
+use crate::application::chat_service::{create_user_message, ChatService, SendMessageOptions};
+use crate::application::AppState;
+use crate::commands::design_commands::DesignRunEventPayload;
 use crate::commands::unified_chat_commands::AgentMessageResponse;
 use crate::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, ChatMessage, DesignApprovalStatus,
-    DesignFeedbackStatus, DesignSchemaVersionId, DesignSourceRef, DesignStyleguideFeedback,
-    DesignStyleguideFeedbackId, DesignStyleguideItem, DesignSystemId,
+    DesignFeedbackStatus, DesignRun, DesignRunKind, DesignRunStatus, DesignSchemaVersionId,
+    DesignSourceRef, DesignStyleguideFeedback, DesignStyleguideFeedbackId, DesignStyleguideItem,
+    DesignSystemId,
 };
 
 #[derive(Debug, Deserialize)]
@@ -81,6 +83,8 @@ pub struct DesignStyleguideFeedbackResponse {
 pub struct CreateDesignStyleguideFeedbackResponse {
     pub feedback: DesignStyleguideFeedbackResponse,
     pub item: DesignStyleguideItemResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<AgentMessageResponse>,
 }
@@ -160,25 +164,24 @@ pub async fn create_design_styleguide_feedback(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<CreateDesignStyleguideFeedbackResponse, String> {
-    let response = create_design_styleguide_feedback_core(&state, input).await?;
+    let chat_service = state.build_chat_service();
+    let response =
+        create_design_styleguide_feedback_core_with_chat_service(&state, input, &chat_service)
+            .await?;
     let _ = app.emit(
         "design:styleguide_item_feedback_created",
         &response.feedback,
     );
-    if let Some(message) = response.message.as_ref() {
-        let _ = app.emit(
-            "agent:message_created",
-            AgentMessageCreatedPayload {
-                message_id: message.id.clone(),
-                conversation_id: response.feedback.conversation_id.clone(),
-                context_type: ChatContextType::Design.to_string(),
-                context_id: response.feedback.design_system_id.clone(),
-                role: message.role.clone(),
-                content: message.content.clone(),
-                created_at: Some(message.created_at.clone()),
-                metadata: message.metadata.clone(),
-            },
-        );
+    if let Some(run_id) = response.run_id.as_deref() {
+        if let Ok(Some(run)) = state
+            .design_run_repo
+            .get_by_id(&crate::domain::entities::DesignRunId::from_string(
+                run_id.to_string(),
+            ))
+            .await
+        {
+            let _ = app.emit("design:run_started", DesignRunEventPayload::from(&run));
+        }
     }
     Ok(response)
 }
@@ -271,12 +274,112 @@ pub async fn create_design_styleguide_feedback_core(
     state: &AppState,
     input: CreateDesignStyleguideFeedbackInput,
 ) -> Result<CreateDesignStyleguideFeedbackResponse, String> {
-    create_design_styleguide_feedback_core_with_options(
+    let chat_service = state.build_chat_service();
+    create_design_styleguide_feedback_core_with_chat_service(state, input, &chat_service).await
+}
+
+#[doc(hidden)]
+pub async fn create_design_styleguide_feedback_core_with_chat_service(
+    state: &AppState,
+    input: CreateDesignStyleguideFeedbackInput,
+    chat_service: &dyn ChatService,
+) -> Result<CreateDesignStyleguideFeedbackResponse, String> {
+    let mut response = create_design_styleguide_feedback_core_with_options(
         state,
         input,
-        CreateDesignStyleguideFeedbackOptions::append_chat_message(),
+        CreateDesignStyleguideFeedbackOptions::record_only(),
     )
-    .await
+    .await?;
+    let feedback_id = parse_feedback_id(&response.feedback.id)?;
+    let mut feedback = state
+        .design_styleguide_feedback_repo
+        .get_by_id(&feedback_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "Design styleguide feedback not found: {}",
+                feedback_id.as_str()
+            )
+        })?;
+    let design_system_id = feedback.design_system_id.clone();
+    let item = load_styleguide_item(state, &design_system_id, &feedback.item_id).await?;
+    let now = Utc::now();
+    let mut run = DesignRun::queued(
+        design_system_id.clone(),
+        DesignRunKind::ItemFeedback,
+        format!(
+            "Apply styleguide feedback to {} / {}",
+            group_label(&item.group),
+            item.label
+        ),
+    );
+    run.status = DesignRunStatus::Running;
+    run.started_at = Some(now);
+    run.conversation_id = Some(feedback.conversation_id.clone());
+    let mut run = state
+        .design_run_repo
+        .create(run)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let mut metadata = feedback_message_metadata(&feedback, &item);
+    if let JsonValue::Object(map) = &mut metadata {
+        map.insert(
+            "designRunId".to_string(),
+            JsonValue::String(run.id.as_str().to_string()),
+        );
+        map.insert(
+            "design_run_id".to_string(),
+            JsonValue::String(run.id.as_str().to_string()),
+        );
+    }
+    let message_content = feedback_message_content(&feedback, &item, &feedback.feedback);
+    let send_result = match chat_service
+        .send_message(
+            ChatContextType::Design,
+            design_system_id.as_str(),
+            &message_content,
+            SendMessageOptions {
+                metadata: Some(metadata.to_string()),
+                conversation_id_override: Some(feedback.conversation_id.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            run.status = DesignRunStatus::Failed;
+            run.completed_at = Some(Utc::now());
+            run.error = Some(error.to_string());
+            let _ = state.design_run_repo.update(&run).await;
+            return Err(error.to_string());
+        }
+    };
+    if send_result.was_queued || send_result.queued_as_pending {
+        run.status = DesignRunStatus::Queued;
+        state
+            .design_run_repo
+            .update(&run)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+
+    if let Some(message) =
+        find_feedback_chat_message(state, &feedback.conversation_id, feedback.id.as_str()).await?
+    {
+        feedback.message_id = Some(message.id.clone());
+        state
+            .design_styleguide_feedback_repo
+            .update(&feedback)
+            .await
+            .map_err(|error| error.to_string())?;
+        response.feedback = DesignStyleguideFeedbackResponse::from(feedback);
+        response.message = Some(agent_message_response(message));
+    }
+    response.run_id = Some(run.id.as_str().to_string());
+    Ok(response)
 }
 
 #[doc(hidden)]
@@ -354,8 +457,35 @@ pub(crate) async fn create_design_styleguide_feedback_core_with_options(
     Ok(CreateDesignStyleguideFeedbackResponse {
         feedback: DesignStyleguideFeedbackResponse::from(feedback),
         item: DesignStyleguideItemResponse::from(item),
+        run_id: None,
         message: message_response,
     })
+}
+
+async fn find_feedback_chat_message(
+    state: &AppState,
+    conversation_id: &ChatConversationId,
+    feedback_id: &str,
+) -> Result<Option<ChatMessage>, String> {
+    let messages = state
+        .chat_message_repo
+        .get_by_conversation(conversation_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(messages.into_iter().find(|message| {
+        message.metadata.as_deref().is_some_and(|metadata| {
+            serde_json::from_str::<JsonValue>(metadata)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("feedback_id")
+                        .and_then(JsonValue::as_str)
+                        .map(str::to_string)
+                })
+                .as_deref()
+                == Some(feedback_id)
+        })
+    }))
 }
 
 #[doc(hidden)]
@@ -653,6 +783,7 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
+    use crate::application::chat_service::MockChatService;
     use crate::domain::entities::{
         ChatConversation, DesignConfidence, DesignSchemaVersionId, DesignStorageRootRef,
         DesignStyleguideGroup, DesignStyleguideItemId, DesignSystem, DesignSystemStatus, ProjectId,
@@ -777,8 +908,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn feedback_bridge_updates_item_and_appends_design_chat_message() {
+    async fn feedback_bridge_updates_item_and_sends_design_chat_turn() {
         let state = AppState::new_test();
+        let chat_service = MockChatService::new();
         let design_system_id = DesignSystemId::new();
         let item = styleguide_item(design_system_id.clone());
         let schema_version_id = item.schema_version_id.clone();
@@ -789,7 +921,7 @@ mod tests {
             .unwrap();
         seed_design_conversation(&state, &design_system_id).await;
 
-        let response = create_design_styleguide_feedback_core(
+        let response = create_design_styleguide_feedback_core_with_chat_service(
             &state,
             CreateDesignStyleguideFeedbackInput {
                 design_system_id: design_system_id.as_str().to_string(),
@@ -797,44 +929,54 @@ mod tests {
                 feedback: " Increase focus ring contrast. ".to_string(),
                 conversation_id: None,
             },
+            &chat_service,
         )
         .await
         .expect("feedback bridge");
 
         assert_eq!(response.feedback.status, "open");
-        let message = response
-            .message
-            .as_ref()
-            .expect("UI feedback bridge should append a chat message");
-        assert_eq!(
-            response.feedback.message_id.as_deref(),
-            Some(message.id.as_str())
-        );
+        assert!(response.run_id.is_some());
+        assert!(response.feedback.message_id.is_none());
         assert_eq!(response.item.approval_status, "needs_work");
         assert_eq!(response.item.feedback_status, "open");
-        assert_eq!(message.role, "user");
-        assert!(message.content.contains("Design styleguide feedback"));
-        assert!(message
-            .content
-            .contains("Item: Components / Primary button"));
-        assert!(message.content.contains("Increase focus ring contrast"));
 
-        let messages = state
-            .chat_message_repo
-            .get_by_conversation(&ChatConversationId::from_string(
-                response.feedback.conversation_id.clone(),
-            ))
-            .await
-            .unwrap();
-        assert_eq!(messages.len(), 1);
-        let metadata =
-            serde_json::from_str::<JsonValue>(messages[0].metadata.as_deref().expect("metadata"))
-                .expect("metadata json");
+        let sent_messages = chat_service.get_sent_messages().await;
+        assert_eq!(sent_messages.len(), 1);
+        assert!(sent_messages[0].contains("Design styleguide feedback"));
+        assert!(sent_messages[0].contains("Item: Components / Primary button"));
+        assert!(sent_messages[0].contains("Increase focus ring contrast"));
+        let sent_options = chat_service.get_sent_options().await;
+        assert_eq!(sent_options.len(), 1);
+        assert_eq!(
+            sent_options[0]
+                .conversation_id_override
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some(response.feedback.conversation_id.as_str())
+        );
+        let metadata = serde_json::from_str::<JsonValue>(
+            sent_options[0].metadata.as_deref().expect("metadata"),
+        )
+        .expect("metadata json");
         assert_eq!(metadata["source"], "design_styleguide_feedback");
         assert_eq!(metadata["kind"], "design_styleguide_feedback");
         assert_eq!(metadata["item_id"], "button.primary");
         assert_eq!(metadata["itemId"], "button.primary");
         assert_eq!(metadata["sourceRefs"][0]["path"], "frontend/src/Button.tsx");
+        assert_eq!(metadata["designRunId"].as_str(), response.run_id.as_deref());
+
+        let runs = state
+            .design_run_repo
+            .list_by_design_system(&design_system_id)
+            .await
+            .unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].kind, DesignRunKind::ItemFeedback);
+        assert_eq!(runs[0].status, DesignRunStatus::Running);
+        assert_eq!(
+            runs[0].conversation_id.as_ref().map(|id| id.as_str()),
+            Some(response.feedback.conversation_id.as_str())
+        );
     }
 
     #[tokio::test]
@@ -887,7 +1029,7 @@ mod tests {
             .await
             .unwrap();
 
-        let error = create_design_styleguide_feedback_core(
+        let error = create_design_styleguide_feedback_core_with_options(
             &state,
             CreateDesignStyleguideFeedbackInput {
                 design_system_id: design_system_id.as_str().to_string(),
@@ -895,6 +1037,7 @@ mod tests {
                 feedback: "Needs a calmer hover state".to_string(),
                 conversation_id: Some(other_conversation.id.as_str()),
             },
+            CreateDesignStyleguideFeedbackOptions::record_only(),
         )
         .await
         .expect_err("wrong conversation should fail");

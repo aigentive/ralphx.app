@@ -39,15 +39,13 @@ interface DesignStyleguidePaneProps {
   isGeneratingStyleguide?: boolean;
   isExportingPackage?: boolean;
   exportPackage?: ExportDesignSystemPackageResponse | null;
-  isDownloadingExportPackage?: boolean;
   generationResult?: {
     itemCount: number;
     caveatCount: number;
-    schemaVersionId: string;
+    schemaVersionId: string | null;
   } | null;
   onGenerateStyleguide?: () => void;
   onExportPackage?: () => void;
-  onDownloadExportPackage?: () => void;
 }
 
 export function DesignStyleguidePane({
@@ -55,11 +53,9 @@ export function DesignStyleguidePane({
   isGeneratingStyleguide = false,
   isExportingPackage = false,
   exportPackage = null,
-  isDownloadingExportPackage = false,
   generationResult = null,
   onGenerateStyleguide,
   onExportPackage,
-  onDownloadExportPackage,
 }: DesignStyleguidePaneProps) {
   const [activeFilter, setActiveFilter] = useState<"all" | DesignReviewState>("all");
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
@@ -82,6 +78,15 @@ export function DesignStyleguidePane({
   const generateLabel = hasPersistedItems || designSystem?.status === "ready" ? "Regenerate" : "Generate";
   const generationRowLabel = generationResult?.itemCount === 1 ? "row" : "rows";
   const generationCaveatLabel = generationResult?.caveatCount === 1 ? "caveat" : "caveats";
+  let generationStatusText =
+    "Styleguide generation requested. Design will publish the first review rows from chat.";
+  if (generationResult && generationResult.itemCount > 0) {
+    generationStatusText = `Styleguide refresh requested with ${generationResult.itemCount} existing review ${generationRowLabel}`;
+    if (generationResult.caveatCount > 0) {
+      generationStatusText = `${generationStatusText} and ${generationResult.caveatCount} ${generationCaveatLabel}`;
+    }
+    generationStatusText = `${generationStatusText}.`;
+  }
   const hasStyleguideRows =
     designSystem?.groups.some((group) => group.items.length > 0) ?? false;
 
@@ -284,10 +289,7 @@ export function DesignStyleguidePane({
               }}
               data-testid="design-generation-result"
             >
-              Styleguide generated with {generationResult.itemCount} review {generationRowLabel}
-              {generationResult.caveatCount > 0
-                ? ` and ${generationResult.caveatCount} ${generationCaveatLabel}`
-                : ""}.
+              {generationStatusText}
             </div>
           )}
           {exportPackage && (
@@ -311,29 +313,18 @@ export function DesignStyleguidePane({
                     <code className="rounded px-1 py-0.5 text-[11px]" style={{ background: "var(--overlay-faint)" }}>
                       {exportPackage.artifactId}
                     </code>{" "}
-                    is ready to save.
+                    {exportPackage.filePath ? "was saved by RalphX." : "is stored in RalphX."}
                   </div>
+                  {exportPackage.filePath && (
+                    <div className="truncate" style={{ color: "var(--text-muted)" }}>
+                      {exportPackage.filePath}
+                    </div>
+                  )}
                   <div style={{ color: "var(--text-muted)" }}>
                     Schema {exportPackage.schemaVersionId.slice(0, 8)} /{" "}
                     {exportPackage.redacted ? "absolute paths redacted" : "full provenance included"}
                   </div>
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-8 shrink-0 gap-2"
-                  disabled={!onDownloadExportPackage || isDownloadingExportPackage}
-                  onClick={onDownloadExportPackage}
-                  data-testid="design-download-export-package"
-                >
-                  {isDownloadingExportPackage ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  {isDownloadingExportPackage ? "Saving" : "Download JSON"}
-                </Button>
               </div>
             </div>
           )}

@@ -10,6 +10,7 @@ import type {
   DesignStyleguideViewModelResponse,
   DesignSystemDetailResponse,
   DesignSystemResponse,
+  ExportDesignSystemPackageInput,
   ExportDesignSystemPackageResponse,
   GenerateDesignArtifactInput,
   GenerateDesignArtifactResponse,
@@ -207,8 +208,8 @@ export function useGenerateDesignSystemStyleguide() {
 }
 
 export function useExportDesignSystemPackage() {
-  return useMutation<ExportDesignSystemPackageResponse, Error, string>({
-    mutationFn: (designSystemId) => api.design.exportPackage(designSystemId),
+  return useMutation<ExportDesignSystemPackageResponse, Error, ExportDesignSystemPackageInput>({
+    mutationFn: (input) => api.design.exportPackage(input),
   });
 }
 

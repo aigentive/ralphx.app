@@ -156,6 +156,7 @@ export {
   type DesignSystemDetailResponse,
   type DesignSystemResponse,
   type DesignSystemSourceResponse,
+  type ExportDesignSystemPackageInput,
   type ExportDesignSystemPackageResponse,
   type GenerateDesignArtifactInput,
   type GenerateDesignArtifactResponse,

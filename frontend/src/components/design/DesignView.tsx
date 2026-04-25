@@ -7,7 +7,6 @@ import {
   useState,
 } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 
 import { ResizeHandle } from "@/components/ui/ResizeHandle";
@@ -49,10 +48,10 @@ interface DesignViewProps {
 interface StyleguideGenerationResult {
   itemCount: number;
   caveatCount: number;
-  schemaVersionId: string;
+  schemaVersionId: string | null;
 }
 
-function buildExportFileName(designSystem: DesignSystem, artifactId: string): string {
+function buildExportFileName(designSystem: DesignSystem): string {
   const slug = designSystem.name
     .trim()
     .toLowerCase()
@@ -60,7 +59,7 @@ function buildExportFileName(designSystem: DesignSystem, artifactId: string): st
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
   const safeSlug = slug || "design-system";
-  return `ralphx-design-system-${safeSlug}-${artifactId.slice(0, 8)}.json`;
+  return `ralphx-design-system-${safeSlug}.json`;
 }
 
 export function DesignView({ projectId }: DesignViewProps) {
@@ -257,16 +256,20 @@ export function DesignView({ projectId }: DesignViewProps) {
         const caveatCount = response.items.filter((item) => item.confidence === "low").length;
         const rowLabel = response.items.length === 1 ? "row" : "rows";
         const caveatLabel = caveatCount === 1 ? "caveat" : "caveats";
+        let description = "The Design agent will publish the styleguide when source analysis is complete.";
+        if (response.items.length > 0) {
+          description = `${response.items.length} existing review ${rowLabel}`;
+          if (caveatCount > 0) {
+            description = `${description}, ${caveatCount} ${caveatLabel}`;
+          }
+        }
         setStyleguideGenerationResult({
           itemCount: response.items.length,
           caveatCount,
-          schemaVersionId: response.schemaVersionId,
+          schemaVersionId: response.schemaVersionId ?? null,
         });
-        toast.success("Styleguide generated", {
-          description:
-            caveatCount > 0
-              ? `${response.items.length} review ${rowLabel}, ${caveatCount} ${caveatLabel}`
-              : `${response.items.length} review ${rowLabel}`,
+        toast.success("Design is analyzing selected sources", {
+          description,
         });
       },
       onError: (error) => {
@@ -278,49 +281,43 @@ export function DesignView({ projectId }: DesignViewProps) {
     });
   };
 
-  const exportSelectedPackage = () => {
-    if (!selectedDesignSystem || exportPackage.isPending) {
+  const exportSelectedPackage = async () => {
+    if (!selectedDesignSystem || exportPackage.isPending || isSavingExportPackage) {
       return;
     }
-    exportPackage.mutate(selectedDesignSystem.id, {
-      onSuccess: (response) => {
-        setExportPackageResult(response);
-        toast.success("Design package exported", {
-          description: `Artifact ${response.artifactId.slice(0, 8)} is ready to download.`,
-        });
-      },
-      onError: (error) => {
-        const message = extractErrorMessage(error, "Failed to export design package");
-        toast.error("Failed to export design package", {
-          description: message,
-        });
-      },
-    });
-  };
-
-  const downloadExportPackage = async () => {
-    if (!selectedDesignSystem || !exportPackageResult || isSavingExportPackage) {
-      return;
-    }
-
     setIsSavingExportPackage(true);
     try {
       const savePath = await save({
         filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
-        defaultPath: buildExportFileName(selectedDesignSystem, exportPackageResult.artifactId),
+        defaultPath: buildExportFileName(selectedDesignSystem),
       });
 
       if (savePath === null) {
         return;
       }
 
-      await writeTextFile(savePath, JSON.stringify(exportPackageResult.content, null, 2));
-      toast.success("Design package downloaded", {
-        description: "Saved the exported styleguide and schema package JSON.",
+      exportPackage.mutate({
+        designSystemId: selectedDesignSystem.id,
+        destinationPath: savePath,
+      }, {
+        onSuccess: (response) => {
+          setExportPackageResult(response);
+          toast.success("Design package exported", {
+            description: response.filePath
+              ? "Saved the exported styleguide and schema package JSON."
+              : `Artifact ${response.artifactId.slice(0, 8)} is ready.`,
+          });
+        },
+        onError: (error) => {
+          const message = extractErrorMessage(error, "Failed to export design package");
+          toast.error("Failed to export design package", {
+            description: message,
+          });
+        },
       });
     } catch (error) {
-      const message = extractErrorMessage(error, "Failed to download design package");
-      toast.error("Failed to download design package", {
+      const message = extractErrorMessage(error, "Failed to choose export destination");
+      toast.error("Failed to choose export destination", {
         description: message,
       });
     } finally {
@@ -386,13 +383,11 @@ export function DesignView({ projectId }: DesignViewProps) {
           <DesignStyleguidePane
             designSystem={selectedDesignSystem}
             isGeneratingStyleguide={generateStyleguide.isPending}
-            isExportingPackage={exportPackage.isPending}
+            isExportingPackage={exportPackage.isPending || isSavingExportPackage}
             exportPackage={exportPackageResult}
-            isDownloadingExportPackage={isSavingExportPackage}
             generationResult={styleguideGenerationResult}
             onGenerateStyleguide={generateSelectedStyleguide}
             onExportPackage={exportSelectedPackage}
-            onDownloadExportPackage={downloadExportPackage}
           />
         </div>
       </div>

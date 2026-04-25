@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+use std::path::{Component, Path, PathBuf};
 
 use axum::{
     extract::{Path, Query, State},
@@ -13,8 +14,10 @@ use super::*;
 use crate::commands::design_artifact_commands::{
     generate_design_artifact_core, GenerateDesignArtifactInput, GenerateDesignArtifactResponse,
 };
+use crate::commands::design_artifact_persistence::persist_design_generation_artifacts;
 use crate::commands::design_commands::{
-    DesignSystemDetailResponse, DesignSystemResponse, DesignSystemSourceResponse,
+    next_schema_version_label, DesignRunEventPayload, DesignSystemDetailResponse,
+    DesignSystemResponse, DesignSystemSourceResponse,
 };
 use crate::commands::design_feedback_commands::{
     create_design_styleguide_feedback_core_with_options, list_design_styleguide_items_core,
@@ -23,8 +26,11 @@ use crate::commands::design_feedback_commands::{
     ListDesignStyleguideItemsInput,
 };
 use crate::domain::entities::{
-    ArtifactContent, ArtifactId, ChatContextType, DesignApprovalStatus, DesignFeedbackStatus,
-    DesignSchemaVersion, DesignSchemaVersionId, DesignStyleguideItem, DesignSystemId,
+    ArtifactContent, ArtifactId, ChatContextType, DesignApprovalStatus, DesignConfidence,
+    DesignFeedbackStatus, DesignRun, DesignRunId, DesignRunKind, DesignRunStatus,
+    DesignSchemaVersion, DesignSchemaVersionId, DesignSchemaVersionStatus, DesignSourceRef,
+    DesignStyleguideGroup, DesignStyleguideItem, DesignStyleguideItemId, DesignSystemId,
+    DesignSystemStatus, Project, ProjectId,
 };
 use crate::utils::design_storage_paths::DesignStoragePaths;
 
@@ -65,6 +71,71 @@ pub struct CreateDesignArtifactRequest {
     pub source_item_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListDesignSourceFilesQuery {
+    #[serde(alias = "project_id")]
+    pub project_id: Option<String>,
+    #[serde(alias = "max_files")]
+    pub max_files: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadDesignSourceFileRequest {
+    #[serde(alias = "project_id")]
+    pub project_id: Option<String>,
+    pub path: String,
+    #[serde(alias = "start_line")]
+    pub start_line: Option<usize>,
+    #[serde(alias = "end_line")]
+    pub end_line: Option<usize>,
+    #[serde(alias = "max_bytes")]
+    pub max_bytes: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchDesignSourceFilesRequest {
+    #[serde(alias = "project_id")]
+    pub project_id: Option<String>,
+    pub pattern: String,
+    #[serde(alias = "case_sensitive")]
+    pub case_sensitive: Option<bool>,
+    #[serde(alias = "max_results")]
+    pub max_results: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishDesignSourceRefInput {
+    #[serde(alias = "project_id")]
+    pub project_id: String,
+    pub path: String,
+    pub line: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishDesignStyleguideItemInput {
+    #[serde(alias = "item_id")]
+    pub item_id: String,
+    pub group: String,
+    pub label: String,
+    pub summary: String,
+    #[serde(default, alias = "source_refs")]
+    pub source_refs: Vec<PublishDesignSourceRefInput>,
+    pub confidence: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishDesignSchemaVersionRequest {
+    pub version: Option<String>,
+    #[serde(default)]
+    pub items: Vec<PublishDesignStyleguideItemInput>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesignSourceManifestResponse {
@@ -102,6 +173,59 @@ pub struct DesignArtifactsResponse {
     pub artifacts: Vec<DesignArtifactSummaryResponse>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesignSourceFileSummary {
+    pub project_id: String,
+    pub path: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesignSourceFilesResponse {
+    pub design_system_id: String,
+    pub files: Vec<DesignSourceFileSummary>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadDesignSourceFileResponse {
+    pub design_system_id: String,
+    pub project_id: String,
+    pub path: String,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub truncated: bool,
+    pub content: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesignSourceSearchMatch {
+    pub project_id: String,
+    pub path: String,
+    pub line: usize,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchDesignSourceFilesResponse {
+    pub design_system_id: String,
+    pub matches: Vec<DesignSourceSearchMatch>,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishDesignSchemaVersionResponse {
+    pub design_system: DesignSystemResponse,
+    pub schema_version_id: String,
+    pub run_id: String,
+    pub items: Vec<DesignStyleguideItemResponse>,
+}
+
 pub async fn get_design_system_for_tool(
     State(state): State<HttpServerState>,
     Path(design_system_id): Path<String>,
@@ -131,6 +255,71 @@ pub async fn get_design_styleguide_for_tool(
         .await
         .map(Json)
         .map_err(map_design_tool_error)
+}
+
+pub async fn list_design_source_files_for_tool(
+    State(state): State<HttpServerState>,
+    Path(design_system_id): Path<String>,
+    Query(query): Query<ListDesignSourceFilesQuery>,
+) -> Result<Json<DesignSourceFilesResponse>, (StatusCode, String)> {
+    list_design_source_files_for_tool_core(&state.app_state, &design_system_id, query)
+        .await
+        .map(Json)
+        .map_err(map_design_tool_error)
+}
+
+pub async fn read_design_source_file_for_tool(
+    State(state): State<HttpServerState>,
+    Path(design_system_id): Path<String>,
+    Json(req): Json<ReadDesignSourceFileRequest>,
+) -> Result<Json<ReadDesignSourceFileResponse>, (StatusCode, String)> {
+    read_design_source_file_for_tool_core(&state.app_state, &design_system_id, req)
+        .await
+        .map(Json)
+        .map_err(map_design_tool_error)
+}
+
+pub async fn search_design_source_files_for_tool(
+    State(state): State<HttpServerState>,
+    Path(design_system_id): Path<String>,
+    Json(req): Json<SearchDesignSourceFilesRequest>,
+) -> Result<Json<SearchDesignSourceFilesResponse>, (StatusCode, String)> {
+    search_design_source_files_for_tool_core(&state.app_state, &design_system_id, req)
+        .await
+        .map(Json)
+        .map_err(map_design_tool_error)
+}
+
+pub async fn publish_design_schema_version_for_tool(
+    State(state): State<HttpServerState>,
+    Path(design_system_id): Path<String>,
+    Json(req): Json<PublishDesignSchemaVersionRequest>,
+) -> Result<Json<PublishDesignSchemaVersionResponse>, (StatusCode, String)> {
+    let storage_paths =
+        design_storage_paths_for_http(&state.app_state).map_err(map_design_tool_error)?;
+    let response = publish_design_schema_version_for_tool_core(
+        &state.app_state,
+        &storage_paths,
+        &design_system_id,
+        req,
+    )
+    .await
+    .map_err(map_design_tool_error)?;
+
+    if let Some(handle) = &state.app_state.app_handle {
+        let _ = handle.emit("design:schema_published", &response);
+        let _ = handle.emit("design:system_updated", &response.design_system);
+        if let Ok(Some(run)) = state
+            .app_state
+            .design_run_repo
+            .get_by_id(&DesignRunId::from_string(response.run_id.clone()))
+            .await
+        {
+            let _ = handle.emit("design:run_completed", DesignRunEventPayload::from(&run));
+        }
+    }
+
+    Ok(Json(response))
 }
 
 pub async fn update_design_styleguide_item_for_tool(
@@ -304,6 +493,312 @@ async fn get_design_styleguide_for_tool_core(
         design_system_id: design_system_id.as_str().to_string(),
         schema_version_id: resolved_schema_version_id,
         items,
+    })
+}
+
+async fn list_design_source_files_for_tool_core(
+    state: &crate::application::AppState,
+    raw_design_system_id: &str,
+    query: ListDesignSourceFilesQuery,
+) -> Result<DesignSourceFilesResponse, String> {
+    let design_system_id = parse_design_system_id(raw_design_system_id)?;
+    let project_filter = query
+        .project_id
+        .as_deref()
+        .map(|value| parse_project_id(value, "project_id"))
+        .transpose()?;
+    let max_files = query.max_files.unwrap_or(500).clamp(1, 2_000);
+    let sources = state
+        .design_system_source_repo
+        .list_by_design_system(&design_system_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut files = Vec::new();
+    for source in sources {
+        if project_filter
+            .as_ref()
+            .is_some_and(|id| *id != source.project_id)
+        {
+            continue;
+        }
+        for (path, sha256) in source.source_hashes {
+            files.push(DesignSourceFileSummary {
+                project_id: source.project_id.as_str().to_string(),
+                path,
+                sha256,
+            });
+            if files.len() >= max_files {
+                return Ok(DesignSourceFilesResponse {
+                    design_system_id: design_system_id.as_str().to_string(),
+                    files,
+                });
+            }
+        }
+    }
+    files.sort_by(|left, right| {
+        left.project_id
+            .cmp(&right.project_id)
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    Ok(DesignSourceFilesResponse {
+        design_system_id: design_system_id.as_str().to_string(),
+        files,
+    })
+}
+
+async fn read_design_source_file_for_tool_core(
+    state: &crate::application::AppState,
+    raw_design_system_id: &str,
+    req: ReadDesignSourceFileRequest,
+) -> Result<ReadDesignSourceFileResponse, String> {
+    let design_system_id = parse_design_system_id(raw_design_system_id)?;
+    let source_file = resolve_manifest_source_file(
+        state,
+        &design_system_id,
+        req.project_id.as_deref(),
+        &req.path,
+    )
+    .await?;
+    let max_bytes = req.max_bytes.unwrap_or(64 * 1024).clamp(1, 256 * 1024);
+    let metadata = std::fs::metadata(&source_file.path)
+        .map_err(|error| format!("Failed to read selected design source metadata: {error}"))?;
+    if !metadata.is_file() {
+        return Err("Selected design source path is not a file".to_string());
+    }
+    let truncated = metadata.len() > max_bytes;
+    let bytes = std::fs::read(&source_file.path)
+        .map_err(|error| format!("Failed to read selected design source file: {error}"))?;
+    let bytes = &bytes[..bytes.len().min(max_bytes as usize)];
+    let content = String::from_utf8_lossy(bytes);
+    let lines = content.lines().collect::<Vec<_>>();
+    let start_line = req.start_line.unwrap_or(1).max(1);
+    let end_line = req.end_line.unwrap_or(lines.len()).max(start_line);
+    let selected = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let line_number = index + 1;
+            (line_number >= start_line && line_number <= end_line).then_some(*line)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Ok(ReadDesignSourceFileResponse {
+        design_system_id: design_system_id.as_str().to_string(),
+        project_id: source_file.project_id.as_str().to_string(),
+        path: source_file.relative_path,
+        start_line,
+        end_line: end_line.min(lines.len().max(start_line)),
+        truncated,
+        content: selected,
+    })
+}
+
+async fn search_design_source_files_for_tool_core(
+    state: &crate::application::AppState,
+    raw_design_system_id: &str,
+    req: SearchDesignSourceFilesRequest,
+) -> Result<SearchDesignSourceFilesResponse, String> {
+    let design_system_id = parse_design_system_id(raw_design_system_id)?;
+    let pattern = normalize_required_string(&req.pattern, "pattern")?;
+    let project_filter = req
+        .project_id
+        .as_deref()
+        .map(|value| parse_project_id(value, "project_id"))
+        .transpose()?;
+    let case_sensitive = req.case_sensitive.unwrap_or(false);
+    let max_results = req.max_results.unwrap_or(100).clamp(1, 1_000);
+    let needle = if case_sensitive {
+        pattern.clone()
+    } else {
+        pattern.to_ascii_lowercase()
+    };
+    let mut matches = Vec::new();
+    let sources = state
+        .design_system_source_repo
+        .list_by_design_system(&design_system_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    for source in sources {
+        if project_filter
+            .as_ref()
+            .is_some_and(|id| *id != source.project_id)
+        {
+            continue;
+        }
+        for relative_path in source.source_hashes.keys() {
+            let source_file = resolve_manifest_source_file(
+                state,
+                &design_system_id,
+                Some(source.project_id.as_str()),
+                relative_path,
+            )
+            .await?;
+            let metadata = std::fs::metadata(&source_file.path).map_err(|error| {
+                format!("Failed to read selected design source metadata: {error}")
+            })?;
+            if !metadata.is_file() || metadata.len() > 512 * 1024 {
+                continue;
+            }
+            let content = std::fs::read_to_string(&source_file.path).unwrap_or_default();
+            for (index, line) in content.lines().enumerate() {
+                let haystack = if case_sensitive {
+                    line.to_string()
+                } else {
+                    line.to_ascii_lowercase()
+                };
+                if haystack.contains(&needle) {
+                    matches.push(DesignSourceSearchMatch {
+                        project_id: source_file.project_id.as_str().to_string(),
+                        path: source_file.relative_path.clone(),
+                        line: index + 1,
+                        text: line.trim().to_string(),
+                    });
+                    if matches.len() >= max_results {
+                        return Ok(SearchDesignSourceFilesResponse {
+                            design_system_id: design_system_id.as_str().to_string(),
+                            matches,
+                            truncated: true,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(SearchDesignSourceFilesResponse {
+        design_system_id: design_system_id.as_str().to_string(),
+        matches,
+        truncated: false,
+    })
+}
+
+pub(crate) async fn publish_design_schema_version_for_tool_core(
+    state: &crate::application::AppState,
+    storage_paths: &DesignStoragePaths,
+    raw_design_system_id: &str,
+    req: PublishDesignSchemaVersionRequest,
+) -> Result<PublishDesignSchemaVersionResponse, String> {
+    let design_system_id = parse_design_system_id(raw_design_system_id)?;
+    let mut system = state
+        .design_system_repo
+        .get_by_id(&design_system_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Design system not found: {}", design_system_id.as_str()))?;
+    if system.status == DesignSystemStatus::Archived || system.archived_at.is_some() {
+        return Err("Archived design systems cannot publish new schema versions".to_string());
+    }
+    let sources = state
+        .design_system_source_repo
+        .list_by_design_system(&design_system_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    if sources.is_empty() {
+        return Err("Design system has no source manifest to publish against".to_string());
+    }
+    let schema_version_id = DesignSchemaVersionId::new();
+    let version = match req
+        .version
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        Some(version) => version.to_string(),
+        None => next_schema_version_label(state, &design_system_id).await?,
+    };
+    let now = Utc::now();
+    let mut items = styleguide_items_from_publish_request(
+        &design_system_id,
+        &schema_version_id,
+        &sources,
+        req.items,
+        now,
+    )?;
+    let artifacts = persist_design_generation_artifacts(
+        state,
+        storage_paths,
+        &system,
+        &schema_version_id,
+        &version,
+        &sources,
+        &mut items,
+        now,
+    )
+    .await?;
+    let mut run = latest_active_design_run(state, &design_system_id)
+        .await?
+        .unwrap_or_else(|| {
+            let mut run = DesignRun::queued(
+                design_system_id.clone(),
+                DesignRunKind::Update,
+                "Published design schema version from steward output",
+            );
+            run.started_at = Some(now);
+            run
+        });
+    run.status = DesignRunStatus::Completed;
+    run.completed_at = Some(now);
+    run.output_artifact_ids = artifacts.output_artifact_ids.clone();
+    let run = if state
+        .design_run_repo
+        .get_by_id(&run.id)
+        .await
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
+        state
+            .design_run_repo
+            .update(&run)
+            .await
+            .map_err(|error| error.to_string())?;
+        run
+    } else {
+        state
+            .design_run_repo
+            .create(run)
+            .await
+            .map_err(|error| error.to_string())?
+    };
+    let schema_version = DesignSchemaVersion {
+        id: schema_version_id.clone(),
+        design_system_id: design_system_id.clone(),
+        version,
+        schema_artifact_id: artifacts.schema_artifact_id,
+        manifest_artifact_id: artifacts.manifest_artifact_id,
+        styleguide_artifact_id: artifacts.styleguide_artifact_id,
+        status: DesignSchemaVersionStatus::Verified,
+        created_by_run_id: Some(run.id.clone()),
+        created_at: now,
+    };
+    let schema_version = state
+        .design_schema_repo
+        .create_version(schema_version)
+        .await
+        .map_err(|error| error.to_string())?;
+    state
+        .design_styleguide_repo
+        .replace_items_for_schema_version(&schema_version.id, items.clone())
+        .await
+        .map_err(|error| error.to_string())?;
+
+    system.status = DesignSystemStatus::Ready;
+    system.current_schema_version_id = Some(schema_version.id.clone());
+    system.updated_at = now;
+    state
+        .design_system_repo
+        .update(&system)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    Ok(PublishDesignSchemaVersionResponse {
+        design_system: DesignSystemResponse::from(system),
+        schema_version_id: schema_version.id.as_str().to_string(),
+        run_id: run.id.as_str().to_string(),
+        items: items
+            .into_iter()
+            .map(DesignStyleguideItemResponse::from)
+            .collect(),
     })
 }
 
@@ -495,10 +990,250 @@ async fn load_styleguide_item(
         .ok_or_else(|| format!("Design styleguide item not found: {item_id}"))
 }
 
+struct ResolvedDesignSourceFile {
+    project_id: ProjectId,
+    relative_path: String,
+    path: PathBuf,
+}
+
+async fn resolve_manifest_source_file(
+    state: &crate::application::AppState,
+    design_system_id: &DesignSystemId,
+    raw_project_id: Option<&str>,
+    raw_path: &str,
+) -> Result<ResolvedDesignSourceFile, String> {
+    let relative_path = normalize_source_ref_path(raw_path)?;
+    let project_filter = raw_project_id
+        .map(|value| parse_project_id(value, "project_id"))
+        .transpose()?;
+    let sources = state
+        .design_system_source_repo
+        .list_by_design_system(design_system_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let matches = sources
+        .into_iter()
+        .filter(|source| {
+            project_filter
+                .as_ref()
+                .is_none_or(|id| *id == source.project_id)
+        })
+        .filter(|source| source.source_hashes.contains_key(&relative_path))
+        .collect::<Vec<_>>();
+    let source = match matches.as_slice() {
+        [source] => source,
+        [] => return Err("Selected path is not in the design source manifest".to_string()),
+        _ => {
+            return Err(
+                "Selected path is ambiguous across design source projects; provide project_id"
+                    .to_string(),
+            )
+        }
+    };
+    let project = load_project_for_design_source(state, &source.project_id).await?;
+    let root = canonical_project_root(&project)?;
+    let safe_relative = safe_relative_path(&relative_path)?;
+    let path = root
+        .join(safe_relative)
+        .canonicalize()
+        .map_err(|error| format!("Failed to canonicalize selected design source file: {error}"))?;
+    ensure_under(&path, &root, "selected design source file")?;
+    Ok(ResolvedDesignSourceFile {
+        project_id: source.project_id.clone(),
+        relative_path,
+        path,
+    })
+}
+
+fn styleguide_items_from_publish_request(
+    design_system_id: &DesignSystemId,
+    schema_version_id: &DesignSchemaVersionId,
+    sources: &[crate::domain::entities::DesignSystemSource],
+    item_inputs: Vec<PublishDesignStyleguideItemInput>,
+    now: chrono::DateTime<Utc>,
+) -> Result<Vec<DesignStyleguideItem>, String> {
+    if item_inputs.is_empty() {
+        return Err(
+            "publish_design_schema_version requires at least one styleguide item".to_string(),
+        );
+    }
+    let manifest_index = manifest_source_index(sources);
+    item_inputs
+        .into_iter()
+        .map(|input| {
+            let item_id = normalize_required_string(&input.item_id, "item_id")?;
+            let group = parse_styleguide_group(&input.group)?;
+            let confidence = input
+                .confidence
+                .as_deref()
+                .map(parse_confidence)
+                .transpose()?
+                .unwrap_or(DesignConfidence::Medium);
+            let source_refs = input
+                .source_refs
+                .into_iter()
+                .map(|source_ref| validate_publish_source_ref(source_ref, &manifest_index))
+                .collect::<Result<Vec<_>, _>>()?;
+            if source_refs.is_empty() && confidence != DesignConfidence::Low {
+                return Err(format!(
+                    "Styleguide item {item_id} needs source_refs or low confidence"
+                ));
+            }
+            Ok(DesignStyleguideItem {
+                id: DesignStyleguideItemId::new(),
+                design_system_id: design_system_id.clone(),
+                schema_version_id: schema_version_id.clone(),
+                item_id,
+                group,
+                label: normalize_required_string(&input.label, "label")?,
+                summary: input.summary.trim().to_string(),
+                preview_artifact_id: None,
+                source_refs,
+                confidence,
+                approval_status: DesignApprovalStatus::NeedsReview,
+                feedback_status: DesignFeedbackStatus::None,
+                updated_at: now,
+            })
+        })
+        .collect()
+}
+
+fn manifest_source_index(
+    sources: &[crate::domain::entities::DesignSystemSource],
+) -> HashSet<(String, String)> {
+    sources
+        .iter()
+        .flat_map(|source| {
+            source.source_hashes.keys().map(|path| {
+                (
+                    source.project_id.as_str().to_string(),
+                    path.as_str().to_string(),
+                )
+            })
+        })
+        .collect()
+}
+
+fn validate_publish_source_ref(
+    source_ref: PublishDesignSourceRefInput,
+    manifest_index: &HashSet<(String, String)>,
+) -> Result<DesignSourceRef, String> {
+    let project_id = parse_project_id(&source_ref.project_id, "source_ref.project_id")?;
+    let path = normalize_source_ref_path(&source_ref.path)?;
+    if !manifest_index.contains(&(project_id.as_str().to_string(), path.clone())) {
+        return Err(format!(
+            "Source ref {}:{} is not in the selected design source manifest",
+            project_id.as_str(),
+            path
+        ));
+    }
+    Ok(DesignSourceRef {
+        project_id,
+        path,
+        line: source_ref.line,
+    })
+}
+
+async fn latest_active_design_run(
+    state: &crate::application::AppState,
+    design_system_id: &DesignSystemId,
+) -> Result<Option<DesignRun>, String> {
+    let runs = state
+        .design_run_repo
+        .list_by_design_system(design_system_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(runs.into_iter().find(|run| {
+        matches!(
+            run.status,
+            DesignRunStatus::Queued | DesignRunStatus::Running
+        ) && matches!(
+            run.kind,
+            DesignRunKind::Create | DesignRunKind::Update | DesignRunKind::ItemFeedback
+        )
+    }))
+}
+
+async fn load_project_for_design_source(
+    state: &crate::application::AppState,
+    project_id: &ProjectId,
+) -> Result<Project, String> {
+    state
+        .project_repo
+        .get_by_id(project_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", project_id.as_str()))
+}
+
+fn canonical_project_root(project: &Project) -> Result<PathBuf, String> {
+    let root = Path::new(&project.working_directory);
+    if !root.is_absolute() {
+        return Err("Design source project root must be absolute".to_string());
+    }
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("Failed to canonicalize design source project root: {error}"))?;
+    if !root.is_dir() {
+        return Err("Design source project root must be a directory".to_string());
+    }
+    Ok(root)
+}
+
+fn safe_relative_path(raw_path: &str) -> Result<PathBuf, String> {
+    let path = Path::new(raw_path);
+    if path.is_absolute() {
+        return Err("Design source paths must be relative".to_string());
+    }
+    let mut safe = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(value) => safe.push(value),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(
+                    "Design source paths cannot contain parent, root, or prefix components"
+                        .to_string(),
+                )
+            }
+        }
+    }
+    if safe.as_os_str().is_empty() {
+        return Err("Design source path is required".to_string());
+    }
+    Ok(safe)
+}
+
+fn normalize_source_ref_path(raw_path: &str) -> Result<String, String> {
+    let safe = safe_relative_path(raw_path)?;
+    Ok(safe
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => Some(value.to_string_lossy().to_string()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/"))
+}
+
+fn ensure_under(path: &Path, root: &Path, label: &str) -> Result<(), String> {
+    if path.starts_with(root) {
+        Ok(())
+    } else {
+        Err(format!("{label} escaped design source project root"))
+    }
+}
+
 fn parse_design_system_id(raw: &str) -> Result<DesignSystemId, String> {
     Ok(DesignSystemId::from_string(normalize_required_string(
         raw,
         "design_system_id",
+    )?))
+}
+
+fn parse_project_id(raw: &str, field: &str) -> Result<ProjectId, String> {
+    Ok(ProjectId::from_string(normalize_required_string(
+        raw, field,
     )?))
 }
 
@@ -516,6 +1251,27 @@ fn parse_approval_status(raw: &str) -> Result<DesignApprovalStatus, String> {
         "approved" => Ok(DesignApprovalStatus::Approved),
         "needs_work" => Ok(DesignApprovalStatus::NeedsWork),
         _ => Err("approval_status must be needs_review, approved, or needs_work".to_string()),
+    }
+}
+
+fn parse_styleguide_group(raw: &str) -> Result<DesignStyleguideGroup, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "ui_kit" | "ui-kit" | "ui kit" => Ok(DesignStyleguideGroup::UiKit),
+        "type" | "typography" => Ok(DesignStyleguideGroup::Type),
+        "colors" | "color" => Ok(DesignStyleguideGroup::Colors),
+        "spacing" => Ok(DesignStyleguideGroup::Spacing),
+        "components" | "component" => Ok(DesignStyleguideGroup::Components),
+        "brand" => Ok(DesignStyleguideGroup::Brand),
+        _ => Err("group must be ui_kit, type, colors, spacing, components, or brand".to_string()),
+    }
+}
+
+fn parse_confidence(raw: &str) -> Result<DesignConfidence, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "high" => Ok(DesignConfidence::High),
+        "medium" => Ok(DesignConfidence::Medium),
+        "low" => Ok(DesignConfidence::Low),
+        _ => Err("confidence must be high, medium, or low".to_string()),
     }
 }
 

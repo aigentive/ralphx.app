@@ -431,7 +431,7 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
     ),
     ("ralphx-chat-task", "base_tools", &["Task"], false),
     ("ralphx-chat-project", "readonly_tools", &[], false),
-    ("ralphx-design-steward", "readonly_tools", &[], false),
+    ("ralphx-design-steward", "", &[], true),
     ("ralphx-review-chat", "base_tools", &["Task"], false),
     ("ralphx-review-history", "base_tools", &["Task"], false),
     (
@@ -903,7 +903,12 @@ fn canonical_claude_tool_spec_matches_loader_for_owned_agents() {
             .as_ref()
             .unwrap_or_else(|| panic!("expected canonical Claude tools for {agent_name}"));
 
-        assert_eq!(spec.extends.as_deref(), Some(*expected_extends));
+        let expected_extends = if expected_extends.is_empty() {
+            None
+        } else {
+            Some(*expected_extends)
+        };
+        assert_eq!(spec.extends.as_deref(), expected_extends);
         assert_eq!(
             spec.include,
             expected_include

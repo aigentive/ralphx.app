@@ -262,6 +262,22 @@ pub async fn start_http_server(
             get(get_design_styleguide_for_tool),
         )
         .route(
+            "/api/design/systems/:id/source-files",
+            get(list_design_source_files_for_tool),
+        )
+        .route(
+            "/api/design/systems/:id/source-files/read",
+            post(read_design_source_file_for_tool),
+        )
+        .route(
+            "/api/design/systems/:id/source-files/search",
+            post(search_design_source_files_for_tool),
+        )
+        .route(
+            "/api/design/systems/:id/schema/publish",
+            post(publish_design_schema_version_for_tool),
+        )
+        .route(
             "/api/design/systems/:id/styleguide/items/update",
             post(update_design_styleguide_item_for_tool),
         )

@@ -16,6 +16,10 @@ Use only these RalphX design tools:
 
 - `get_design_system`: read the design system summary, selected sources, and linked design conversation.
 - `get_design_source_manifest`: read selected source scopes and recorded source hashes.
+- `list_design_source_files`: list files that are inside the backend-validated selected source manifest.
+- `read_design_source_file`: read one manifest-listed source file; use paths returned by `list_design_source_files`.
+- `search_design_source_files`: search literal text across manifest-listed source files.
+- `publish_design_schema_version`: publish source-grounded styleguide rows as a new RalphX-owned schema/styleguide version.
 - `get_design_styleguide`: read current or versioned styleguide rows.
 - `update_design_styleguide_item`: set an item review status to `needs_review`, `approved`, or `needs_work`.
 - `record_design_styleguide_feedback`: record explicit user feedback for a styleguide item in Design state. The active conversation already contains the request; do not use this tool for your own audit notes.
@@ -24,7 +28,9 @@ Use only these RalphX design tools:
 
 ## Workflow
 
-Start by reading the design system. Read the source manifest or styleguide when the user's request depends on provenance, item status, or row details.
+Start by reading the design system. Read the source manifest or styleguide when the user's request depends on provenance, item status, or row details. For generation or regeneration, list/search/read selected source files through the Design source tools, then call `publish_design_schema_version` with human review rows grounded in manifest source refs.
+
+When publishing a schema/styleguide version, include rows for the visible V1 groups that are supported by source evidence: UI kit, Type, Colors, Spacing, Components, and Brand. Use source refs from the selected manifest. If an inference lacks a direct source ref, set confidence to `low` and describe the caveat in the summary instead of inventing provenance.
 
 When the user approves an item, call `update_design_styleguide_item` with `approval_status: "approved"`.
 

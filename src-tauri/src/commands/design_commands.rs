@@ -1,22 +1,20 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tauri::{Emitter, Manager, State};
 use tracing::{info, warn};
 
+use crate::application::chat_service::{ChatService, SendMessageOptions};
 use crate::application::AppState;
-use crate::commands::design_artifact_persistence::persist_design_generation_artifacts;
 use crate::commands::design_feedback_commands::DesignStyleguideItemResponse;
 use crate::commands::unified_chat_commands::AgentConversationResponse;
 use crate::domain::entities::{
-    ChatConversation, DesignApprovalStatus, DesignConfidence, DesignFeedbackStatus, DesignRun,
-    DesignRunKind, DesignRunStatus, DesignSchemaVersion, DesignSchemaVersionId,
-    DesignSchemaVersionStatus, DesignSourceKind, DesignSourceRef, DesignSourceRole,
-    DesignStyleguideGroup, DesignStyleguideItem, DesignStyleguideItemId, DesignSystem,
-    DesignSystemId, DesignSystemSource, DesignSystemSourceId, DesignSystemStatus, Project,
-    ProjectId,
+    ChatContextType, ChatConversation, DesignRun, DesignRunId, DesignRunKind, DesignRunStatus,
+    DesignSourceKind, DesignSourceRole, DesignSystem, DesignSystemId, DesignSystemSource,
+    DesignSystemSourceId, DesignSystemStatus, Project, ProjectId,
 };
 use crate::utils::design_source_manifest::build_design_source_manifest;
 use crate::utils::design_storage_paths::DesignStoragePaths;
@@ -48,7 +46,7 @@ pub struct GenerateDesignSystemStyleguideInput {
     pub design_system_id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesignSystemResponse {
     pub id: String,
@@ -97,9 +95,34 @@ pub struct CreateDesignSystemResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GenerateDesignSystemStyleguideResponse {
     pub design_system: DesignSystemResponse,
-    pub schema_version_id: String,
+    pub schema_version_id: Option<String>,
     pub run_id: String,
     pub items: Vec<DesignStyleguideItemResponse>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesignRunEventPayload {
+    pub design_system_id: String,
+    pub run_id: String,
+    pub conversation_id: Option<String>,
+    pub kind: String,
+    pub status: String,
+}
+
+impl From<&DesignRun> for DesignRunEventPayload {
+    fn from(run: &DesignRun) -> Self {
+        Self {
+            design_system_id: run.design_system_id.as_str().to_string(),
+            run_id: run.id.as_str().to_string(),
+            conversation_id: run
+                .conversation_id
+                .as_ref()
+                .map(|id| id.as_str().to_string()),
+            kind: enum_text(&run.kind),
+            status: enum_text(&run.status),
+        }
+    }
 }
 
 impl From<DesignSystem> for DesignSystemResponse {
@@ -141,6 +164,7 @@ impl From<DesignSystemSource> for DesignSystemSourceResponse {
 pub async fn create_design_system(
     input: CreateDesignSystemInput,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<CreateDesignSystemResponse, String> {
     let primary_project_id = input.primary_project_id.clone();
     let selected_path_count = input.selected_paths.len();
@@ -160,7 +184,10 @@ pub async fn create_design_system(
     };
 
     match create_design_system_core(&state, &storage_paths, input).await {
-        Ok(response) => Ok(response),
+        Ok(response) => {
+            let _ = app.emit("design:system_created", &response.design_system);
+            Ok(response)
+        }
         Err(error) => {
             warn!(
                 %error,
@@ -237,6 +264,7 @@ pub async fn get_design_system(
 pub async fn archive_design_system(
     id: String,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<DesignSystemResponse, String> {
     let design_system_id = parse_non_empty_design_system_id(&id)?;
     state
@@ -244,13 +272,15 @@ pub async fn archive_design_system(
         .archive(&design_system_id)
         .await
         .map_err(|error| error.to_string())?;
-    state
+    let response = state
         .design_system_repo
         .get_by_id(&design_system_id)
         .await
         .map_err(|error| error.to_string())?
         .map(DesignSystemResponse::from)
-        .ok_or_else(|| format!("Design system not found: {}", design_system_id.as_str()))
+        .ok_or_else(|| format!("Design system not found: {}", design_system_id.as_str()))?;
+    let _ = app.emit("design:system_updated", &response);
+    Ok(response)
 }
 
 #[tauri::command]
@@ -260,18 +290,8 @@ pub async fn generate_design_system_styleguide(
     app: tauri::AppHandle,
 ) -> Result<GenerateDesignSystemStyleguideResponse, String> {
     let design_system_id = input.design_system_id.clone();
-    let storage_paths = match design_storage_paths_from_state(&state) {
-        Ok(paths) => paths,
-        Err(error) => {
-            warn!(
-                %error,
-                design_system_id = %design_system_id,
-                "Failed to prepare design styleguide storage"
-            );
-            return Err(error);
-        }
-    };
-    let response = match generate_design_system_styleguide_core(&state, &storage_paths, input).await
+    let chat_service = state.build_chat_service();
+    let response = match generate_design_system_styleguide_core(&state, input, &chat_service).await
     {
         Ok(response) => response,
         Err(error) => {
@@ -285,17 +305,18 @@ pub async fn generate_design_system_styleguide(
     };
     info!(
         design_system_id = %design_system_id,
-        schema_version_id = %response.schema_version_id,
+        schema_version_id = ?response.schema_version_id,
         run_id = %response.run_id,
-        item_count = response.items.len(),
-        caveat_count = response
-            .items
-            .iter()
-            .filter(|item| item.confidence == "low")
-            .count(),
-        "Generated design styleguide"
+        "Started design styleguide generation"
     );
-    let _ = app.emit("design:schema_published", &response);
+    if let Ok(Some(run)) = state
+        .design_run_repo
+        .get_by_id(&DesignRunId::from_string(response.run_id.clone()))
+        .await
+    {
+        let _ = app.emit("design:run_started", DesignRunEventPayload::from(&run));
+    }
+    let _ = app.emit("design:system_updated", &response.design_system);
     Ok(response)
 }
 
@@ -375,8 +396,8 @@ pub async fn create_design_system_core(
 #[doc(hidden)]
 pub async fn generate_design_system_styleguide_core(
     state: &AppState,
-    storage_paths: &DesignStoragePaths,
     input: GenerateDesignSystemStyleguideInput,
+    chat_service: &dyn ChatService,
 ) -> Result<GenerateDesignSystemStyleguideResponse, String> {
     let design_system_id = parse_non_empty_design_system_id(&input.design_system_id)?;
     let mut system = state
@@ -399,58 +420,30 @@ pub async fn generate_design_system_styleguide_core(
     }
 
     let now = Utc::now();
+    let conversation = resolve_or_create_design_conversation(state, &system).await?;
     let mut run = DesignRun::queued(
         design_system_id.clone(),
-        DesignRunKind::Create,
-        "Generated initial source-grounded styleguide",
+        if system.current_schema_version_id.is_some() {
+            DesignRunKind::Update
+        } else {
+            DesignRunKind::Create
+        },
+        "Analyze selected sources and publish a source-grounded design styleguide",
     );
     run.status = DesignRunStatus::Running;
     run.started_at = Some(now);
+    run.conversation_id = Some(conversation.id.clone());
     let mut run = state
         .design_run_repo
         .create(run)
         .await
         .map_err(|error| error.to_string())?;
 
-    let schema_version_id = DesignSchemaVersionId::new();
-    let version = next_schema_version_label(state, &design_system_id).await?;
-    let mut items = build_initial_styleguide_items(&system, &schema_version_id, &sources, now)?;
-    let artifacts = persist_design_generation_artifacts(
-        state,
-        storage_paths,
-        &system,
-        &schema_version_id,
-        &version,
-        &sources,
-        &mut items,
-        now,
-    )
-    .await?;
-    let schema_version = DesignSchemaVersion {
-        id: schema_version_id.clone(),
-        design_system_id: design_system_id.clone(),
-        version,
-        schema_artifact_id: artifacts.schema_artifact_id,
-        manifest_artifact_id: artifacts.manifest_artifact_id,
-        styleguide_artifact_id: artifacts.styleguide_artifact_id,
-        status: DesignSchemaVersionStatus::Verified,
-        created_by_run_id: Some(run.id.clone()),
-        created_at: now,
+    system.status = if system.current_schema_version_id.is_some() {
+        DesignSystemStatus::Updating
+    } else {
+        DesignSystemStatus::Analyzing
     };
-    let schema_version = state
-        .design_schema_repo
-        .create_version(schema_version)
-        .await
-        .map_err(|error| error.to_string())?;
-
-    state
-        .design_styleguide_repo
-        .replace_items_for_schema_version(&schema_version.id, items.clone())
-        .await
-        .map_err(|error| error.to_string())?;
-
-    system.status = DesignSystemStatus::Ready;
-    system.current_schema_version_id = Some(schema_version.id.clone());
     system.updated_at = now;
     state
         .design_system_repo
@@ -458,24 +451,123 @@ pub async fn generate_design_system_styleguide_core(
         .await
         .map_err(|error| error.to_string())?;
 
-    run.status = DesignRunStatus::Completed;
-    run.completed_at = Some(now);
-    run.output_artifact_ids = artifacts.output_artifact_ids;
-    state
-        .design_run_repo
-        .update(&run)
+    let message = build_styleguide_generation_message(&system, &sources);
+    let metadata = json!({
+        "kind": "design_styleguide_generation_request",
+        "source": "design_generation",
+        "designSystemId": design_system_id.as_str(),
+        "designRunId": run.id.as_str(),
+    });
+    match chat_service
+        .send_message(
+            ChatContextType::Design,
+            design_system_id.as_str(),
+            &message,
+            SendMessageOptions {
+                metadata: Some(metadata.to_string()),
+                conversation_id_override: Some(conversation.id.clone()),
+                ..Default::default()
+            },
+        )
         .await
-        .map_err(|error| error.to_string())?;
+    {
+        Ok(result) => {
+            if result.was_queued || result.queued_as_pending {
+                run.status = DesignRunStatus::Queued;
+                state
+                    .design_run_repo
+                    .update(&run)
+                    .await
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        Err(error) => {
+            run.status = DesignRunStatus::Failed;
+            run.completed_at = Some(Utc::now());
+            run.error = Some(error.to_string());
+            let _ = state.design_run_repo.update(&run).await;
+            system.status = DesignSystemStatus::Failed;
+            system.updated_at = Utc::now();
+            let _ = state.design_system_repo.update(&system).await;
+            return Err(error.to_string());
+        }
+    }
+
+    let items = match system.current_schema_version_id.as_ref() {
+        Some(schema_version_id) => state
+            .design_styleguide_repo
+            .list_items(&design_system_id, Some(schema_version_id))
+            .await
+            .map_err(|error| error.to_string())?,
+        None => Vec::new(),
+    };
 
     Ok(GenerateDesignSystemStyleguideResponse {
+        schema_version_id: system
+            .current_schema_version_id
+            .as_ref()
+            .map(|id| id.as_str().to_string()),
         design_system: DesignSystemResponse::from(system),
-        schema_version_id: schema_version.id.as_str().to_string(),
         run_id: run.id.as_str().to_string(),
         items: items
             .into_iter()
             .map(DesignStyleguideItemResponse::from)
             .collect(),
     })
+}
+
+async fn resolve_or_create_design_conversation(
+    state: &AppState,
+    system: &DesignSystem,
+) -> Result<ChatConversation, String> {
+    if let Some(conversation) = state
+        .chat_conversation_repo
+        .get_active_for_context(ChatContextType::Design, system.id.as_str())
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(conversation);
+    }
+
+    let mut conversation = ChatConversation::new_design(system.id.clone());
+    conversation.set_title(format!("Design: {}", system.name));
+    state
+        .chat_conversation_repo
+        .create(conversation)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+fn build_styleguide_generation_message(
+    system: &DesignSystem,
+    sources: &[DesignSystemSource],
+) -> String {
+    let source_summary = sources
+        .iter()
+        .map(|source| {
+            format!(
+                "- project_id: {}; role: {}; selected_paths: {}; files: {}",
+                source.project_id.as_str(),
+                enum_text(&source.role),
+                if source.selected_paths.is_empty() {
+                    ".".to_string()
+                } else {
+                    source.selected_paths.join(", ")
+                },
+                source.source_hashes.len()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        "Generate or refresh the Design Styleguide for `{}`.\n\n\
+         Use only the Design source tools to inspect selected source files from the stored manifest. \
+         Produce a source-grounded machine schema and human styleguide rows, then publish them with \
+         `publish_design_schema_version`. Keep project checkouts read-only and store generated output only through RalphX Design tools.\n\n\
+         Source manifest summary:\n{}",
+        system.name, source_summary
+    )
 }
 
 fn design_storage_paths_from_state(state: &AppState) -> Result<DesignStoragePaths, String> {
@@ -540,7 +632,7 @@ async fn build_sources(
     Ok(sources)
 }
 
-async fn next_schema_version_label(
+pub(crate) async fn next_schema_version_label(
     state: &AppState,
     design_system_id: &DesignSystemId,
 ) -> Result<String, String> {
@@ -550,144 +642,6 @@ async fn next_schema_version_label(
         .await
         .map_err(|error| error.to_string())?;
     Ok(format!("0.{}.0", existing_versions.len() + 1))
-}
-
-struct InitialStyleguideItem<'a> {
-    item_id: &'a str,
-    group: DesignStyleguideGroup,
-    label: &'a str,
-    summary: &'a str,
-    keywords: &'a [&'a str],
-}
-
-fn build_initial_styleguide_items(
-    system: &DesignSystem,
-    schema_version_id: &DesignSchemaVersionId,
-    sources: &[DesignSystemSource],
-    now: DateTime<Utc>,
-) -> Result<Vec<DesignStyleguideItem>, String> {
-    let source_refs = source_refs_from_manifests(sources);
-    if source_refs.is_empty() {
-        return Err("Design source manifests did not produce any file references".to_string());
-    }
-
-    let definitions = [
-        InitialStyleguideItem {
-            item_id: "ui_kit.workspace_surfaces",
-            group: DesignStyleguideGroup::UiKit,
-            label: "Workspace surfaces",
-            summary: "Reviewable layout and pane patterns inferred from source-backed app surfaces.",
-            keywords: &["app", "view", "layout", "page", "screen", "workspace"],
-        },
-        InitialStyleguideItem {
-            item_id: "type.typography_scale",
-            group: DesignStyleguideGroup::Type,
-            label: "Typography scale",
-            summary: "Text hierarchy, label density, and code-font usage inferred from style and UI files.",
-            keywords: &["font", "typography", "text", "css", "style", "theme"],
-        },
-        InitialStyleguideItem {
-            item_id: "colors.primary_palette",
-            group: DesignStyleguideGroup::Colors,
-            label: "Primary palette",
-            summary: "Primary, hover, soft, border, and focus color roles grounded in style sources.",
-            keywords: &["color", "css", "style", "theme", "tailwind", "token", "palette"],
-        },
-        InitialStyleguideItem {
-            item_id: "spacing.radii_elevation",
-            group: DesignStyleguideGroup::Spacing,
-            label: "Spacing, radii, and elevation",
-            summary: "Panel spacing, control radius, borders, focus rings, and elevation rules for review.",
-            keywords: &["spacing", "radius", "shadow", "border", "ring", "layout", "css"],
-        },
-        InitialStyleguideItem {
-            item_id: "components.core_controls",
-            group: DesignStyleguideGroup::Components,
-            label: "Core controls",
-            summary: "Button, input, composer, and compact row patterns found in reusable components.",
-            keywords: &["button", "input", "composer", "control", "component", "ui"],
-        },
-        InitialStyleguideItem {
-            item_id: "brand.visual_identity",
-            group: DesignStyleguideGroup::Brand,
-            label: "Visual identity assets",
-            summary: "Logo, icon, asset, and brand-adjacent source references available for curation.",
-            keywords: &["logo", "icon", "asset", "brand", "public", "svg", "png"],
-        },
-    ];
-
-    Ok(definitions
-        .iter()
-        .map(|definition| {
-            let (item_refs, has_keyword_match) =
-                matching_source_refs(&source_refs, definition.keywords);
-            DesignStyleguideItem {
-                id: DesignStyleguideItemId::new(),
-                design_system_id: system.id.clone(),
-                schema_version_id: schema_version_id.clone(),
-                item_id: definition.item_id.to_string(),
-                group: definition.group,
-                label: definition.label.to_string(),
-                summary: definition.summary.to_string(),
-                preview_artifact_id: Some(format!(
-                    "design-preview:{}:{}",
-                    system.id.as_str(),
-                    definition.item_id.replace('.', "-")
-                )),
-                source_refs: item_refs,
-                confidence: confidence_for_match(has_keyword_match),
-                approval_status: DesignApprovalStatus::NeedsReview,
-                feedback_status: DesignFeedbackStatus::None,
-                updated_at: now,
-            }
-        })
-        .collect())
-}
-
-fn source_refs_from_manifests(sources: &[DesignSystemSource]) -> Vec<DesignSourceRef> {
-    sources
-        .iter()
-        .flat_map(|source| {
-            source.source_hashes.keys().map(|path| DesignSourceRef {
-                project_id: source.project_id.clone(),
-                path: path.clone(),
-                line: None,
-            })
-        })
-        .collect()
-}
-
-fn matching_source_refs(
-    source_refs: &[DesignSourceRef],
-    keywords: &[&str],
-) -> (Vec<DesignSourceRef>, bool) {
-    let matched: Vec<_> = source_refs
-        .iter()
-        .filter(|source_ref| path_matches_keywords(&source_ref.path, keywords))
-        .take(3)
-        .cloned()
-        .collect();
-    if !matched.is_empty() {
-        return (matched, true);
-    }
-
-    (
-        source_refs.iter().take(3).cloned().collect::<Vec<_>>(),
-        false,
-    )
-}
-
-fn path_matches_keywords(path: &str, keywords: &[&str]) -> bool {
-    let path = path.to_ascii_lowercase();
-    keywords.iter().any(|keyword| path.contains(keyword))
-}
-
-fn confidence_for_match(has_keyword_match: bool) -> DesignConfidence {
-    if has_keyword_match {
-        DesignConfidence::High
-    } else {
-        DesignConfidence::Low
-    }
 }
 
 async fn load_project(state: &AppState, project_id: &ProjectId) -> Result<Project, String> {
@@ -802,10 +756,8 @@ fn enum_text<T: Serialize>(value: &T) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::{
-        ArtifactContent, ArtifactId, ArtifactType, ChatContextType, DesignRunStatus,
-        DesignSchemaVersionStatus, Project,
-    };
+    use crate::application::chat_service::MockChatService;
+    use crate::domain::entities::{ChatContextType, DesignRunKind, DesignRunStatus, Project};
     use serde_json::Value as JsonValue;
 
     fn write_project_file(root: &Path, relative_path: &str, content: &str) {
@@ -817,24 +769,6 @@ mod tests {
         let parent = path.parent().expect("test path parent");
         std::fs::create_dir_all(parent).expect("create parent");
         std::fs::write(path, content).expect("write file");
-    }
-
-    async fn artifact_file_path(
-        state: &AppState,
-        artifact_id: &str,
-        expected_type: ArtifactType,
-    ) -> PathBuf {
-        let artifact = state
-            .artifact_repo
-            .get_by_id(&ArtifactId::from_string(artifact_id.to_string()))
-            .await
-            .unwrap()
-            .expect("artifact");
-        assert_eq!(artifact.artifact_type, expected_type);
-        match artifact.content {
-            ArtifactContent::File { path } => PathBuf::from(path),
-            ArtifactContent::Inline { .. } => panic!("expected file artifact"),
-        }
     }
 
     #[tokio::test]
@@ -906,8 +840,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn generate_design_system_styleguide_core_publishes_schema_items_and_run() {
+    async fn generate_design_system_styleguide_core_starts_design_agent_run() {
         let state = AppState::new_test();
+        let chat_service = MockChatService::new();
         let temp = tempfile::tempdir().expect("tempdir");
         let storage_paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
         let project_root = tempfile::tempdir().expect("project tempdir");
@@ -950,118 +885,17 @@ mod tests {
 
         let response = generate_design_system_styleguide_core(
             &state,
-            &storage_paths,
             GenerateDesignSystemStyleguideInput {
                 design_system_id: design_system_id.as_str().to_string(),
             },
+            &chat_service,
         )
         .await
         .expect("generate styleguide");
 
-        assert_eq!(response.design_system.status, "ready");
-        assert_eq!(
-            response.design_system.current_schema_version_id.as_deref(),
-            Some(response.schema_version_id.as_str())
-        );
-        assert_eq!(response.items.len(), 6);
-        assert!(response
-            .items
-            .iter()
-            .any(|item| item.item_id == "colors.primary_palette"));
-        assert!(response
-            .items
-            .iter()
-            .all(|item| !item.source_refs.is_empty()));
-        for source_ref in response
-            .items
-            .iter()
-            .flat_map(|item| item.source_refs.iter())
-        {
-            assert_eq!(source_ref.project_id, project.id);
-            assert!(!Path::new(&source_ref.path).is_absolute());
-        }
-
-        let current_schema = state
-            .design_schema_repo
-            .get_current_for_design_system(&design_system_id)
-            .await
-            .unwrap()
-            .expect("current schema");
-        assert_eq!(current_schema.id.as_str(), response.schema_version_id);
-        assert_eq!(current_schema.version, "0.1.0");
-        assert_eq!(current_schema.status, DesignSchemaVersionStatus::Verified);
-        assert_eq!(
-            current_schema
-                .created_by_run_id
-                .as_ref()
-                .map(|id| id.as_str()),
-            Some(response.run_id.as_str())
-        );
-
-        let storage_root = temp.path().canonicalize().unwrap();
-        let schema_path = artifact_file_path(
-            &state,
-            &current_schema.schema_artifact_id,
-            ArtifactType::Specification,
-        )
-        .await;
-        assert!(schema_path.starts_with(&storage_root));
-        assert!(!schema_path.starts_with(project_root.path()));
-        let schema_json: JsonValue =
-            serde_json::from_str(&std::fs::read_to_string(&schema_path).expect("schema json"))
-                .expect("parse schema json");
-        assert_eq!(schema_json["schema_version"], "1.0");
-        assert_eq!(
-            schema_json["design_system"]["id"].as_str(),
-            Some(design_system_id.as_str())
-        );
-        assert!(schema_json["sources"][0]["source_hashes"]
-            .as_object()
-            .unwrap()
-            .contains_key("frontend/src/components/ui/button.tsx"));
-
-        let manifest_path = artifact_file_path(
-            &state,
-            &current_schema.manifest_artifact_id,
-            ArtifactType::Findings,
-        )
-        .await;
-        assert!(manifest_path.starts_with(&storage_root));
-        let manifest_json: JsonValue =
-            serde_json::from_str(&std::fs::read_to_string(&manifest_path).expect("manifest json"))
-                .expect("parse manifest json");
-        assert_eq!(manifest_json["total_file_count"].as_u64(), Some(4));
-
-        let styleguide_path = artifact_file_path(
-            &state,
-            &current_schema.styleguide_artifact_id,
-            ArtifactType::DesignDoc,
-        )
-        .await;
-        assert!(styleguide_path.starts_with(&storage_root));
-        let styleguide_json: JsonValue = serde_json::from_str(
-            &std::fs::read_to_string(&styleguide_path).expect("styleguide json"),
-        )
-        .expect("parse styleguide json");
-        assert_eq!(styleguide_json["groups"].as_array().unwrap().len(), 6);
-
-        for item in &response.items {
-            let preview_artifact_id = item
-                .preview_artifact_id
-                .as_deref()
-                .expect("preview artifact id");
-            let preview_path =
-                artifact_file_path(&state, preview_artifact_id, ArtifactType::DesignDoc).await;
-            assert!(preview_path.starts_with(&storage_root));
-            let preview_json: JsonValue = serde_json::from_str(
-                &std::fs::read_to_string(&preview_path).expect("preview json"),
-            )
-            .expect("parse preview json");
-            assert_eq!(
-                preview_json["item_id"].as_str(),
-                Some(item.item_id.as_str())
-            );
-        }
+        assert_eq!(response.design_system.status, "analyzing");
+        assert!(response.schema_version_id.is_none());
+        assert!(response.items.is_empty());
 
         let runs = state
             .design_run_repo
@@ -1069,23 +903,47 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].status, DesignRunStatus::Completed);
-        assert_eq!(runs[0].output_artifact_ids.len(), 3 + response.items.len());
-        assert!(runs[0]
-            .output_artifact_ids
-            .contains(&current_schema.schema_artifact_id));
-        assert!(runs[0]
-            .output_artifact_ids
-            .contains(&current_schema.manifest_artifact_id));
-        assert!(runs[0]
-            .output_artifact_ids
-            .contains(&current_schema.styleguide_artifact_id));
+        assert_eq!(runs[0].kind, DesignRunKind::Create);
+        assert_eq!(runs[0].status, DesignRunStatus::Running);
+        assert_eq!(runs[0].id.as_str(), response.run_id);
+        assert_eq!(
+            runs[0].conversation_id.as_ref().map(|id| id.as_str()),
+            Some(draft.conversation.id.as_str())
+        );
+        assert!(runs[0].output_artifact_ids.is_empty());
         assert!(!project_root.path().join("design-systems").exists());
+
+        let sent_messages = chat_service.get_sent_messages().await;
+        assert_eq!(sent_messages.len(), 1);
+        assert!(sent_messages[0].contains("Generate or refresh the Design Styleguide"));
+        assert!(sent_messages[0].contains("Use only the Design source tools"));
+        assert!(sent_messages[0].contains("files: 4"));
+        let sent_options = chat_service.get_sent_options().await;
+        assert_eq!(sent_options.len(), 1);
+        assert_eq!(
+            sent_options[0]
+                .conversation_id_override
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some(draft.conversation.id.as_str())
+        );
+        let metadata = serde_json::from_str::<JsonValue>(
+            sent_options[0].metadata.as_deref().expect("metadata"),
+        )
+        .expect("metadata json");
+        assert_eq!(metadata["source"], "design_generation");
+        assert_eq!(metadata["kind"], "design_styleguide_generation_request");
+        assert_eq!(
+            metadata["designRunId"].as_str(),
+            Some(response.run_id.as_str())
+        );
     }
 
     #[tokio::test]
-    async fn generate_design_system_styleguide_core_names_low_confidence_caveats() {
+    async fn generate_design_system_styleguide_core_marks_queued_run_when_agent_busy() {
         let state = AppState::new_test();
+        let chat_service = MockChatService::new();
+        chat_service.set_already_running_after(0).await;
         let temp = tempfile::tempdir().expect("tempdir");
         let storage_paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
         let project_root = tempfile::tempdir().expect("project tempdir");
@@ -1117,44 +975,24 @@ mod tests {
 
         let response = generate_design_system_styleguide_core(
             &state,
-            &storage_paths,
             GenerateDesignSystemStyleguideInput {
                 design_system_id: design_system_id.as_str().to_string(),
             },
+            &chat_service,
         )
         .await
-        .expect("generate styleguide");
-        assert!(response
-            .items
-            .iter()
-            .any(|item| item.item_id == "brand.visual_identity" && item.confidence == "low"));
+        .expect("queue styleguide generation");
 
-        let current_schema = state
-            .design_schema_repo
-            .get_current_for_design_system(&design_system_id)
+        assert_eq!(response.design_system.status, "analyzing");
+        let runs = state
+            .design_run_repo
+            .list_by_design_system(&design_system_id)
             .await
-            .unwrap()
-            .expect("current schema");
-        let styleguide_path = artifact_file_path(
-            &state,
-            &current_schema.styleguide_artifact_id,
-            ArtifactType::DesignDoc,
-        )
-        .await;
-        let styleguide_json: JsonValue = serde_json::from_str(
-            &std::fs::read_to_string(&styleguide_path).expect("styleguide json"),
-        )
-        .expect("parse styleguide json");
-        let caveat = &styleguide_json["caveats"][0];
-        assert_eq!(caveat["item_id"].as_str(), Some("brand.visual_identity"));
-        assert_eq!(
-            caveat["title"].as_str(),
-            Some("Source review needed: Visual identity assets")
-        );
-        assert!(caveat["body"]
-            .as_str()
-            .unwrap()
-            .contains("Visual identity assets used fallback source references"));
+            .unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, DesignRunStatus::Queued);
+        assert_eq!(runs[0].id.as_str(), response.run_id);
+        assert_eq!(chat_service.get_sent_messages().await.len(), 1);
     }
 
     #[tokio::test]

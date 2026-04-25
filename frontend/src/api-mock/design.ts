@@ -10,6 +10,7 @@ import type {
   DesignSystemDetailResponse,
   DesignSystemResponse,
   DesignSystemSourceResponse,
+  ExportDesignSystemPackageInput,
   ExportDesignSystemPackageResponse,
   GenerateDesignArtifactInput,
   GenerateDesignArtifactResponse,
@@ -303,19 +304,21 @@ export const mockDesignApi = {
   },
 
   exportPackage: async (
-    designSystemId: string,
-    includeFullProvenance = false,
+    input: ExportDesignSystemPackageInput,
   ): Promise<ExportDesignSystemPackageResponse> => {
     const designSystem =
-      allSystems().find((system) => system.id === designSystemId) ??
+      allSystems().find((system) => system.id === input.designSystemId) ??
       mockDesignSystem("project-mock");
     const schemaVersionId = designSystem.currentSchemaVersionId ?? `schema-${designSystem.id}`;
+    const includeFullProvenance = input.includeFullProvenance ?? false;
     return {
-      designSystemId,
+      designSystemId: input.designSystemId,
       schemaVersionId,
+      runId: `run-export-${designSystem.id}`,
       artifactId: `export-${designSystem.id}`,
       redacted: !includeFullProvenance,
       exportedAt: nowIso(),
+      filePath: input.destinationPath ?? null,
       content: {
         package_version: "1.0",
         redacted: !includeFullProvenance,
@@ -374,7 +377,8 @@ export const mockDesignApi = {
       conversation,
       schemaVersionId: designSystem.currentSchemaVersionId ?? "schema-imported",
       runId: `run-import-${designSystem.id}`,
-      packageArtifactId: input.packageArtifactId,
+      packageArtifactId: input.packageArtifactId ?? null,
+      packagePath: input.packagePath ?? null,
       items: mockStyleguideItems(designSystem).map((item) => ({
         ...item,
         previewArtifactId: null,
@@ -452,6 +456,7 @@ export const mockDesignApi = {
       feedbackStatus: "open",
       updatedAt: nowIso(),
     },
+    runId: `run-feedback-${input.itemId}`,
     message: {
       id: "message-mock",
       role: "user",

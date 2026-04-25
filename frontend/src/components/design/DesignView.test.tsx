@@ -13,10 +13,10 @@ import {
 } from "@/lib/tauri";
 import { DesignView } from "./DesignView";
 
-const { saveDialogMock, useProjectsMock, writeTextFileMock } = vi.hoisted(() => ({
+const { openDialogMock, saveDialogMock, useProjectsMock } = vi.hoisted(() => ({
+  openDialogMock: vi.fn(),
   saveDialogMock: vi.fn(),
   useProjectsMock: vi.fn(),
-  writeTextFileMock: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -27,11 +27,8 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: openDialogMock,
   save: saveDialogMock,
-}));
-
-vi.mock("@tauri-apps/plugin-fs", () => ({
-  writeTextFile: writeTextFileMock,
 }));
 
 vi.mock("@/hooks/useProjects", () => ({
@@ -179,10 +176,10 @@ function renderWithProviders(ui: ReactNode) {
 describe("DesignView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    openDialogMock.mockReset();
     saveDialogMock.mockReset();
-    writeTextFileMock.mockReset();
+    openDialogMock.mockResolvedValue("/tmp/ralphx-design-system-import.json");
     saveDialogMock.mockResolvedValue("/tmp/ralphx-design-system-export.json");
-    writeTextFileMock.mockResolvedValue(undefined);
     useProjectsMock.mockReturnValue({ data: projects, isLoading: false });
     const systemsByProject = new Map(
       projects.map((project) => [
@@ -332,12 +329,14 @@ describe("DesignView", () => {
       },
     );
     vi.spyOn(api.design, "exportPackage").mockImplementation(
-      async (designSystemId: string) => ({
-        designSystemId,
+      async (input) => ({
+        designSystemId: input.designSystemId,
         schemaVersionId: "schema-version-1",
+        runId: "run-export-package-1",
         artifactId: "export-package-1",
         redacted: true,
         exportedAt: "2026-04-24T08:00:00Z",
+        filePath: input.destinationPath ?? null,
         content: {
           package_version: "1.0",
           redacted: true,
@@ -383,7 +382,8 @@ describe("DesignView", () => {
         },
         schemaVersionId: "schema-version-imported",
         runId: "run-imported",
-        packageArtifactId: input.packageArtifactId,
+        packageArtifactId: input.packageArtifactId ?? null,
+        packagePath: input.packagePath ?? null,
         items: [
           {
             ...styleguideItemResponse(designSystem.id),
@@ -618,7 +618,7 @@ describe("DesignView", () => {
     });
   });
 
-  it("generates a draft styleguide through the backend publish command", async () => {
+  it("starts draft styleguide generation through the Design agent command", async () => {
     const { toast } = await import("sonner");
     const generateSpy = vi.spyOn(api.design, "generateStyleguide");
     renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
@@ -635,10 +635,10 @@ describe("DesignView", () => {
     });
     expect(await screen.findByText("Button patterns from persisted styleguide rows")).toBeInTheDocument();
     expect(await screen.findByTestId("design-generation-result")).toHaveTextContent(
-      "Styleguide generated with 1 review row",
+      "Styleguide refresh requested with 1 existing review row",
     );
-    expect(toast.success).toHaveBeenCalledWith("Styleguide generated", {
-      description: "1 review row",
+    expect(toast.success).toHaveBeenCalledWith("Design is analyzing selected sources", {
+      description: "1 existing review row",
     });
   });
 
@@ -665,7 +665,14 @@ describe("DesignView", () => {
     fireEvent.click(screen.getByTestId("design-export-package"));
 
     await waitFor(() => {
-      expect(exportSpy).toHaveBeenCalledWith("design-system-project-1");
+      expect(saveDialogMock).toHaveBeenCalledWith({
+        filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
+        defaultPath: "ralphx-design-system-ralphx-design-system.json",
+      });
+      expect(exportSpy).toHaveBeenCalledWith({
+        designSystemId: "design-system-project-1",
+        destinationPath: "/tmp/ralphx-design-system-export.json",
+      });
     });
     expect(await screen.findByTestId("design-export-result")).toHaveTextContent(
       "Export ready",
@@ -673,37 +680,29 @@ describe("DesignView", () => {
     expect(screen.getByTestId("design-export-result")).toHaveTextContent(
       "export-package-1",
     );
-    expect(screen.getByTestId("design-download-export-package")).toHaveTextContent(
-      "Download JSON",
+    expect(screen.getByTestId("design-export-result")).toHaveTextContent(
+      "/tmp/ralphx-design-system-export.json",
     );
     expect(toast.success).toHaveBeenCalledWith("Design package exported", {
-      description: "Artifact export-p is ready to download.",
+      description: "Saved the exported styleguide and schema package JSON.",
     });
-
-    fireEvent.click(screen.getByTestId("design-download-export-package"));
-
-    await waitFor(() => {
-      expect(saveDialogMock).toHaveBeenCalledWith({
-        filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
-        defaultPath: "ralphx-design-system-ralphx-design-system-export-p.json",
-      });
-    });
-    expect(writeTextFileMock).toHaveBeenCalledWith(
-      "/tmp/ralphx-design-system-export.json",
-      JSON.stringify({ package_version: "1.0", redacted: true }, null, 2),
-    );
   });
 
-  it("imports a design package artifact into the selected project", async () => {
+  it("imports a design package file into the selected project", async () => {
     const importSpy = vi.spyOn(api.design, "importPackage");
     renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
     await screen.findByTestId("design-styleguide-pane");
 
     fireEvent.click(screen.getByTestId("design-import-package"));
     await screen.findByTestId("design-package-import-dialog");
-    fireEvent.change(screen.getByTestId("design-import-package-artifact-id"), {
-      target: { value: "export-package-1" },
+    fireEvent.click(screen.getByTestId("design-import-package-choose-file"));
+    await waitFor(() => {
+      expect(openDialogMock).toHaveBeenCalledWith({
+        multiple: false,
+        filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
+      });
     });
+    expect(await screen.findByDisplayValue("/tmp/ralphx-design-system-import.json")).toBeInTheDocument();
     fireEvent.change(screen.getByTestId("design-import-name"), {
       target: { value: "Imported Product UI" },
     });
@@ -712,7 +711,7 @@ describe("DesignView", () => {
 
     await waitFor(() => {
       expect(importSpy).toHaveBeenCalledWith({
-        packageArtifactId: "export-package-1",
+        packagePath: "/tmp/ralphx-design-system-import.json",
         attachProjectId: "project-2",
         name: "Imported Product UI",
       });

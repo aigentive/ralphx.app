@@ -208,14 +208,17 @@ export const DesignStyleguidePreviewResponseSchema = z.object({
 export const ExportDesignSystemPackageResponseSchema = z.object({
   designSystemId: z.string().min(1),
   schemaVersionId: z.string().min(1),
+  runId: z.string().min(1).optional(),
   artifactId: z.string().min(1),
   redacted: z.boolean(),
   exportedAt: z.string().min(1),
   content: z.record(z.string(), z.unknown()),
+  filePath: z.string().nullable().optional(),
 });
 
 export const ImportDesignSystemPackageInputSchema = z.object({
-  packageArtifactId: z.string().min(1),
+  packageArtifactId: z.string().min(1).optional(),
+  packagePath: z.string().min(1).optional(),
   attachProjectId: z.string().min(1),
   name: z.string().optional(),
 });
@@ -226,7 +229,8 @@ export const ImportDesignSystemPackageResponseSchema = z.object({
   conversation: AgentConversationResponseSchema,
   schemaVersionId: z.string().min(1),
   runId: z.string().min(1),
-  packageArtifactId: z.string().min(1),
+  packageArtifactId: z.string().min(1).nullable().optional(),
+  packagePath: z.string().nullable().optional(),
   items: z.array(DesignStyleguideItemResponseSchema),
 });
 
@@ -252,7 +256,7 @@ export const GenerateDesignArtifactResponseSchema = z.object({
 
 export const GenerateDesignSystemStyleguideResponseSchema = z.object({
   designSystem: DesignSystemResponseSchema,
-  schemaVersionId: z.string().min(1),
+  schemaVersionId: z.string().min(1).nullable().optional(),
   runId: z.string().min(1),
   items: z.array(DesignStyleguideItemResponseSchema),
 });
@@ -275,6 +279,7 @@ export const DesignStyleguideFeedbackResponseSchema = z.object({
 export const CreateDesignStyleguideFeedbackResponseSchema = z.object({
   feedback: DesignStyleguideFeedbackResponseSchema,
   item: DesignStyleguideItemResponseSchema,
+  runId: z.string().min(1).nullable().optional(),
   message: AgentMessageResponseSchema.nullable().optional(),
 });
 
@@ -311,6 +316,11 @@ export type DesignStyleguideItemResponse = z.infer<typeof DesignStyleguideItemRe
 export type DesignPersistedStyleguideItem = z.infer<typeof DesignPersistedStyleguideItemSchema>;
 export type DesignStyleguideViewModelResponse = z.infer<typeof DesignStyleguideViewModelResponseSchema>;
 export type DesignStyleguidePreviewResponse = z.infer<typeof DesignStyleguidePreviewResponseSchema>;
+export type ExportDesignSystemPackageInput = {
+  designSystemId: string;
+  includeFullProvenance?: boolean;
+  destinationPath?: string;
+};
 export type ExportDesignSystemPackageResponse = z.infer<typeof ExportDesignSystemPackageResponseSchema>;
 export type GenerateDesignArtifactInput = z.infer<typeof GenerateDesignArtifactInputSchema>;
 export type GenerateDesignArtifactResponse = z.infer<typeof GenerateDesignArtifactResponseSchema>;
@@ -361,10 +371,16 @@ export const designApi = {
       DesignStyleguidePreviewResponseSchema,
     ),
 
-  exportPackage: (designSystemId: string, includeFullProvenance = false) =>
+  exportPackage: (input: ExportDesignSystemPackageInput) =>
     typedInvoke(
       "export_design_system_package",
-      { input: { designSystemId, includeFullProvenance } },
+      {
+        input: {
+          designSystemId: input.designSystemId,
+          includeFullProvenance: input.includeFullProvenance ?? false,
+          destinationPath: input.destinationPath,
+        },
+      },
       ExportDesignSystemPackageResponseSchema,
     ),
 

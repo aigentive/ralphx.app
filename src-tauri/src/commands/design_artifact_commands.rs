@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -41,12 +41,14 @@ pub struct GetDesignStyleguidePreviewInput {
 pub struct ExportDesignSystemPackageInput {
     pub design_system_id: String,
     pub include_full_provenance: Option<bool>,
+    pub destination_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportDesignSystemPackageInput {
-    pub package_artifact_id: String,
+    pub package_artifact_id: Option<String>,
+    pub package_path: Option<String>,
     pub attach_project_id: String,
     pub name: Option<String>,
 }
@@ -76,10 +78,12 @@ pub struct DesignArtifactJsonResponse {
 pub struct ExportDesignSystemPackageResponse {
     pub design_system_id: String,
     pub schema_version_id: String,
+    pub run_id: String,
     pub artifact_id: String,
     pub redacted: bool,
     pub exported_at: String,
     pub content: JsonValue,
+    pub file_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,7 +94,8 @@ pub struct ImportDesignSystemPackageResponse {
     pub conversation: AgentConversationResponse,
     pub schema_version_id: String,
     pub run_id: String,
-    pub package_artifact_id: String,
+    pub package_artifact_id: Option<String>,
+    pub package_path: Option<String>,
     pub items: Vec<DesignStyleguideItemResponse>,
 }
 
@@ -130,18 +135,48 @@ pub async fn get_design_styleguide_preview(
 pub async fn export_design_system_package(
     input: ExportDesignSystemPackageInput,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<ExportDesignSystemPackageResponse, String> {
     let storage_paths = design_storage_paths_from_state(&state)?;
-    export_design_system_package_core(&state, &storage_paths, input).await
+    let response = export_design_system_package_core(&state, &storage_paths, input).await?;
+    let _ = app.emit("design:export_completed", &response);
+    if let Ok(Some(run)) = state
+        .design_run_repo
+        .get_by_id(&crate::domain::entities::DesignRunId::from_string(
+            response.run_id.clone(),
+        ))
+        .await
+    {
+        let _ = app.emit(
+            "design:run_completed",
+            crate::commands::design_commands::DesignRunEventPayload::from(&run),
+        );
+    }
+    Ok(response)
 }
 
 #[tauri::command]
 pub async fn import_design_system_package(
     input: ImportDesignSystemPackageInput,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<ImportDesignSystemPackageResponse, String> {
     let storage_paths = design_storage_paths_from_state(&state)?;
-    import_design_system_package_core(&state, &storage_paths, input).await
+    let response = import_design_system_package_core(&state, &storage_paths, input).await?;
+    let _ = app.emit("design:import_completed", &response);
+    if let Ok(Some(run)) = state
+        .design_run_repo
+        .get_by_id(&crate::domain::entities::DesignRunId::from_string(
+            response.run_id.clone(),
+        ))
+        .await
+    {
+        let _ = app.emit(
+            "design:run_completed",
+            crate::commands::design_commands::DesignRunEventPayload::from(&run),
+        );
+    }
+    Ok(response)
 }
 
 #[tauri::command]
@@ -310,6 +345,11 @@ pub async fn export_design_system_package_core(
             &package,
         )
         .map_err(|error| error.to_string())?;
+    let exported_file_path = input
+        .destination_path
+        .as_deref()
+        .map(|path| write_user_selected_design_package(path, &package))
+        .transpose()?;
     let artifact = Artifact::new_file(
         format!("Design export: {} {}", system.name, schema_version.version),
         ArtifactType::DesignDoc,
@@ -321,14 +361,33 @@ pub async fn export_design_system_package_core(
         .create(artifact)
         .await
         .map_err(|error| error.to_string())?;
+    let mut run = DesignRun::queued(
+        system.id.clone(),
+        DesignRunKind::Export,
+        format!(
+            "Exported design package for {} {}",
+            system.name, schema_version.version
+        ),
+    );
+    run.status = DesignRunStatus::Completed;
+    run.started_at = Some(exported_at);
+    run.completed_at = Some(exported_at);
+    run.output_artifact_ids = vec![artifact.id.as_str().to_string()];
+    let run = state
+        .design_run_repo
+        .create(run)
+        .await
+        .map_err(|error| error.to_string())?;
 
     Ok(ExportDesignSystemPackageResponse {
         design_system_id: system.id.as_str().to_string(),
         schema_version_id: schema_version.id.as_str().to_string(),
+        run_id: run.id.as_str().to_string(),
         artifact_id: artifact.id.as_str().to_string(),
         redacted,
         exported_at: exported_at.to_rfc3339(),
         content: package,
+        file_path: exported_file_path,
     })
 }
 
@@ -338,13 +397,33 @@ pub async fn import_design_system_package_core(
     storage_paths: &DesignStoragePaths,
     input: ImportDesignSystemPackageInput,
 ) -> Result<ImportDesignSystemPackageResponse, String> {
-    let package_artifact_id =
-        parse_required_string(&input.package_artifact_id, "package_artifact_id")?;
     let attach_project_id = parse_project_id(&input.attach_project_id, "attach_project_id")?;
     let project = load_project(state, &attach_project_id).await?;
-    let package_artifact_id = ArtifactId::from_string(package_artifact_id);
-    let package =
-        read_design_package_artifact_json(state, storage_paths, &package_artifact_id).await?;
+    let (package, package_artifact_id, package_path) = match (
+        input.package_artifact_id.as_deref(),
+        input.package_path.as_deref(),
+    ) {
+        (Some(raw_artifact_id), None) if !raw_artifact_id.trim().is_empty() => {
+            let package_artifact_id = ArtifactId::from_string(parse_required_string(
+                raw_artifact_id,
+                "package_artifact_id",
+            )?);
+            let package =
+                read_design_package_artifact_json(state, storage_paths, &package_artifact_id)
+                    .await?;
+            (package, Some(package_artifact_id), None)
+        }
+        (None, Some(raw_package_path)) if !raw_package_path.trim().is_empty() => {
+            let path = validate_user_selected_design_package_path(raw_package_path, true)?;
+            let package = read_user_selected_design_package(&path)?;
+            (package, None, Some(path.to_string_lossy().to_string()))
+        }
+        _ => {
+            return Err(
+                "Import requires exactly one of package_artifact_id or package_path".to_string(),
+            )
+        }
+    };
     validate_design_package(&package)?;
 
     let imported_name = normalize_import_name(
@@ -504,8 +583,8 @@ pub async fn import_design_system_package_core(
         design_system_id.clone(),
         DesignRunKind::Import,
         format!(
-            "Imported package artifact {} into {}",
-            package_artifact_id.as_str(),
+            "Imported package {} into {}",
+            package_import_source_label(package_artifact_id.as_ref(), package_path.as_deref()),
             project.name
         ),
     );
@@ -562,7 +641,8 @@ pub async fn import_design_system_package_core(
         conversation: AgentConversationResponse::from(conversation),
         schema_version_id: schema_version.id.as_str().to_string(),
         run_id: run.id.as_str().to_string(),
-        package_artifact_id: package_artifact_id.as_str().to_string(),
+        package_artifact_id: package_artifact_id.map(|id| id.as_str().to_string()),
+        package_path,
         items: items
             .into_iter()
             .map(DesignStyleguideItemResponse::from)
@@ -1071,6 +1151,86 @@ async fn read_design_package_artifact_json(
         .map_err(|error| error.to_string())
 }
 
+fn validate_user_selected_design_package_path(
+    raw_path: &str,
+    require_existing_file: bool,
+) -> Result<PathBuf, String> {
+    let raw_path = parse_required_string(raw_path, "package_path")?;
+    let path = PathBuf::from(raw_path);
+    if !path.is_absolute() {
+        return Err("Design package paths must be absolute user-selected paths".to_string());
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err("Design package paths cannot contain parent directory components".to_string());
+    }
+    if path.extension().and_then(|value| value.to_str()) != Some("json") {
+        return Err("Design package path must use a .json extension".to_string());
+    }
+
+    if require_existing_file {
+        let canonical = path
+            .canonicalize()
+            .map_err(|error| format!("Failed to resolve design package path: {error}"))?;
+        let metadata = std::fs::metadata(&canonical)
+            .map_err(|error| format!("Failed to read design package metadata: {error}"))?;
+        if !metadata.is_file() {
+            return Err("Selected design package path is not a file".to_string());
+        }
+        return Ok(canonical);
+    }
+
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "Design package path must include a file name".to_string())?
+        .to_owned();
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Design package path must include a parent directory".to_string())?;
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve design package destination: {error}"))?;
+    let metadata = std::fs::metadata(&canonical_parent)
+        .map_err(|error| format!("Failed to read design package destination metadata: {error}"))?;
+    if !metadata.is_dir() {
+        return Err("Design package destination parent is not a directory".to_string());
+    }
+    Ok(canonical_parent.join(file_name))
+}
+
+fn write_user_selected_design_package(
+    raw_path: &str,
+    package: &JsonValue,
+) -> Result<String, String> {
+    let path = validate_user_selected_design_package_path(raw_path, false)?;
+    let bytes = serde_json::to_vec_pretty(package)
+        .map_err(|error| format!("Failed to serialize design package: {error}"))?;
+    // codeql[rust/path-injection]
+    std::fs::write(&path, bytes)
+        .map_err(|error| format!("Failed to write design package export: {error}"))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+fn read_user_selected_design_package(path: &Path) -> Result<JsonValue, String> {
+    // codeql[rust/path-injection]
+    let content = std::fs::read_to_string(path)
+        .map_err(|error| format!("Failed to read design package import: {error}"))?;
+    serde_json::from_str(&content)
+        .map_err(|error| format!("Failed to parse design package: {error}"))
+}
+
+fn package_import_source_label(
+    artifact_id: Option<&ArtifactId>,
+    package_path: Option<&str>,
+) -> String {
+    artifact_id
+        .map(|id| format!("artifact {}", id.as_str()))
+        .or_else(|| package_path.map(|path| format!("file {path}")))
+        .unwrap_or_else(|| "package".to_string())
+}
+
 async fn create_design_file_artifact(
     state: &AppState,
     name: String,
@@ -1437,11 +1597,12 @@ fn redact_source_provenance(value: &mut JsonValue) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::design_commands::{
-        create_design_system_core, generate_design_system_styleguide_core, CreateDesignSystemInput,
-        GenerateDesignSystemStyleguideInput,
-    };
+    use crate::commands::design_commands::{create_design_system_core, CreateDesignSystemInput};
     use crate::domain::entities::{Artifact, ArtifactContent, Project};
+    use crate::http_server::handlers::design::{
+        publish_design_schema_version_for_tool_core, PublishDesignSchemaVersionRequest,
+        PublishDesignSourceRefInput, PublishDesignStyleguideItemInput,
+    };
 
     fn write_project_file(root: &Path, relative_path: &str, content: &str) {
         let path = root.join(relative_path);
@@ -1480,21 +1641,85 @@ mod tests {
         .await
         .expect("create design system");
         let design_system_id = DesignSystemId::from_string(draft.design_system.id);
-        let generated = generate_design_system_styleguide_core(
+        let generated = publish_design_schema_version_for_tool_core(
             state,
             storage_paths,
-            GenerateDesignSystemStyleguideInput {
-                design_system_id: design_system_id.as_str().to_string(),
+            design_system_id.as_str(),
+            PublishDesignSchemaVersionRequest {
+                version: Some("0.1.0".to_string()),
+                items: test_styleguide_publish_items(&project.id),
             },
         )
         .await
-        .expect("generate styleguide");
+        .expect("publish styleguide");
         let preview_artifact_id = generated.items[0]
             .preview_artifact_id
             .clone()
             .expect("preview artifact id");
 
         (design_system_id, preview_artifact_id)
+    }
+
+    fn test_styleguide_publish_items(
+        project_id: &ProjectId,
+    ) -> Vec<PublishDesignStyleguideItemInput> {
+        let source_refs = || {
+            vec![PublishDesignSourceRefInput {
+                project_id: project_id.as_str().to_string(),
+                path: "frontend/src/components/ui/button.tsx".to_string(),
+                line: Some(1),
+            }]
+        };
+        vec![
+            PublishDesignStyleguideItemInput {
+                item_id: "ui_kit.core_workspace".to_string(),
+                group: "ui_kit".to_string(),
+                label: "Core workspace".to_string(),
+                summary: "Source-grounded workspace layout".to_string(),
+                source_refs: source_refs(),
+                confidence: Some("high".to_string()),
+            },
+            PublishDesignStyleguideItemInput {
+                item_id: "type.body".to_string(),
+                group: "type".to_string(),
+                label: "Body type".to_string(),
+                summary: "Default readable application typography".to_string(),
+                source_refs: source_refs(),
+                confidence: Some("high".to_string()),
+            },
+            PublishDesignStyleguideItemInput {
+                item_id: "colors.primary_palette".to_string(),
+                group: "colors".to_string(),
+                label: "Primary palette".to_string(),
+                summary: "Primary action colors".to_string(),
+                source_refs: source_refs(),
+                confidence: Some("high".to_string()),
+            },
+            PublishDesignStyleguideItemInput {
+                item_id: "spacing.scale".to_string(),
+                group: "spacing".to_string(),
+                label: "Spacing scale".to_string(),
+                summary: "Compact app spacing".to_string(),
+                source_refs: source_refs(),
+                confidence: Some("medium".to_string()),
+            },
+            PublishDesignStyleguideItemInput {
+                item_id: "components.core_controls".to_string(),
+                group: "components".to_string(),
+                label: "Core controls".to_string(),
+                summary: "Buttons and app controls".to_string(),
+                source_refs: source_refs(),
+                confidence: Some("high".to_string()),
+            },
+            PublishDesignStyleguideItemInput {
+                item_id: "brand.visual_identity".to_string(),
+                group: "brand".to_string(),
+                label: "Visual identity".to_string(),
+                summary: "Logo and icon treatment".to_string(),
+                source_refs: source_refs(),
+                confidence: Some("medium".to_string()),
+            },
+        ]
     }
 
     #[tokio::test]
@@ -1602,6 +1827,7 @@ mod tests {
             ExportDesignSystemPackageInput {
                 design_system_id: design_system_id.as_str().to_string(),
                 include_full_provenance: None,
+                destination_path: None,
             },
         )
         .await
@@ -1733,7 +1959,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn import_package_creates_ready_design_system_from_export_artifact() {
+    async fn import_package_creates_ready_design_system_from_export_file_path() {
         let state = AppState::new_test();
         let temp = tempfile::tempdir().expect("tempdir");
         let storage_paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
@@ -1748,22 +1974,31 @@ mod tests {
             .create(attach_project.clone())
             .await
             .expect("attach project");
+        let export_dir = tempfile::tempdir().expect("export destination tempdir");
+        let export_path = export_dir.path().join("design-system-package.json");
         let export = export_design_system_package_core(
             &state,
             &storage_paths,
             ExportDesignSystemPackageInput {
                 design_system_id: design_system_id.as_str().to_string(),
                 include_full_provenance: None,
+                destination_path: Some(export_path.to_string_lossy().to_string()),
             },
         )
         .await
         .expect("export package");
+        assert_eq!(
+            export.file_path.as_deref(),
+            Some(export_path.to_str().unwrap())
+        );
+        assert!(export_path.exists());
 
         let imported = import_design_system_package_core(
             &state,
             &storage_paths,
             ImportDesignSystemPackageInput {
-                package_artifact_id: export.artifact_id.clone(),
+                package_artifact_id: None,
+                package_path: export.file_path.clone(),
                 attach_project_id: attach_project.id.as_str().to_string(),
                 name: Some("Imported Product UI".to_string()),
             },
@@ -1771,6 +2006,11 @@ mod tests {
         .await
         .expect("import package");
 
+        assert!(imported.package_artifact_id.is_none());
+        assert_eq!(
+            imported.package_path.as_deref(),
+            export.file_path.as_deref()
+        );
         assert_eq!(imported.design_system.name, "Imported Product UI");
         assert_eq!(imported.design_system.status, "ready");
         assert_eq!(
@@ -1807,10 +2047,7 @@ mod tests {
             .await
             .unwrap()
             .expect("schema artifact");
-        assert_eq!(
-            schema_artifact.derived_from,
-            vec![ArtifactId::from_string(export.artifact_id.clone())]
-        );
+        assert!(schema_artifact.derived_from.is_empty());
         let schema_path = match schema_artifact.content {
             ArtifactContent::File { path } => PathBuf::from(path),
             ArtifactContent::Inline { .. } => panic!("expected schema file"),
@@ -1885,7 +2122,8 @@ mod tests {
             &state,
             &storage_paths,
             ImportDesignSystemPackageInput {
-                package_artifact_id: artifact_id,
+                package_artifact_id: Some(artifact_id),
+                package_path: None,
                 attach_project_id: attach_project.id.as_str().to_string(),
                 name: None,
             },

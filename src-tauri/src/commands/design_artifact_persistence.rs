@@ -177,10 +177,14 @@ fn build_machine_schema_json(
             "colors": group_items_json(items, DesignStyleguideGroup::Colors),
             "typography": group_items_json(items, DesignStyleguideGroup::Type),
             "spacing": group_items_json(items, DesignStyleguideGroup::Spacing),
+            "radius": group_items_json(items, DesignStyleguideGroup::Spacing),
+            "shadow_elevation": group_items_json(items, DesignStyleguideGroup::Spacing),
+            "borders_rings_focus": group_items_json(items, DesignStyleguideGroup::Spacing),
+            "motion": [],
         },
-        "components": group_items_json(items, DesignStyleguideGroup::Components),
-        "screen_patterns": group_items_json(items, DesignStyleguideGroup::UiKit),
-        "layout_patterns": group_items_json(items, DesignStyleguideGroup::UiKit),
+        "components": component_patterns_json(items),
+        "screen_patterns": screen_patterns_json(items),
+        "layout_patterns": layout_patterns_json(items),
         "content_voice": {},
         "assets": group_items_json(items, DesignStyleguideGroup::Brand),
         "accessibility": {
@@ -622,6 +626,69 @@ fn group_items_json(
         .iter()
         .filter(|item| item.group == group)
         .map(styleguide_item_json)
+        .collect()
+}
+
+fn component_patterns_json(items: &[DesignStyleguideItem]) -> Vec<JsonValue> {
+    items
+        .iter()
+        .filter(|item| item.group == DesignStyleguideGroup::Components)
+        .map(|item| {
+            json!({
+                "id": item.item_id.as_str(),
+                "kind": "component",
+                "name": item.label.as_str(),
+                "source_refs": &item.source_refs,
+                "slots": [],
+                "variants": [],
+                "states": ["default", "hover", "focus", "disabled"],
+                "tokens": {},
+                "usage": {
+                    "do": [item.summary.as_str()],
+                    "avoid": [],
+                },
+                "confidence": enum_text(&item.confidence),
+            })
+        })
+        .collect()
+}
+
+fn screen_patterns_json(items: &[DesignStyleguideItem]) -> Vec<JsonValue> {
+    items
+        .iter()
+        .filter(|item| item.group == DesignStyleguideGroup::UiKit)
+        .map(|item| {
+            json!({
+                "id": item.item_id.as_str(),
+                "kind": "screen",
+                "name": item.label.as_str(),
+                "source_refs": &item.source_refs,
+                "layout": "source_grounded_review_workspace",
+                "regions": [],
+                "density": "desktop_app_compact",
+                "responsive_rules": [],
+                "component_refs": [],
+                "content_rules": [item.summary.as_str()],
+                "confidence": enum_text(&item.confidence),
+            })
+        })
+        .collect()
+}
+
+fn layout_patterns_json(items: &[DesignStyleguideItem]) -> Vec<JsonValue> {
+    items
+        .iter()
+        .filter(|item| item.group == DesignStyleguideGroup::UiKit)
+        .map(|item| {
+            json!({
+                "id": format!("layout.{}", item.item_id.as_str()),
+                "kind": "layout",
+                "name": item.label.as_str(),
+                "source_refs": &item.source_refs,
+                "summary": item.summary.as_str(),
+                "confidence": enum_text(&item.confidence),
+            })
+        })
         .collect()
 }
 

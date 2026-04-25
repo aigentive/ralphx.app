@@ -582,6 +582,65 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         resolveDesignSystemId(args as Record<string, unknown> | undefined)
       );
       result = await callTauriGet(`design/systems/${designSystemId}/source-manifest`);
+    } else if (name === "list_design_source_files") {
+      const designSystemId = encodeURIComponent(
+        resolveDesignSystemId(args as Record<string, unknown> | undefined)
+      );
+      const { project_id, max_files } = args as {
+        project_id?: string;
+        max_files?: number;
+      };
+      const params = new URLSearchParams();
+      if (project_id) params.set("project_id", project_id);
+      if (typeof max_files === "number") params.set("max_files", String(max_files));
+      const query = params.toString() ? `?${params.toString()}` : "";
+      result = await callTauriGet(`design/systems/${designSystemId}/source-files${query}`);
+    } else if (name === "read_design_source_file") {
+      const designSystemId = encodeURIComponent(
+        resolveDesignSystemId(args as Record<string, unknown> | undefined)
+      );
+      const { project_id, path, start_line, end_line, max_bytes } = args as {
+        project_id?: string;
+        path: string;
+        start_line?: number;
+        end_line?: number;
+        max_bytes?: number;
+      };
+      result = await callTauri(`design/systems/${designSystemId}/source-files/read`, {
+        project_id,
+        path,
+        start_line,
+        end_line,
+        max_bytes,
+      });
+    } else if (name === "search_design_source_files") {
+      const designSystemId = encodeURIComponent(
+        resolveDesignSystemId(args as Record<string, unknown> | undefined)
+      );
+      const { project_id, pattern, case_sensitive, max_results } = args as {
+        project_id?: string;
+        pattern: string;
+        case_sensitive?: boolean;
+        max_results?: number;
+      };
+      result = await callTauri(`design/systems/${designSystemId}/source-files/search`, {
+        project_id,
+        pattern,
+        case_sensitive,
+        max_results,
+      });
+    } else if (name === "publish_design_schema_version") {
+      const designSystemId = encodeURIComponent(
+        resolveDesignSystemId(args as Record<string, unknown> | undefined)
+      );
+      const { version, items } = args as {
+        version?: string;
+        items: unknown[];
+      };
+      result = await callTauri(`design/systems/${designSystemId}/schema/publish`, {
+        version,
+        items,
+      });
     } else if (name === "get_design_styleguide") {
       const designSystemId = encodeURIComponent(
         resolveDesignSystemId(args as Record<string, unknown> | undefined)

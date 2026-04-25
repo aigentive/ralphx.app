@@ -252,6 +252,7 @@ describe("design API schemas", () => {
     const parsed = ExportDesignSystemPackageResponseSchema.parse({
       designSystemId: "design-system-1",
       schemaVersionId: "schema-1",
+      runId: "run-export-1",
       artifactId: "export-1",
       redacted: true,
       exportedAt: "2026-04-24T08:00:00Z",
@@ -328,11 +329,12 @@ describe("design API schemas", () => {
       },
       schemaVersionId: "schema-1",
       runId: "run-1",
-      packageArtifactId: "export-1",
+      packageArtifactId: null,
+      packagePath: "/tmp/design-system-package.json",
       items: [],
     });
 
-    expect(parsed.packageArtifactId).toBe("export-1");
+    expect(parsed.packagePath).toBe("/tmp/design-system-package.json");
   });
 });
 
@@ -467,6 +469,7 @@ describe("designApi", () => {
     mockInvoke.mockResolvedValueOnce({
       designSystemId: "design-system-1",
       schemaVersionId: "schema-1",
+      runId: "run-export-1",
       artifactId: "export-1",
       redacted: true,
       exportedAt: "2026-04-24T08:00:00Z",
@@ -474,14 +477,19 @@ describe("designApi", () => {
         package_version: "1.0",
         redacted: true,
       },
+      filePath: "/tmp/design-system-package.json",
     });
 
-    await designApi.exportPackage("design-system-1");
+    await designApi.exportPackage({
+      designSystemId: "design-system-1",
+      destinationPath: "/tmp/design-system-package.json",
+    });
 
     expect(mockInvoke).toHaveBeenCalledWith("export_design_system_package", {
       input: {
         designSystemId: "design-system-1",
         includeFullProvenance: false,
+        destinationPath: "/tmp/design-system-package.json",
       },
     });
   });
@@ -514,19 +522,20 @@ describe("designApi", () => {
       },
       schemaVersionId: "schema-1",
       runId: "run-1",
-      packageArtifactId: "export-1",
+      packageArtifactId: null,
+      packagePath: "/tmp/design-system-package.json",
       items: [],
     });
 
     await designApi.importPackage({
-      packageArtifactId: "export-1",
+      packagePath: "/tmp/design-system-package.json",
       attachProjectId: "project-1",
       name: "Imported UI",
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("import_design_system_package", {
       input: {
-        packageArtifactId: "export-1",
+        packagePath: "/tmp/design-system-package.json",
         attachProjectId: "project-1",
         name: "Imported UI",
       },

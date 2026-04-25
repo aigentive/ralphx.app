@@ -12,6 +12,10 @@ const DESIGN_EVENTS = [
   "design:artifact_created",
   "design:styleguide_item_approved",
   "design:styleguide_item_feedback_created",
+  "design:run_started",
+  "design:run_completed",
+  "design:export_completed",
+  "design:import_completed",
 ] as const;
 
 export function useDesignSystemEvents() {
@@ -31,6 +35,9 @@ export function useDesignSystemEvents() {
         queryClient.invalidateQueries({ queryKey: designSystemKeys.detail(designSystemId) });
         queryClient.invalidateQueries({
           queryKey: designSystemKeys.styleguideItems(designSystemId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: designSystemKeys.styleguideViewModel(designSystemId),
         });
       }
     };

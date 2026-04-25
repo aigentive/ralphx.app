@@ -33,6 +33,149 @@ export const DESIGN_TOOLS: Tool[] = [
     },
   },
   {
+    name: "list_design_source_files",
+    description:
+      "List backend-validated source files selected for the current design system. Use this before reading or searching source content.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        design_system_id: {
+          type: "string",
+          description: CURRENT_DESIGN_CONTEXT_DESCRIPTION,
+        },
+        project_id: {
+          type: "string",
+          description: "Optional selected source project id to filter files.",
+        },
+        max_files: {
+          type: "integer",
+          description: "Optional result cap. Defaults to 500.",
+        },
+      },
+    },
+  },
+  {
+    name: "read_design_source_file",
+    description:
+      "Read a file from the selected design source manifest. The backend rejects paths outside the chosen source scope.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        design_system_id: {
+          type: "string",
+          description: CURRENT_DESIGN_CONTEXT_DESCRIPTION,
+        },
+        project_id: {
+          type: "string",
+          description: "Optional selected source project id. Required when a path appears in more than one source project.",
+        },
+        path: {
+          type: "string",
+          description: "Manifest-relative source path returned by list_design_source_files.",
+        },
+        start_line: {
+          type: "integer",
+          description: "Optional 1-based inclusive start line.",
+        },
+        end_line: {
+          type: "integer",
+          description: "Optional 1-based inclusive end line.",
+        },
+        max_bytes: {
+          type: "integer",
+          description: "Optional byte cap for the read. Defaults to 65536.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "search_design_source_files",
+    description:
+      "Search selected design source files by literal text. The backend searches only files stored in the design source manifest.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        design_system_id: {
+          type: "string",
+          description: CURRENT_DESIGN_CONTEXT_DESCRIPTION,
+        },
+        project_id: {
+          type: "string",
+          description: "Optional selected source project id to filter files.",
+        },
+        pattern: {
+          type: "string",
+          description: "Literal text to search for.",
+        },
+        case_sensitive: {
+          type: "boolean",
+          description: "Whether the search is case-sensitive. Defaults to false.",
+        },
+        max_results: {
+          type: "integer",
+          description: "Optional match cap. Defaults to 100.",
+        },
+      },
+      required: ["pattern"],
+    },
+  },
+  {
+    name: "publish_design_schema_version",
+    description:
+      "Publish a new RalphX-owned design schema/styleguide version from source-grounded styleguide rows. The backend owns version ids, run state, storage, previews, and event emission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        design_system_id: {
+          type: "string",
+          description: CURRENT_DESIGN_CONTEXT_DESCRIPTION,
+        },
+        version: {
+          type: "string",
+          description: "Optional semantic version label. The backend chooses the next version when omitted.",
+        },
+        items: {
+          type: "array",
+          description: "Human-reviewable styleguide rows grounded in selected source refs.",
+          items: {
+            type: "object",
+            properties: {
+              item_id: {
+                type: "string",
+                description: "Stable row id such as colors.primary_palette or components.buttons.",
+              },
+              group: {
+                type: "string",
+                enum: ["ui_kit", "type", "colors", "spacing", "components", "brand"],
+              },
+              label: { type: "string" },
+              summary: { type: "string" },
+              source_refs: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    project_id: { type: "string" },
+                    path: { type: "string" },
+                    line: { type: "integer" },
+                  },
+                  required: ["project_id", "path"],
+                },
+              },
+              confidence: {
+                type: "string",
+                enum: ["high", "medium", "low"],
+              },
+            },
+            required: ["item_id", "group", "label", "summary"],
+          },
+        },
+      },
+      required: ["items"],
+    },
+  },
+  {
     name: "get_design_styleguide",
     description:
       "Read styleguide rows for the current design system and optional schema version.",

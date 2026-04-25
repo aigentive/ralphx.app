@@ -48,6 +48,9 @@ describe("useDesignSystemEvents", () => {
       "design:styleguide_item_approved",
       expect.any(Function),
     );
+    expect(subscribeMock).toHaveBeenCalledWith("design:run_started", expect.any(Function));
+    expect(subscribeMock).toHaveBeenCalledWith("design:export_completed", expect.any(Function));
+    expect(subscribeMock).toHaveBeenCalledWith("design:import_completed", expect.any(Function));
 
     unmount();
     expect(callbacks["design:schema_published"]).toBeUndefined();
@@ -80,6 +83,9 @@ describe("useDesignSystemEvents", () => {
     });
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: designSystemKeys.styleguideItems("design-system-1"),
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: designSystemKeys.styleguideViewModel("design-system-1"),
     });
   });
 });

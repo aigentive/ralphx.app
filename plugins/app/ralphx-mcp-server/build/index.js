@@ -480,6 +480,46 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
             result = await callTauriGet(`design/systems/${designSystemId}/source-manifest`);
         }
+        else if (name === "list_design_source_files") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            const { project_id, max_files } = args;
+            const params = new URLSearchParams();
+            if (project_id)
+                params.set("project_id", project_id);
+            if (typeof max_files === "number")
+                params.set("max_files", String(max_files));
+            const query = params.toString() ? `?${params.toString()}` : "";
+            result = await callTauriGet(`design/systems/${designSystemId}/source-files${query}`);
+        }
+        else if (name === "read_design_source_file") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            const { project_id, path, start_line, end_line, max_bytes } = args;
+            result = await callTauri(`design/systems/${designSystemId}/source-files/read`, {
+                project_id,
+                path,
+                start_line,
+                end_line,
+                max_bytes,
+            });
+        }
+        else if (name === "search_design_source_files") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            const { project_id, pattern, case_sensitive, max_results } = args;
+            result = await callTauri(`design/systems/${designSystemId}/source-files/search`, {
+                project_id,
+                pattern,
+                case_sensitive,
+                max_results,
+            });
+        }
+        else if (name === "publish_design_schema_version") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            const { version, items } = args;
+            result = await callTauri(`design/systems/${designSystemId}/schema/publish`, {
+                version,
+                items,
+            });
+        }
         else if (name === "get_design_styleguide") {
             const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
             const { schema_version_id } = args;

@@ -1,5 +1,6 @@
 import { Check, FolderGit2, Loader2, PackagePlus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -38,7 +39,7 @@ export function DesignPackageImportDialog({
     [focusedProjectId, projects],
   );
   const [attachProjectId, setAttachProjectId] = useState(initialProjectId);
-  const [packageArtifactId, setPackageArtifactId] = useState("");
+  const [packagePath, setPackagePath] = useState("");
   const [name, setName] = useState("");
   const selectedProject = projects.find((project) => project.id === attachProjectId) ?? null;
 
@@ -47,17 +48,27 @@ export function DesignPackageImportDialog({
       return;
     }
     setAttachProjectId(initialProjectId);
-    setPackageArtifactId("");
+    setPackagePath("");
     setName("");
   }, [initialProjectId, isOpen]);
 
+  const choosePackage = async () => {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
+    });
+    if (typeof selected === "string") {
+      setPackagePath(selected);
+    }
+  };
+
   const importPackage = () => {
-    const artifactId = packageArtifactId.trim();
-    if (!selectedProject || !artifactId) {
+    const selectedPackagePath = packagePath.trim();
+    if (!selectedProject || !selectedPackagePath) {
       return;
     }
     onImport({
-      packageArtifactId: artifactId,
+      packagePath: selectedPackagePath,
       attachProjectId: selectedProject.id,
       ...(name.trim() ? { name: name.trim() } : {}),
     });
@@ -73,23 +84,35 @@ export function DesignPackageImportDialog({
         <DialogHeader>
           <DialogTitle>Import package</DialogTitle>
           <DialogDescription>
-            Attach a RalphX design package artifact to a project.
+            Attach an exported RalphX design package to a project.
           </DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[68vh] overflow-y-auto px-6 py-4 space-y-5">
           <section className="space-y-2">
-            <label className="text-[12px] font-medium" style={{ color: "var(--text-muted)" }} htmlFor="design-package-artifact-id">
-              Package artifact
+            <label className="text-[12px] font-medium" style={{ color: "var(--text-muted)" }} htmlFor="design-package-path">
+              Package file
             </label>
-            <input
-              id="design-package-artifact-id"
-              value={packageArtifactId}
-              onChange={(event) => setPackageArtifactId(event.target.value)}
-              className="h-9 w-full rounded-md border bg-transparent px-3 text-[13px] outline-none"
-              style={{ borderColor: "var(--overlay-weak)", color: "var(--text-primary)" }}
-              data-testid="design-import-package-artifact-id"
-            />
+            <div className="flex gap-2">
+              <input
+                id="design-package-path"
+                value={packagePath}
+                readOnly
+                className="h-9 min-w-0 flex-1 rounded-md border bg-transparent px-3 text-[13px] outline-none"
+                style={{ borderColor: "var(--overlay-weak)", color: "var(--text-primary)" }}
+                data-testid="design-import-package-path"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 shrink-0 gap-2"
+                onClick={choosePackage}
+                data-testid="design-import-package-choose-file"
+              >
+                <PackagePlus className="h-4 w-4" />
+                Choose
+              </Button>
+            </div>
           </section>
 
           <section className="space-y-2">
@@ -149,7 +172,7 @@ export function DesignPackageImportDialog({
           <Button
             type="button"
             className="gap-2"
-            disabled={!selectedProject || !packageArtifactId.trim() || isImporting}
+            disabled={!selectedProject || !packagePath.trim() || isImporting}
             onClick={importPackage}
             data-testid="design-import-package-submit"
           >
