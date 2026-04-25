@@ -25,7 +25,7 @@ const globalLanes: AgentHarnessLaneView[] = [
       projectId: null,
       lane: "ideation_primary",
       harness: "codex",
-      model: "gpt-5.4",
+      model: "gpt-5.5",
       effort: "xhigh",
       approvalPolicy: "never",
       sandboxMode: "danger-full-access",
@@ -143,7 +143,7 @@ describe("IdeationHarnessSection", () => {
     render(<IdeationHarnessSection />);
 
     openSelect("model-ideation_primary");
-    fireEvent.click(screen.getByRole("option", { name: "gpt-5.4-mini" }));
+    fireEvent.click(screen.getByRole("option", { name: /gpt-5\.4-mini/ }));
 
     await waitFor(() => {
       expect(updateLane).toHaveBeenCalledWith(
@@ -165,10 +165,24 @@ describe("IdeationHarnessSection", () => {
 
     openSelect("model-ideation_primary");
 
-    expect(screen.getByRole("option", { name: "gpt-5.4 (Current)" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "gpt-5.4-mini" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "gpt-5.3-codex" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "gpt-5.3-codex-spark" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /gpt-5\.5 \(Current\)/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /Frontier model for complex coding, research, and real-world work\./ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /gpt-5\.4.*Strong model for everyday coding\./ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", {
+        name: /gpt-5\.4-mini.*Small, fast, and cost-efficient model for simpler coding tasks\./,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /gpt-5\.3-codex.*Coding-optimized model\./ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /gpt-5\.3-codex-spark.*Ultra-fast coding model\./ })
+    ).toBeInTheDocument();
   });
 
   it("shows Claude model presets for Claude harness lanes", async () => {
@@ -221,7 +235,7 @@ describe("ExecutionHarnessSection", () => {
                   projectId: null,
                   lane: "execution_worker",
                   harness: "codex",
-                  model: "gpt-5.4",
+                  model: "gpt-5.5",
                   effort: "xhigh",
                   approvalPolicy: "never",
                   sandboxMode: "danger-full-access",

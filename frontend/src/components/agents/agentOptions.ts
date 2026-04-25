@@ -1,4 +1,5 @@
 import type { AgentProvider, AgentRuntimeSelection } from "@/stores/agentSessionStore";
+import { AGENT_MODEL_CATALOG, DEFAULT_CODEX_MODEL_ID } from "@/lib/agent-models";
 
 export interface AgentModelOption {
   id: string;
@@ -11,22 +12,13 @@ export const AGENT_PROVIDER_OPTIONS: Array<{ id: AgentProvider; label: string }>
 ];
 
 export const AGENT_MODEL_OPTIONS: Record<AgentProvider, AgentModelOption[]> = {
-  claude: [
-    { id: "sonnet", label: "sonnet" },
-    { id: "opus", label: "opus" },
-    { id: "haiku", label: "haiku" },
-  ],
-  codex: [
-    { id: "gpt-5.4", label: "gpt-5.4" },
-    { id: "gpt-5.4-mini", label: "gpt-5.4-mini" },
-    { id: "gpt-5.3-codex", label: "gpt-5.3-codex" },
-    { id: "gpt-5.3-codex-spark", label: "gpt-5.3-codex-spark" },
-  ],
+  claude: AGENT_MODEL_CATALOG.claude.map(({ id, label }) => ({ id, label })),
+  codex: AGENT_MODEL_CATALOG.codex.map(({ id, label }) => ({ id, label })),
 };
 
 export const DEFAULT_AGENT_RUNTIME: AgentRuntimeSelection = {
   provider: "codex",
-  modelId: "gpt-5.4",
+  modelId: DEFAULT_CODEX_MODEL_ID,
 };
 
 function isAgentProvider(value: unknown): value is AgentProvider {

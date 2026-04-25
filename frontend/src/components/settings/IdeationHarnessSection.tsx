@@ -26,6 +26,7 @@ import {
   IDEATION_LANES,
 } from "@/api/ideation-harness";
 import { useAgentHarnessSettings } from "@/hooks/useIdeationHarnessSettings";
+import { AGENT_MODEL_CATALOG, DEFAULT_CODEX_MODEL_ID } from "@/lib/agent-models";
 import { selectActiveProject, useProjectStore } from "@/stores/projectStore";
 import {
   loadHarnessExpanded,
@@ -40,18 +41,23 @@ import {
 // Preset definitions
 // ============================================================================
 
+interface ModelPreset {
+  value: string;
+  display: string;
+  description?: string;
+}
+
 const CLAUDE_MODEL_PRESETS = [
   { value: "sonnet", display: "sonnet" },
   { value: "opus", display: "opus" },
   { value: "haiku", display: "haiku" },
-] as const;
+] as const satisfies readonly ModelPreset[];
 
-const CODEX_MODEL_PRESETS = [
-  { value: "gpt-5.4", display: "gpt-5.4 (Current)" },
-  { value: "gpt-5.4-mini", display: "gpt-5.4-mini" },
-  { value: "gpt-5.3-codex", display: "gpt-5.3-codex" },
-  { value: "gpt-5.3-codex-spark", display: "gpt-5.3-codex-spark" },
-] as const;
+const CODEX_MODEL_PRESETS = AGENT_MODEL_CATALOG.codex.map(({ id, menuLabel, description }) => ({
+  value: id,
+  display: menuLabel,
+  ...(description ? { description } : {}),
+})) satisfies readonly ModelPreset[];
 
 const SELECT_TRIGGER_CLASS = "h-9 items-center";
 
@@ -111,7 +117,7 @@ function InlineNotice({ tone, title, children }: InlineNoticeProps) {
   );
 }
 
-function getModelPresets(harness: string) {
+function getModelPresets(harness: string): readonly ModelPreset[] {
   return harness === "codex" ? CODEX_MODEL_PRESETS : CLAUDE_MODEL_PRESETS;
 }
 
@@ -161,7 +167,7 @@ interface ModelSelectProps {
 
 function modelSelectValue(
   value: string | null,
-  presets: readonly { value: string; display: string }[],
+  presets: readonly ModelPreset[],
 ): string {
   if (!value) {
     return MODEL_DEFAULT_VALUE;
@@ -233,7 +239,12 @@ function ModelSelect({
         </SelectItem>
         {presets.map((preset) => (
           <SelectItem key={preset.value} value={preset.value} textValue={preset.display}>
-            <span className="text-[var(--text-primary)]">{preset.display}</span>
+            <div className="flex flex-col">
+              <span className="text-[var(--text-primary)]">{preset.display}</span>
+              {preset.description && (
+                <span className="text-xs text-[var(--text-muted)]">{preset.description}</span>
+              )}
+            </div>
           </SelectItem>
         ))}
         {hasCustomValue && value && (
@@ -372,7 +383,7 @@ function defaultsForHarness(
   if (lane === "ideation_primary") {
     return {
       harness,
-      model: "gpt-5.4",
+      model: DEFAULT_CODEX_MODEL_ID,
       effort: "xhigh",
       approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
       sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
@@ -392,7 +403,7 @@ function defaultsForHarness(
   if (EXECUTION_LANES.includes(lane)) {
     return {
       harness,
-      model: "gpt-5.4",
+      model: DEFAULT_CODEX_MODEL_ID,
       effort: "xhigh",
       approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
       sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
