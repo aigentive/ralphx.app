@@ -27,8 +27,9 @@ use crate::application::chat_service::{
 };
 use crate::application::git_service::GitService;
 use crate::application::publish_resilience::{
-    classify_publish_failure, ensure_publish_branch_fresh, publish_push_status_for_failure,
-    review_base_for_publish, PublishBranchFreshnessOutcome, PublishFailureClass,
+    classify_publish_failure, count_publish_reviewable_commits, ensure_publish_branch_fresh,
+    publish_push_status_for_failure, push_publish_branch, review_base_for_publish,
+    PublishBranchFreshnessOutcome, PublishFailureClass,
 };
 use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, SendResult,
@@ -1830,7 +1831,7 @@ pub async fn publish_agent_conversation_workspace(
         .await
         .map_err(|e| e.to_string())?;
 
-    let reviewable_commit_count = match GitService::count_commits_not_on_branch(
+    let reviewable_commit_count = match count_publish_reviewable_commits(
         &worktree_path,
         &workspace.branch_name,
         review_base,
@@ -1853,10 +1854,7 @@ pub async fn publish_agent_conversation_workspace(
         .await
         .map_err(|e| e.to_string())?;
 
-    if let Err(error) = github
-        .push_branch(&worktree_path, &workspace.branch_name)
-        .await
-    {
+    if let Err(error) = push_publish_branch(github, &worktree_path, &workspace.branch_name).await {
         let error = error.to_string();
         mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
         return Err(error);

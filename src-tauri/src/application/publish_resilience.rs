@@ -1,9 +1,12 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::domain::state_machine::transition_handler::{
     classify_commit_hook_failure_text, update_source_from_target, CommitHookFailureKind,
     SourceUpdateResult,
 };
+use crate::domain::services::GithubServiceTrait;
+use crate::error::AppResult;
 use crate::{application::GitService, domain::entities::Project};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +76,37 @@ pub fn review_base_for_publish<'a>(
                 base_ref
             )
         })
+}
+
+pub async fn count_publish_reviewable_commits(
+    repo_path: &Path,
+    source_branch: &str,
+    review_base: &str,
+) -> AppResult<u32> {
+    GitService::count_commits_not_on_branch(repo_path, source_branch, review_base).await
+}
+
+pub async fn count_existing_publish_branch_reviewable_commits(
+    repo_path: &Path,
+    source_branch: &str,
+    review_base: &str,
+) -> AppResult<u32> {
+    if !GitService::branch_exists(repo_path, source_branch)
+        .await
+        .unwrap_or(false)
+    {
+        return Ok(0);
+    }
+
+    count_publish_reviewable_commits(repo_path, source_branch, review_base).await
+}
+
+pub async fn push_publish_branch(
+    github: &Arc<dyn GithubServiceTrait>,
+    repo_path: &Path,
+    branch: &str,
+) -> AppResult<()> {
+    github.push_branch(repo_path, branch).await
 }
 
 pub async fn ensure_publish_branch_fresh(

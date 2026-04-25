@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::publish_resilience::push_publish_branch;
 use crate::domain::services::{PlanPrPublisher, PrReviewState};
 use crate::domain::state_machine::{State, TransitionHandler};
 use crate::domain::state_machine::transition_handler::{
@@ -82,7 +83,7 @@ impl<'a> TransitionHandler<'a> {
         let pr_op_result: Result<i64, crate::error::AppError> = if let Some(existing_pr_number) = plan_branch.pr_number {
             // Has PR: push latest commits then mark ready
             tracing::info!(task_id = task_id_str, pr_number = existing_pr_number, "PR-mode: pushing branch and marking PR ready");
-            if let Err(e) = github_service.push_branch(&working_dir, &branch_name).await {
+            if let Err(e) = push_publish_branch(github_service, &working_dir, &branch_name).await {
                 tracing::warn!(task_id = task_id_str, error = %e, "PR-mode: push failed (proceeding to mark_pr_ready anyway)");
             }
             let publisher = PlanPrPublisher::new(
@@ -129,7 +130,7 @@ impl<'a> TransitionHandler<'a> {
             if let Some(new_pr_number) = refreshed_pr_number {
                 // Concurrent creation succeeded: push + mark ready
                 tracing::info!(task_id = task_id_str, pr_number = new_pr_number, "PR-mode: found PR from concurrent creation");
-                let _ = github_service.push_branch(&working_dir, &branch_name).await;
+                let _ = push_publish_branch(github_service, &working_dir, &branch_name).await;
                 let mut refreshed_plan_branch = plan_branch.clone();
                 refreshed_plan_branch.pr_number = Some(new_pr_number);
                 let publisher = PlanPrPublisher::new(
@@ -153,7 +154,7 @@ impl<'a> TransitionHandler<'a> {
             } else {
                 // Still no PR: push + create non-draft PR directly
                 tracing::info!(task_id = task_id_str, "PR-mode: creating non-draft PR directly");
-                match github_service.push_branch(&working_dir, &branch_name).await {
+                match push_publish_branch(github_service, &working_dir, &branch_name).await {
                     Err(e) => Err(e),
                     Ok(()) => {
                         let publisher = PlanPrPublisher::new(

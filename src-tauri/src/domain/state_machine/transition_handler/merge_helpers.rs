@@ -10,6 +10,9 @@ use std::time::Duration;
 use lazy_static::lazy_static;
 use regex::Regex;
 
+use crate::application::publish_resilience::{
+    count_existing_publish_branch_reviewable_commits, push_publish_branch,
+};
 use crate::application::GitService;
 use crate::domain::entities::plan_branch::{PlanBranchId, PrPushStatus, PrStatus};
 use crate::domain::entities::InternalStatus;
@@ -1184,7 +1187,7 @@ async fn push_pr_branch_to_remote(
         "sync_plan_branch_pr_if_needed: pushing updated plan branch to GitHub"
     );
 
-    match github.push_branch(repo_path, &pb.branch_name).await {
+    match push_publish_branch(github, repo_path, &pb.branch_name).await {
         Ok(()) => {
             if let Err(e) = plan_branch_repo
                 .update_pr_push_status(&pb.id, PrPushStatus::Pushed)
@@ -1416,15 +1419,7 @@ pub(crate) async fn plan_branch_reviewable_commit_count(
 ) -> AppResult<u32> {
     let repo_path = Path::new(&project.working_directory);
     let pr_base = resolve_plan_branch_pr_base(project, pb);
-
-    if !GitService::branch_exists(repo_path, &pb.branch_name)
-        .await
-        .unwrap_or(false)
-    {
-        return Ok(0);
-    }
-
-    GitService::count_commits_not_on_branch(repo_path, &pb.branch_name, &pr_base).await
+    count_existing_publish_branch_reviewable_commits(repo_path, &pb.branch_name, &pr_base).await
 }
 
 pub(crate) async fn plan_branch_has_reviewable_diff(
@@ -1512,7 +1507,7 @@ pub(crate) async fn create_draft_pr_if_needed(
         let needs_push = !matches!(current_pb.pr_push_status, PrPushStatus::Pushed);
         if needs_push {
             tracing::info!(branch = %branch_name, "create_draft_pr_if_needed: pushing branch");
-            match github.push_branch(repo_path, &branch_name).await {
+            match push_publish_branch(github, repo_path, &branch_name).await {
                 Ok(()) => {
                     if let Err(e) = plan_branch_repo
                         .update_pr_push_status(&plan_branch_id, PrPushStatus::Pushed)
