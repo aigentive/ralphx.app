@@ -269,20 +269,46 @@ fn canonical_agent_root(project_root: &Path, agent_name: &str) -> Option<PathBuf
 }
 
 fn has_canonical_agents_tree(root: &Path) -> bool {
-    let agents_dir = root.join(CANONICAL_AGENTS_DIR);
+    let Ok(canonical_root) = root.canonicalize() else {
+        return false;
+    };
+    if !path_has_only_safe_components(&canonical_root) {
+        return false;
+    }
+
+    let agents_dir = canonical_root.join(CANONICAL_AGENTS_DIR);
+    let Ok(canonical_agents_dir) = agents_dir.canonicalize() else {
+        return false;
+    };
+    if !canonical_agents_dir.starts_with(&canonical_root)
+        || canonical_agents_dir.file_name() != Some(OsStr::new(CANONICAL_AGENTS_DIR))
+        || !canonical_agents_dir.is_dir()
+    {
+        return false;
+    }
 
     // codeql[rust/path-injection]
-    let Ok(entries) = std::fs::read_dir(&agents_dir) else {
+    let Ok(entries) = std::fs::read_dir(&canonical_agents_dir) else {
         return false;
     };
 
     entries.filter_map(Result::ok).any(|entry| {
-        entry
-            .file_type()
-            .ok()
-            .is_some_and(|file_type| file_type.is_dir())
-            // codeql[rust/path-injection]
-            && entry.path().join(AGENT_FILE_NAME).is_file()
+        let Ok(canonical_entry_path) = entry.path().canonicalize() else {
+            return false;
+        };
+        if !canonical_entry_path.starts_with(&canonical_agents_dir)
+            || !canonical_entry_path.is_dir()
+        {
+            return false;
+        }
+
+        let agent_file = canonical_entry_path.join(AGENT_FILE_NAME);
+        let Ok(canonical_agent_file) = agent_file.canonicalize() else {
+            return false;
+        };
+        canonical_agent_file.starts_with(&canonical_entry_path)
+            && canonical_agent_file.file_name() == Some(OsStr::new(AGENT_FILE_NAME))
+            && canonical_agent_file.is_file()
     })
 }
 
@@ -342,7 +368,24 @@ fn read_trusted_canonical_agent_file(
     agent_name: &str,
     file_kind: CanonicalAgentFileKind,
 ) -> Option<String> {
-    let canonical_candidate = trusted_canonical_agent_file(project_root, agent_name, file_kind)?;
+    let agent_root = canonical_agent_root(project_root, agent_name)?;
+    let candidate = match file_kind {
+        CanonicalAgentFileKind::Definition => agent_root.join(AGENT_FILE_NAME),
+        CanonicalAgentFileKind::HarnessPrompt(harness) => {
+            agent_root.join(harness.dir_name()).join(PROMPT_FILE_NAME)
+        }
+        CanonicalAgentFileKind::SharedPrompt => agent_root
+            .join(SHARED_PROMPT_DIR_NAME)
+            .join(PROMPT_FILE_NAME),
+        CanonicalAgentFileKind::HarnessMetadata(harness) => {
+            agent_root.join(harness.dir_name()).join(AGENT_FILE_NAME)
+        }
+    };
+    let canonical_candidate = candidate.canonicalize().ok()?;
+    if !canonical_candidate.starts_with(&agent_root) || !canonical_candidate.is_file() {
+        return None;
+    }
+
     // codeql[rust/path-injection]
     std::fs::read_to_string(canonical_candidate).ok()
 }
