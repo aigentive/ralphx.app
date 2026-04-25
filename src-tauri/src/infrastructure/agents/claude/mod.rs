@@ -58,7 +58,6 @@ pub use model_resolver::{
     resolve_verifier_subagent_model_with_source, ResolvedModel,
 };
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -542,87 +541,12 @@ pub(crate) fn resolve_agent_system_prompt_path(
     let short = mcp_agent_type(agent_name);
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
     resolve_harness_agent_prompt_path(&project_root, short, AgentPromptHarness::Claude)
-        .or_else(|| resolve_legacy_agent_system_prompt_path(plugin_dir, agent_name))
 }
 
 pub(crate) fn load_agent_system_prompt(plugin_dir: &Path, agent_name: &str) -> Option<String> {
     let short = mcp_agent_type(agent_name);
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
-    load_harness_agent_prompt(&project_root, short, AgentPromptHarness::Claude).or_else(|| {
-        let prompt_path = resolve_legacy_agent_system_prompt_path(plugin_dir, agent_name)?;
-        // codeql[rust/path-injection]
-        std::fs::read_to_string(prompt_path).ok()
-    })
-}
-
-fn resolve_legacy_agent_system_prompt_path(plugin_dir: &Path, agent_name: &str) -> Option<PathBuf> {
-    let canonical_plugin_dir = plugin_dir.canonicalize().ok()?;
-    if !is_trusted_runtime_plugin_dir(&canonical_plugin_dir) {
-        return None;
-    }
-
-    let agents_dir = canonical_plugin_dir.join("agents").canonicalize().ok()?;
-    if !agents_dir.starts_with(&canonical_plugin_dir)
-        || agents_dir.file_name() != Some(OsStr::new("agents"))
-        || !agents_dir.is_dir()
-    {
-        return None;
-    }
-
-    for stem in legacy_agent_prompt_file_stems(agent_name) {
-        if !is_trusted_agent_prompt_stem(&stem) {
-            continue;
-        }
-
-        let file_name = format!("{stem}.md");
-        let candidate = agents_dir.join(&file_name);
-        let canonical_candidate = candidate.canonicalize().ok()?;
-        if canonical_candidate.starts_with(&agents_dir)
-            && canonical_candidate.file_name() == Some(OsStr::new(&file_name))
-            && canonical_candidate.is_file()
-        {
-            return Some(canonical_candidate);
-        }
-    }
-
-    None
-}
-
-fn legacy_agent_prompt_file_stems(agent_name: &str) -> Vec<String> {
-    let mut stems = Vec::new();
-    let short = mcp_agent_type(agent_name).to_string();
-    stems.push(short);
-
-    if let Some(unqualified) = agent_name.strip_prefix("ralphx:") {
-        let unqualified = unqualified.to_string();
-        if !stems.iter().any(|stem| stem == &unqualified) {
-            stems.push(unqualified);
-        }
-    }
-
-    stems
-}
-
-fn is_trusted_agent_prompt_stem(stem: &str) -> bool {
-    !stem.is_empty()
-        && !stem.contains("..")
-        && stem
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-}
-
-fn is_trusted_runtime_plugin_dir(path: &Path) -> bool {
-    path.components().all(|component| {
-        matches!(
-            component,
-            std::path::Component::Prefix(_)
-                | std::path::Component::RootDir
-                | std::path::Component::Normal(_)
-        )
-    }) && (path.ends_with(PRIMARY_PLUGIN_DIR_REL)
-        || path.ends_with(LEGACY_PLUGIN_DIR_REL)
-        || path.ends_with(Path::new("generated/claude-plugin"))
-        || path.ends_with(Path::new(".artifacts/generated/claude-plugin")))
+    load_harness_agent_prompt(&project_root, short, AgentPromptHarness::Claude)
 }
 
 /// Best-effort cleanup for `~/.claude.json` to avoid startup instability from
@@ -911,7 +835,7 @@ pub(crate) fn build_mcp_config_with_runtime_context(
 
         // Inject --allowed-tools from agent's mcp_tools config (Wave 3).
         // - Agent not in config (None) → skip arg entirely (MCP server resolves canonical metadata,
-        //   then only true legacy fallback entries if any remain)
+        //   then only server-side compatibility defaults if any remain)
         // - Agent found, empty mcp_tools → inject __NONE__ sentinel (intentional zero tools)
         // - Agent found, non-empty mcp_tools → validate names, join with commas, inject arg
         // When is_external_mcp=true, strip interactive-only tools (e.g. ask_user_question) to
@@ -1775,7 +1699,7 @@ pub fn validate_mcp_tool_name(name: &str) -> bool {
 
 /// Format the `--allowed-tools` arg value from an optional tool list.
 /// - `None` → `None` (agent has no mcp_tools config → no arg injected)
-/// - `Some([])` → `Some("__NONE__")` sentinel (explicit empty, do not fall through to legacy fallback)
+/// - `Some([])` → `Some("__NONE__")` sentinel (explicit empty, no server-side fallback)
 /// - `Some([t1, t2, ...])` → `Some("t1,t2,...")`
 pub fn format_allowed_tools_arg_value(tools: Option<&[String]>) -> Option<String> {
     match tools {
@@ -1920,7 +1844,6 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let repo_root = temp_dir.path().join("repo");
         let plugin_dir = repo_root.join(PRIMARY_PLUGIN_DIR_REL);
-        std::fs::create_dir_all(plugin_dir.join("agents")).unwrap();
         std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build")).unwrap();
         std::fs::write(
             plugin_dir.join("ralphx-mcp-server/build/index.js"),
@@ -1930,16 +1853,6 @@ mod tests {
         std::fs::write(
             plugin_dir.join(".mcp.json"),
             r#"{"mcpServers":{"ralphx":{"type":"stdio","command":"node","args":["${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"]}}}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            plugin_dir.join("agents/ralphx-utility-session-namer.md"),
-            "---\nname: ralphx-utility-session-namer\n---\nLegacy Session Namer Prompt",
-        )
-        .unwrap();
-        std::fs::write(
-            plugin_dir.join("agents/worker.md"),
-            "---\nname: worker\n---\nLegacy Worker Prompt",
         )
         .unwrap();
 
@@ -1967,14 +1880,11 @@ mod tests {
         );
         assert!(
             generated_session_namer.contains("name: ralphx-utility-session-namer"),
-            "generated session namer should preserve legacy frontmatter"
+            "generated session namer should render Claude frontmatter"
         );
-
-        let worker_metadata = std::fs::symlink_metadata(generated_dir.join("agents/worker.md"))
-            .expect("worker metadata");
         assert!(
-            worker_metadata.file_type().is_symlink(),
-            "non-canonical agent prompts should remain linked from the base plugin dir"
+            !generated_dir.join("agents/worker.md").exists(),
+            "generated plugin should not carry non-canonical legacy plugin prompt files"
         );
         assert!(
             generated_dir

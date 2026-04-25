@@ -132,7 +132,7 @@ pub(crate) fn materialize_generated_plugin_dir_with_runtime_source(
         &runtime_source_plugin_dir,
         &generated_plugin_dir,
     )?;
-    sync_generated_agent_prompts(base_plugin_dir, &generated_plugin_dir, &project_root)?;
+    sync_generated_agent_prompts(&generated_plugin_dir, &project_root)?;
     cache_generated_plugin_dir(base_plugin_dir, &generated_plugin_dir)?;
 
     Ok(generated_plugin_dir)
@@ -206,7 +206,6 @@ fn sync_runtime_entries(
 }
 
 fn sync_generated_agent_prompts(
-    base_plugin_dir: &Path,
     generated_plugin_dir: &Path,
     project_root: &Path,
 ) -> Result<(), String> {
@@ -228,14 +227,12 @@ fn sync_generated_agent_prompts(
         )
     })?;
 
-    let mut reserved_outputs = HashSet::new();
     for short_name in list_canonical_agent_names(project_root) {
         let Some(definition) = load_canonical_agent_definition(project_root, &short_name) else {
             continue;
         };
 
         let relative_output = claude_output_relative_path(&definition, &short_name)?;
-        reserved_outputs.insert(relative_output.clone());
 
         let Some(prompt_body) =
             load_harness_agent_prompt(project_root, &short_name, AgentPromptHarness::Claude)
@@ -259,48 +256,6 @@ fn sync_generated_agent_prompts(
                 generated_target.display()
             )
         })?;
-    }
-
-    let base_agents_dir = base_plugin_dir.join("agents");
-    // codeql[rust/path-injection]
-    match fs::read_dir(&base_agents_dir) {
-        Ok(entries) => {
-            for entry in entries {
-                let entry = entry.map_err(|error| {
-                    format!(
-                        "Failed to inspect base Claude agent entry under {}: {error}",
-                        base_agents_dir.display()
-                    )
-                })?;
-                let source_path = entry.path();
-                if !entry
-                    .file_type()
-                    .map_err(|error| {
-                        format!(
-                            "Failed to read base Claude agent file type for {}: {error}",
-                            source_path.display()
-                        )
-                    })?
-                    .is_file()
-                {
-                    continue;
-                }
-                let relative_output = PathBuf::from("agents").join(entry.file_name());
-                if reserved_outputs.contains(&relative_output) {
-                    continue;
-                }
-                let generated_target =
-                    trusted_generated_plugin_child_path(generated_plugin_dir, &relative_output)?;
-                ensure_symlink(&source_path, &generated_target)?;
-            }
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(format!(
-                "Failed to read base Claude agents dir {}: {error}",
-                base_agents_dir.display()
-            ));
-        }
     }
 
     Ok(())
@@ -522,18 +477,6 @@ fn yaml_scalar(value: &str) -> Result<String, String> {
 }
 
 fn ensure_symlink(source: &Path, target: &Path) -> Result<(), String> {
-    // codeql[rust/path-injection]
-    match fs::symlink_metadata(source) {
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(format!(
-                "Failed to inspect generated Claude plugin source {}: {error}",
-                source.display()
-            ));
-        }
-    }
-
     // codeql[rust/path-injection]
     if let Ok(existing) = fs::read_link(target) {
         if existing == source {

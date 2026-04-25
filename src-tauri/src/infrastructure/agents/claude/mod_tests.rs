@@ -69,41 +69,37 @@ fn seed_runnable_mcp_runtime(plugin_dir: &Path, runtime_marker: &str) {
     .unwrap();
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) {
-    // codeql[rust/path-injection]
-    std::fs::create_dir_all(dst).expect("create destination dir");
-    // codeql[rust/path-injection]
-    for entry in std::fs::read_dir(src).expect("read source dir") {
-        let entry = entry.expect("read dir entry");
-        let file_type = entry.file_type().expect("read file type");
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if file_type.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path);
-        } else if file_type.is_file() {
-            // codeql[rust/path-injection]
-            std::fs::copy(&src_path, &dst_path).unwrap_or_else(|err| {
-                panic!(
-                    "copy {} -> {} failed: {err}",
-                    src_path.display(),
-                    dst_path.display()
-                )
-            });
-        }
-    }
-}
-
-fn make_isolated_live_project_plugin_dir(
-) -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+fn make_isolated_live_project_plugin_dir() -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    super::RuntimePluginDirsOverrideGuard,
+) {
     let dir = tempfile::TempDir::new().expect("create temp project dir");
     let root = dir.path().to_path_buf();
     let repo_root = repo_project_root();
     let plugin_dir = root.join("plugins/app");
+    let generated_plugin_dir = root.join("generated/claude-plugin");
 
-    copy_dir_recursive(&repo_root.join("plugins/app"), &plugin_dir);
-    copy_dir_recursive(&repo_root.join("agents"), &root.join("agents"));
+    std::fs::create_dir_all(root.join("plugins")).expect("create plugins parent");
+    let plugin_copy_status = std::process::Command::new("cp")
+        .arg("-R")
+        .arg(repo_root.join("plugins/app"))
+        .arg(&plugin_dir)
+        .status()
+        .expect("copy live plugin fixture");
+    assert!(plugin_copy_status.success(), "copy live plugin fixture");
+    let agents_copy_status = std::process::Command::new("cp")
+        .arg("-R")
+        .arg(repo_root.join("agents"))
+        .arg(root.join("agents"))
+        .status()
+        .expect("copy live agents fixture");
+    assert!(agents_copy_status.success(), "copy live agents fixture");
+    let runtime_guard =
+        override_runtime_plugin_dirs_for_tests(plugin_dir.clone(), generated_plugin_dir);
 
-    (dir, root, plugin_dir)
+    (dir, root, plugin_dir, runtime_guard)
 }
 
 #[cfg(unix)]
@@ -826,7 +822,7 @@ description: Generates concise ideation session titles from user or plan context
 
 #[test]
 fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowed_tools() {
-    let (_dir, _root, plugin_dir) = make_isolated_live_project_plugin_dir();
+    let (_dir, _root, plugin_dir, _runtime_guard) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let generated_prompt =
@@ -853,7 +849,7 @@ fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowe
 
 #[test]
 fn test_materialize_generated_plugin_dir_omits_removed_supervisor_agent() {
-    let (_dir, _root, plugin_dir) = make_isolated_live_project_plugin_dir();
+    let (_dir, _root, plugin_dir, _runtime_guard) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let generated_prompt_path = generated_dir.join("agents/ralphx-execution-supervisor.md");
@@ -866,7 +862,7 @@ fn test_materialize_generated_plugin_dir_omits_removed_supervisor_agent() {
 
 #[test]
 fn test_materialize_generated_plugin_dir_matches_canonical_and_runtime_semantics_for_live_agents() {
-    let (_dir, root, plugin_dir) = make_isolated_live_project_plugin_dir();
+    let (_dir, root, plugin_dir, _runtime_guard) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let agent_names =

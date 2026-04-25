@@ -250,9 +250,9 @@ fn trusted_relative_path_component(component: &str) -> bool {
         && !component.contains("..")
         && !component.contains('/')
         && !component.contains('\\')
-        && Path::new(component)
-            .components()
-            .all(|segment| matches!(segment, std::path::Component::Normal(_)))
+        && component
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
 fn canonical_agent_root(project_root: &Path, agent_name: &str) -> Option<PathBuf> {
