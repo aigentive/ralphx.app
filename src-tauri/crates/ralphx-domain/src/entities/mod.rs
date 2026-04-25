@@ -42,7 +42,8 @@ pub use agent_run::{
     InterruptedConversation,
 };
 pub use agent_conversation_workspace::{
-    AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentConversationWorkspaceStatus,
+    AgentConversationWorkspace, AgentConversationWorkspaceMode,
+    AgentConversationWorkspacePublicationEvent, AgentConversationWorkspaceStatus,
 };
 pub use event_type::{EventType, ParseEventTypeError};
 pub use api_key::{

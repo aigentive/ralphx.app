@@ -15,6 +15,7 @@ import type {
   ConversationListPageResponse,
   ConversationStatsResponse,
   AgentConversationWorkspace,
+  AgentConversationWorkspacePublicationEvent,
   PublishAgentConversationWorkspaceResult,
   QueuedMessageResponse,
   SendAgentMessageResult,
@@ -40,6 +41,10 @@ const mockConversations: Map<string, ChatConversation> = new Map();
 const mockMessages: Map<string, ChatMessageResponse[]> = new Map();
 const mockQueuedMessages: Map<string, QueuedMessageResponse[]> = new Map();
 const mockWorkspaces: Map<string, AgentConversationWorkspace> = new Map();
+const mockWorkspacePublicationEvents: Map<
+  string,
+  AgentConversationWorkspacePublicationEvent[]
+> = new Map();
 const mockChildSessionStatuses: Map<string, ChildSessionStatusResponse> = new Map();
 const mockChildSessionStatusOverrides: Map<string, MockChildSessionStatusOverride> = new Map();
 
@@ -95,6 +100,7 @@ export function resetMockChatState(): void {
   mockMessages.clear();
   mockQueuedMessages.clear();
   mockWorkspaces.clear();
+  mockWorkspacePublicationEvents.clear();
   mockChildSessionStatuses.clear();
   mockChildSessionStatusOverrides.clear();
 }
@@ -546,6 +552,12 @@ export async function mockListAgentConversationWorkspacesByProject(
   );
 }
 
+export async function mockListAgentConversationWorkspacePublicationEvents(
+  conversationId: string
+): Promise<AgentConversationWorkspacePublicationEvent[]> {
+  return mockWorkspacePublicationEvents.get(conversationId) ?? [];
+}
+
 export async function mockPublishAgentConversationWorkspace(
   conversationId: string
 ): Promise<PublishAgentConversationWorkspaceResult> {
@@ -563,6 +575,18 @@ export async function mockPublishAgentConversationWorkspace(
     updatedAt: new Date().toISOString(),
   };
   mockWorkspaces.set(conversationId, published);
+  mockWorkspacePublicationEvents.set(conversationId, [
+    ...(mockWorkspacePublicationEvents.get(conversationId) ?? []),
+    {
+      id: `event-${mockWorkspacePublicationEvents.get(conversationId)?.length ?? 0}`,
+      conversationId,
+      step: "published",
+      status: "succeeded",
+      summary: "Draft pull request is ready",
+      classification: null,
+      createdAt: new Date().toISOString(),
+    },
+  ]);
   return {
     workspace: published,
     commitSha: "mockcommit",
@@ -635,6 +659,8 @@ export const mockChatApi = {
   getAgentConversationWorkspace: mockGetAgentConversationWorkspace,
   listAgentConversationWorkspacesByProject:
     mockListAgentConversationWorkspacesByProject,
+  listAgentConversationWorkspacePublicationEvents:
+    mockListAgentConversationWorkspacePublicationEvents,
   publishAgentConversationWorkspace: mockPublishAgentConversationWorkspace,
   startAgentConversation: mockStartAgentConversation,
   switchAgentConversationMode: mockSwitchAgentConversationMode,

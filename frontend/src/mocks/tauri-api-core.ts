@@ -19,6 +19,7 @@ import {
   mockGetAgentConversationWorkspace,
   mockGetConversation,
   mockGetConversationStats,
+  mockListAgentConversationWorkspacePublicationEvents,
   mockListConversations,
   mockListConversationsPage,
   mockPublishAgentConversationWorkspace,
@@ -218,6 +219,20 @@ const commandHandlers: Record<
       created_at: workspace.createdAt,
       updated_at: workspace.updatedAt,
     };
+  },
+  list_agent_conversation_workspace_publication_events: async (args) => {
+    const events = await mockListAgentConversationWorkspacePublicationEvents(
+      args.conversationId as string
+    );
+    return events.map((event) => ({
+      id: event.id,
+      conversation_id: event.conversationId,
+      step: event.step,
+      status: event.status,
+      summary: event.summary,
+      classification: event.classification,
+      created_at: event.createdAt,
+    }));
   },
   publish_agent_conversation_workspace: async (args) => {
     const result = await mockPublishAgentConversationWorkspace(args.conversationId as string);

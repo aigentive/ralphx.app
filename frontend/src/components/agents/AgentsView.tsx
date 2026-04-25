@@ -976,6 +976,9 @@ export function AgentsView({
           queryClient.invalidateQueries({
             queryKey: ["agents", "conversation-workspace", conversationId],
           }),
+          queryClient.invalidateQueries({
+            queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
+          }),
           conversation?.projectId
             ? invalidateProjectConversations(conversation.projectId)
             : Promise.resolve(),
@@ -985,6 +988,9 @@ export function AgentsView({
         let refreshedWorkspace: AgentConversationWorkspace | null = null;
         try {
           refreshedWorkspace = await chatApi.getAgentConversationWorkspace(conversationId);
+          void queryClient.invalidateQueries({
+            queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
+          });
           if (refreshedWorkspace) {
             queryClient.setQueryData(
               ["agents", "conversation-workspace", conversationId],

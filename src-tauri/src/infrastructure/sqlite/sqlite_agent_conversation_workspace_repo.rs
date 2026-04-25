@@ -7,7 +7,8 @@ use rusqlite::Connection;
 use tokio::sync::Mutex;
 
 use crate::domain::entities::{
-    AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentConversationWorkspaceStatus,
+    AgentConversationWorkspace, AgentConversationWorkspaceMode,
+    AgentConversationWorkspacePublicationEvent, AgentConversationWorkspaceStatus,
     ChatConversationId, IdeationAnalysisBaseRefKind, IdeationSessionId, PlanBranchId, ProjectId,
 };
 use crate::domain::repositories::AgentConversationWorkspaceRepository;
@@ -23,6 +24,10 @@ fn parse_datetime(value: &str) -> DateTime<Utc> {
     }
     Utc::now()
 }
+
+#[cfg(test)]
+#[path = "sqlite_agent_conversation_workspace_repo_tests.rs"]
+mod tests;
 
 fn row_to_workspace(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentConversationWorkspace> {
     let mode: String = row.get("mode")?;
@@ -57,6 +62,21 @@ fn row_to_workspace(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentConversati
             .unwrap_or(AgentConversationWorkspaceStatus::Active),
         created_at: parse_datetime(&created_at),
         updated_at: parse_datetime(&updated_at),
+    })
+}
+
+fn row_to_publication_event(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<AgentConversationWorkspacePublicationEvent> {
+    let created_at: String = row.get("created_at")?;
+    Ok(AgentConversationWorkspacePublicationEvent {
+        id: row.get("id")?,
+        conversation_id: ChatConversationId::from_string(row.get::<_, String>("conversation_id")?),
+        step: row.get("step")?,
+        status: row.get("status")?,
+        summary: row.get("summary")?,
+        classification: row.get("classification")?,
+        created_at: parse_datetime(&created_at),
     })
 }
 
@@ -295,6 +315,61 @@ impl AgentConversationWorkspaceRepository for SqliteAgentConversationWorkspaceRe
                     rusqlite::params![conversation_id, status, updated_at],
                 )?;
                 Ok(())
+            })
+            .await
+    }
+
+    async fn append_publication_event(
+        &self,
+        event: AgentConversationWorkspacePublicationEvent,
+    ) -> AppResult<()> {
+        let id = event.id;
+        let conversation_id = event.conversation_id.as_str().to_string();
+        let step = event.step;
+        let status = event.status;
+        let summary = event.summary;
+        let classification = event.classification;
+        let created_at = event.created_at.to_rfc3339();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO agent_conversation_workspace_publication_events (
+                        id, conversation_id, step, status, summary, classification, created_at
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![
+                        id,
+                        conversation_id,
+                        step,
+                        status,
+                        summary,
+                        classification,
+                        created_at
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn list_publication_events(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> AppResult<Vec<AgentConversationWorkspacePublicationEvent>> {
+        let conversation_id = conversation_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT * FROM agent_conversation_workspace_publication_events
+                     WHERE conversation_id = ?1
+                     ORDER BY created_at ASC, rowid ASC",
+                )?;
+                let rows =
+                    stmt.query_map(rusqlite::params![conversation_id], row_to_publication_event)?;
+                let mut events = Vec::new();
+                for row in rows {
+                    events.push(row?);
+                }
+                Ok(events)
             })
             .await
     }

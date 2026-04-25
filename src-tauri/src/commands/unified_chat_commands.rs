@@ -27,8 +27,8 @@ use crate::application::chat_service::{
 };
 use crate::application::git_service::GitService;
 use crate::application::publish_resilience::{
-    ensure_publish_branch_fresh, publish_push_status_for_failure, review_base_for_publish,
-    PublishBranchFreshnessOutcome,
+    classify_publish_failure, ensure_publish_branch_fresh, publish_push_status_for_failure,
+    review_base_for_publish, PublishBranchFreshnessOutcome, PublishFailureClass,
 };
 use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, SendResult,
@@ -36,8 +36,9 @@ use crate::application::{
 use crate::commands::ExecutionState;
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
-    AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentRunId, AgentRunStatus,
-    ChatContextType, ChatConversation, ChatConversationId, DelegatedSessionId,
+    AgentConversationWorkspace, AgentConversationWorkspaceMode,
+    AgentConversationWorkspacePublicationEvent, AgentRunId, AgentRunStatus, ChatContextType,
+    ChatConversation, ChatConversationId, DelegatedSessionId,
     IdeationAnalysisBaseRefKind, IdeationSessionId, ProjectId, TaskId,
 };
 use crate::domain::services::{AgentWorkspacePrPublisher, QueuedMessage, RunningAgentKey};
@@ -207,6 +208,34 @@ pub struct PublishAgentConversationWorkspaceResponse {
     pub created_pr: bool,
     pub pr_number: Option<i64>,
     pub pr_url: Option<String>,
+}
+
+/// Durable publish operation event for an agent conversation workspace.
+#[derive(Debug, Serialize)]
+pub struct AgentConversationWorkspacePublicationEventResponse {
+    pub id: String,
+    pub conversation_id: String,
+    pub step: String,
+    pub status: String,
+    pub summary: String,
+    pub classification: Option<String>,
+    pub created_at: String,
+}
+
+impl From<AgentConversationWorkspacePublicationEvent>
+    for AgentConversationWorkspacePublicationEventResponse
+{
+    fn from(event: AgentConversationWorkspacePublicationEvent) -> Self {
+        Self {
+            id: event.id,
+            conversation_id: event.conversation_id.as_str(),
+            step: event.step,
+            status: event.status,
+            summary: event.summary,
+            classification: event.classification,
+            created_at: event.created_at.to_rfc3339(),
+        }
+    }
 }
 
 /// Input for queue_agent_message command
@@ -1612,6 +1641,26 @@ pub async fn list_agent_conversation_workspaces_by_project(
         })
 }
 
+/// List durable publish events for a project-backed agent conversation workspace.
+#[tauri::command]
+pub async fn list_agent_conversation_workspace_publication_events(
+    conversation_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<AgentConversationWorkspacePublicationEventResponse>, String> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    state
+        .agent_conversation_workspace_repo
+        .list_publication_events(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())
+        .map(|events| {
+            events
+                .into_iter()
+                .map(AgentConversationWorkspacePublicationEventResponse::from)
+                .collect()
+        })
+}
+
 /// Commit and publish a general edit agent conversation workspace.
 #[tauri::command]
 pub async fn publish_agent_conversation_workspace(
@@ -1796,28 +1845,11 @@ pub async fn publish_agent_conversation_workspace(
         }
     };
     if reviewable_commit_count == 0 {
-        let _ = state
-            .agent_conversation_workspace_repo
-            .update_publication(
-                &workspace.conversation_id,
-                workspace.publication_pr_number,
-                workspace.publication_pr_url.as_deref(),
-                workspace.publication_pr_status.as_deref(),
-                Some("no_changes"),
-            )
-            .await;
+        let _ = mark_agent_workspace_publish_status(&state, &workspace, "no_changes").await;
         return Err("No committed changes to publish on this agent branch".to_string());
     }
 
-    state
-        .agent_conversation_workspace_repo
-        .update_publication(
-            &workspace.conversation_id,
-            workspace.publication_pr_number,
-            workspace.publication_pr_url.as_deref(),
-            workspace.publication_pr_status.as_deref(),
-            Some("pushing"),
-        )
+    mark_agent_workspace_publish_status(&state, &workspace, "pushing")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1830,15 +1862,7 @@ pub async fn publish_agent_conversation_workspace(
         return Err(error);
     }
 
-    state
-        .agent_conversation_workspace_repo
-        .update_publication(
-            &workspace.conversation_id,
-            workspace.publication_pr_number,
-            workspace.publication_pr_url.as_deref(),
-            workspace.publication_pr_status.as_deref(),
-            Some("pushed"),
-        )
+    mark_agent_workspace_publish_status(&state, &workspace, "pushed")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1866,6 +1890,16 @@ pub async fn publish_agent_conversation_workspace(
         )
         .await
         .map_err(|e| e.to_string())?;
+    append_agent_workspace_publication_event(
+        &state,
+        &workspace.conversation_id,
+        "published",
+        "succeeded",
+        "Draft pull request is ready",
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
 
     let refreshed = state
         .agent_conversation_workspace_repo
@@ -1898,7 +1932,16 @@ async fn mark_agent_workspace_publish_status(
             workspace.publication_pr_status.as_deref(),
             Some(push_status),
         )
-        .await
+        .await?;
+    append_agent_workspace_publication_event(
+        state,
+        &workspace.conversation_id,
+        push_status,
+        publication_event_status_for_push_status(push_status),
+        publication_event_summary_for_push_status(push_status),
+        None,
+    )
+    .await
 }
 
 async fn mark_agent_workspace_publish_failure(
@@ -1908,6 +1951,10 @@ async fn mark_agent_workspace_publish_failure(
     pr_status_override: Option<&str>,
 ) {
     let push_status = publish_push_status_for_failure(error);
+    let classification = match classify_publish_failure(error) {
+        PublishFailureClass::AgentFixable => "agent_fixable",
+        PublishFailureClass::Operational => "operational",
+    };
     let _ = state
         .agent_conversation_workspace_repo
         .update_publication(
@@ -1918,6 +1965,58 @@ async fn mark_agent_workspace_publish_failure(
             Some(push_status),
         )
         .await;
+    let _ = append_agent_workspace_publication_event(
+        state,
+        &workspace.conversation_id,
+        push_status,
+        "failed",
+        error,
+        Some(classification.to_string()),
+    )
+    .await;
+}
+
+async fn append_agent_workspace_publication_event(
+    state: &AppState,
+    conversation_id: &ChatConversationId,
+    step: &str,
+    status: &str,
+    summary: &str,
+    classification: Option<String>,
+) -> crate::error::AppResult<()> {
+    state
+        .agent_conversation_workspace_repo
+        .append_publication_event(AgentConversationWorkspacePublicationEvent::new(
+            *conversation_id,
+            step,
+            status,
+            summary,
+            classification,
+        ))
+        .await
+}
+
+fn publication_event_status_for_push_status(push_status: &str) -> &'static str {
+    match push_status {
+        "pushed" => "succeeded",
+        "no_changes" => "skipped",
+        "failed" | "needs_agent" => "failed",
+        _ => "started",
+    }
+}
+
+fn publication_event_summary_for_push_status(push_status: &str) -> &'static str {
+    match push_status {
+        "checking" => "Checking workspace changes",
+        "committing" => "Committing workspace changes",
+        "refreshing" => "Refreshing branch from base",
+        "pushing" => "Pushing agent branch",
+        "pushed" => "Agent branch pushed",
+        "no_changes" => "No committed changes to publish",
+        "needs_agent" => "Publish needs workspace agent repair",
+        "failed" => "Publish failed",
+        _ => "Publish status changed",
+    }
 }
 
 /// Persist a child workflow milestone into a parent project-agent conversation.

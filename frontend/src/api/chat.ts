@@ -912,6 +912,7 @@ export const chatApi = {
   appendAgentBridgeMessage,
   getAgentConversationWorkspace,
   listAgentConversationWorkspacesByProject,
+  listAgentConversationWorkspacePublicationEvents,
   publishAgentConversationWorkspace,
   getAgentRunStatus,
   // Message sending & queue
@@ -1017,6 +1018,16 @@ export interface PublishAgentConversationWorkspaceResult {
   prUrl: string | null;
 }
 
+export interface AgentConversationWorkspacePublicationEvent {
+  id: string;
+  conversationId: string;
+  step: string;
+  status: string;
+  summary: string;
+  classification: string | null;
+  createdAt: string;
+}
+
 const SendAgentMessageResponseSchema = z.object({
   conversation_id: z.string(),
   agent_run_id: z.string(),
@@ -1051,6 +1062,18 @@ const AgentConversationWorkspaceResponseSchema = z.object({
 const AgentConversationWorkspaceListResponseSchema = z.array(
   AgentConversationWorkspaceResponseSchema
 );
+const AgentConversationWorkspacePublicationEventResponseSchema = z.object({
+  id: z.string(),
+  conversation_id: z.string(),
+  step: z.string(),
+  status: z.string(),
+  summary: z.string(),
+  classification: z.string().nullable(),
+  created_at: z.string(),
+});
+const AgentConversationWorkspacePublicationEventListResponseSchema = z.array(
+  AgentConversationWorkspacePublicationEventResponseSchema
+);
 
 const StartAgentConversationResponseSchema = z.object({
   conversation: ChatConversationResponseSchema,
@@ -1083,6 +1106,9 @@ type RawSwitchAgentConversationModeResponse = z.infer<
 >;
 type RawPublishAgentConversationWorkspaceResponse = z.infer<
   typeof PublishAgentConversationWorkspaceResponseSchema
+>;
+type RawAgentConversationWorkspacePublicationEvent = z.infer<
+  typeof AgentConversationWorkspacePublicationEventResponseSchema
 >;
 
 function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): SendAgentMessageResult {
@@ -1153,6 +1179,20 @@ function transformPublishAgentConversationWorkspaceResponse(
   };
 }
 
+function transformAgentConversationWorkspacePublicationEvent(
+  raw: RawAgentConversationWorkspacePublicationEvent
+): AgentConversationWorkspacePublicationEvent {
+  return {
+    id: raw.id,
+    conversationId: raw.conversation_id,
+    step: raw.step,
+    status: raw.status,
+    summary: raw.summary,
+    classification: raw.classification,
+    createdAt: raw.created_at,
+  };
+}
+
 export async function getAgentConversationWorkspace(
   conversationId: string
 ): Promise<AgentConversationWorkspace | null> {
@@ -1173,6 +1213,17 @@ export async function listAgentConversationWorkspacesByProject(
     AgentConversationWorkspaceListResponseSchema
   );
   return raw.map(transformAgentConversationWorkspace);
+}
+
+export async function listAgentConversationWorkspacePublicationEvents(
+  conversationId: string
+): Promise<AgentConversationWorkspacePublicationEvent[]> {
+  const raw = await typedInvoke(
+    "list_agent_conversation_workspace_publication_events",
+    { conversationId },
+    AgentConversationWorkspacePublicationEventListResponseSchema
+  );
+  return raw.map(transformAgentConversationWorkspacePublicationEvent);
 }
 
 export async function publishAgentConversationWorkspace(

@@ -14,6 +14,7 @@ import {
   archiveConversation,
   restoreConversation,
   getAgentRunStatus,
+  listAgentConversationWorkspacePublicationEvents,
   listAgentConversationWorkspacesByProject,
   startAgentConversation,
   switchAgentConversationMode,
@@ -639,6 +640,33 @@ describe("chat api", () => {
     });
   });
 
+  it("lists agent conversation workspace publication events", async () => {
+    mockInvoke.mockResolvedValue([
+      {
+        id: "event-1",
+        conversation_id: "conversation-1",
+        step: "refreshing",
+        status: "started",
+        summary: "Refreshing branch from base",
+        classification: null,
+        created_at: "2026-04-26T09:01:00Z",
+      },
+    ]);
+
+    const result =
+      await listAgentConversationWorkspacePublicationEvents("conversation-1");
+
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "list_agent_conversation_workspace_publication_events",
+      { conversationId: "conversation-1" }
+    );
+    expect(result[0]).toMatchObject({
+      conversationId: "conversation-1",
+      step: "refreshing",
+      summary: "Refreshing branch from base",
+    });
+  });
+
   it("starts chat-mode agent conversations with a selected workspace base", async () => {
     mockInvoke.mockResolvedValue({
       conversation: {
@@ -872,6 +900,9 @@ describe("chat api", () => {
     expect(chatApi.listConversations).toBe(listConversations);
     expect(chatApi.listAgentConversationWorkspacesByProject).toBe(
       listAgentConversationWorkspacesByProject
+    );
+    expect(chatApi.listAgentConversationWorkspacePublicationEvents).toBe(
+      listAgentConversationWorkspacePublicationEvents
     );
     expect(chatApi.switchAgentConversationMode).toBe(switchAgentConversationMode);
     expect(chatApi.archiveConversation).toBe(archiveConversation);

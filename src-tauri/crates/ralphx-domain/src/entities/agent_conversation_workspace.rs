@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::entities::{
     ChatConversationId, IdeationAnalysisBaseRefKind, IdeationSessionId, PlanBranchId, ProjectId,
@@ -132,5 +133,36 @@ impl AgentConversationWorkspace {
 
     pub fn is_execution_owned(&self) -> bool {
         self.linked_plan_branch_id.is_some()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentConversationWorkspacePublicationEvent {
+    pub id: String,
+    pub conversation_id: ChatConversationId,
+    pub step: String,
+    pub status: String,
+    pub summary: String,
+    pub classification: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl AgentConversationWorkspacePublicationEvent {
+    pub fn new(
+        conversation_id: ChatConversationId,
+        step: impl Into<String>,
+        status: impl Into<String>,
+        summary: impl Into<String>,
+        classification: Option<String>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            conversation_id,
+            step: step.into(),
+            status: status.into(),
+            summary: summary.into(),
+            classification,
+            created_at: Utc::now(),
+        }
     }
 }

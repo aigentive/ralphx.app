@@ -8,10 +8,27 @@ import type { AgentArtifactTab } from "@/stores/agentSessionStore";
 import { createTestQueryClient } from "@/test/store-utils";
 import { AgentsArtifactPane } from "./AgentsArtifactPane";
 
-const { getWorkspaceChangesMock, getWorkspaceDiffMock } = vi.hoisted(() => ({
+const {
+  getWorkspaceChangesMock,
+  getWorkspaceDiffMock,
+  listPublicationEventsMock,
+} = vi.hoisted(() => ({
   getWorkspaceChangesMock: vi.fn(),
   getWorkspaceDiffMock: vi.fn(),
+  listPublicationEventsMock: vi.fn(),
 }));
+
+vi.mock("@/api/chat", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/chat")>();
+  return {
+    ...actual,
+    chatApi: {
+      ...actual.chatApi,
+      listAgentConversationWorkspacePublicationEvents: (...args: unknown[]) =>
+        listPublicationEventsMock(...args),
+    },
+  };
+});
 
 vi.mock("@/api/diff", () => ({
   diffApi: {
@@ -84,6 +101,7 @@ describe("AgentsArtifactPane", () => {
       newContent: "new",
       language: "typescript",
     });
+    listPublicationEventsMock.mockResolvedValue([]);
   });
 
   it("anchors the active tab border to the bottom edge of the tab bar", () => {
@@ -151,5 +169,34 @@ describe("AgentsArtifactPane", () => {
 
     expect(screen.getByTestId("agents-publish-pipeline")).toBeInTheDocument();
     expect(screen.getByText(/sent it back to the workspace agent/i)).toBeInTheDocument();
+  });
+
+  it("renders durable publish history in the publish pane", async () => {
+    listPublicationEventsMock.mockResolvedValue([
+      {
+        id: "event-1",
+        conversationId: "conversation-1",
+        step: "refreshing",
+        status: "started",
+        summary: "Refreshing branch from base",
+        classification: null,
+        createdAt: "2026-04-26T09:01:00Z",
+      },
+      {
+        id: "event-2",
+        conversationId: "conversation-1",
+        step: "needs_agent",
+        status: "failed",
+        summary: "Pre-commit hook failed",
+        classification: "agent_fixable",
+        createdAt: "2026-04-26T09:02:00Z",
+      },
+    ]);
+
+    renderPane("publish", workspace({ mode: "edit", publicationPushStatus: "needs_agent" }));
+
+    expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
+    expect(screen.getByText("Pre-commit hook failed")).toBeInTheDocument();
+    expect(screen.getByText(/agent fixable/i)).toBeInTheDocument();
   });
 });

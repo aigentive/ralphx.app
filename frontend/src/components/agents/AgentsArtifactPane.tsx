@@ -18,7 +18,11 @@ import { toast } from "sonner";
 import { artifactApi } from "@/api/artifact";
 import { diffApi } from "@/api/diff";
 import { ideationApi, toTaskProposal } from "@/api/ideation";
-import { chatApi, type AgentConversationWorkspace } from "@/api/chat";
+import {
+  chatApi,
+  type AgentConversationWorkspace,
+  type AgentConversationWorkspacePublicationEvent,
+} from "@/api/chat";
 import { DiffViewer, type FileChange as DiffViewerFileChange } from "@/components/diff";
 import { TaskGraphView } from "@/components/TaskGraph";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
@@ -501,7 +505,16 @@ function AgentPublishPanel({
     enabled: !!conversationId,
     staleTime: 2_000,
   });
+  const publicationEventsQuery = useQuery({
+    queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
+    queryFn: () =>
+      chatApi.listAgentConversationWorkspacePublicationEvents(conversationId!),
+    enabled: !!conversationId,
+    staleTime: 0,
+    refetchInterval: isPublishingWorkspace ? 1_500 : false,
+  });
   const changes = changesQuery.data ?? [];
+  const publicationEvents = publicationEventsQuery.data ?? [];
 
   if (!workspace) {
     return <EmptyArtifactState title="No workspace selected" />;
@@ -560,6 +573,10 @@ function AgentPublishPanel({
           <PublishPipelineSteps
             status={workspace.publicationPushStatus}
             isPublishing={isPublishingWorkspace}
+          />
+          <PublishEventLog
+            events={publicationEvents}
+            isLoading={publicationEventsQuery.isLoading}
           />
         </section>
 
@@ -649,6 +666,80 @@ function AgentPublishPanel({
           />
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function PublishEventLog({
+  events,
+  isLoading,
+}: {
+  events: AgentConversationWorkspacePublicationEvent[];
+  isLoading: boolean;
+}) {
+  if (isLoading && events.length === 0) {
+    return (
+      <div className="mt-4 text-xs text-[var(--text-muted)]">
+        Loading publish history...
+      </div>
+    );
+  }
+
+  if (events.length === 0) {
+    return null;
+  }
+
+  const recentEvents = events.slice(-6).reverse();
+
+  return (
+    <div className="mt-4" data-testid="agents-publish-events">
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+        Publish history
+      </div>
+      <div className="space-y-2">
+        {recentEvents.map((event) => (
+          <div
+            key={event.id}
+            className="flex items-start gap-2 text-xs"
+            data-testid={`agents-publish-event-${event.step}`}
+          >
+            <span
+              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border"
+              style={{
+                borderColor:
+                  event.status === "failed"
+                    ? "var(--status-danger)"
+                    : event.status === "succeeded"
+                      ? "var(--status-success)"
+                      : "var(--overlay-weak)",
+                color:
+                  event.status === "failed"
+                    ? "var(--status-danger)"
+                    : event.status === "succeeded"
+                      ? "var(--status-success)"
+                      : "var(--text-muted)",
+              }}
+            >
+              {event.status === "failed" ? (
+                <X className="h-3 w-3" />
+              ) : event.status === "succeeded" ? (
+                <CheckCircle2 className="h-3 w-3" />
+              ) : (
+                <Loader2 className="h-3 w-3" />
+              )}
+            </span>
+            <div className="min-w-0">
+              <div className="font-medium text-[var(--text-primary)]">
+                {event.summary}
+              </div>
+              <div className="mt-0.5 text-[11px] capitalize text-[var(--text-muted)]">
+                {event.step.replace(/_/g, " ")}
+                {event.classification ? ` / ${event.classification.replace(/_/g, " ")}` : ""}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

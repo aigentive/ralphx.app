@@ -5,20 +5,24 @@ use chrono::Utc;
 use tokio::sync::RwLock;
 
 use crate::domain::entities::{
-    AgentConversationWorkspace, AgentConversationWorkspaceStatus, ChatConversationId,
-    IdeationSessionId, PlanBranchId, ProjectId,
+    AgentConversationWorkspace, AgentConversationWorkspacePublicationEvent,
+    AgentConversationWorkspaceStatus, ChatConversationId, IdeationSessionId, PlanBranchId,
+    ProjectId,
 };
 use crate::domain::repositories::AgentConversationWorkspaceRepository;
 use crate::error::AppResult;
 
 pub struct MemoryAgentConversationWorkspaceRepository {
     workspaces: RwLock<HashMap<ChatConversationId, AgentConversationWorkspace>>,
+    publication_events:
+        RwLock<HashMap<ChatConversationId, Vec<AgentConversationWorkspacePublicationEvent>>>,
 }
 
 impl MemoryAgentConversationWorkspaceRepository {
     pub fn new() -> Self {
         Self {
             workspaces: RwLock::new(HashMap::new()),
+            publication_events: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -109,8 +113,102 @@ impl AgentConversationWorkspaceRepository for MemoryAgentConversationWorkspaceRe
         Ok(())
     }
 
+    async fn append_publication_event(
+        &self,
+        event: AgentConversationWorkspacePublicationEvent,
+    ) -> AppResult<()> {
+        self.publication_events
+            .write()
+            .await
+            .entry(event.conversation_id)
+            .or_default()
+            .push(event);
+        Ok(())
+    }
+
+    async fn list_publication_events(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> AppResult<Vec<AgentConversationWorkspacePublicationEvent>> {
+        Ok(self
+            .publication_events
+            .read()
+            .await
+            .get(conversation_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+
     async fn delete(&self, conversation_id: &ChatConversationId) -> AppResult<()> {
         self.workspaces.write().await.remove(conversation_id);
+        self.publication_events.write().await.remove(conversation_id);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::entities::{
+        AgentConversationWorkspacePublicationEvent, ChatConversationId,
+    };
+    use crate::domain::repositories::AgentConversationWorkspaceRepository;
+
+    use super::MemoryAgentConversationWorkspaceRepository;
+
+    #[tokio::test]
+    async fn publication_events_are_listed_in_append_order() {
+        let repo = MemoryAgentConversationWorkspaceRepository::new();
+        let conversation_id = ChatConversationId::from_string("conversation-1");
+
+        repo.append_publication_event(AgentConversationWorkspacePublicationEvent::new(
+            conversation_id,
+            "checking",
+            "started",
+            "Checking workspace",
+            None,
+        ))
+        .await
+        .unwrap();
+        repo.append_publication_event(AgentConversationWorkspacePublicationEvent::new(
+            conversation_id,
+            "failed",
+            "failed",
+            "Pre-commit hook failed",
+            Some("agent_fixable".to_string()),
+        ))
+        .await
+        .unwrap();
+
+        let events = repo
+            .list_publication_events(&conversation_id)
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].step, "checking");
+        assert_eq!(events[1].classification.as_deref(), Some("agent_fixable"));
+    }
+
+    #[tokio::test]
+    async fn delete_removes_publication_events_for_conversation() {
+        let repo = MemoryAgentConversationWorkspaceRepository::new();
+        let conversation_id = ChatConversationId::from_string("conversation-1");
+        repo.append_publication_event(AgentConversationWorkspacePublicationEvent::new(
+            conversation_id,
+            "checking",
+            "started",
+            "Checking workspace",
+            None,
+        ))
+        .await
+        .unwrap();
+
+        repo.delete(&conversation_id).await.unwrap();
+
+        let events = repo
+            .list_publication_events(&conversation_id)
+            .await
+            .unwrap();
+        assert!(events.is_empty());
     }
 }
