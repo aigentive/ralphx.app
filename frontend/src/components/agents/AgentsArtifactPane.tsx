@@ -656,6 +656,7 @@ function AgentPublishPanel({
 const PUBLISH_STEPS = [
   { id: "checking", label: "Check workspace" },
   { id: "committing", label: "Commit changes" },
+  { id: "refreshing", label: "Refresh branch" },
   { id: "pushing", label: "Push branch" },
   { id: "pushed", label: "Open draft PR" },
 ] as const;
@@ -668,12 +669,21 @@ function PublishPipelineSteps({
   isPublishing: boolean;
 }) {
   const normalizedStatus = status ?? "idle";
-  const activeIndex =
-    normalizedStatus === "pushed"
-      ? PUBLISH_STEPS.length
-      : normalizedStatus === "pushing"
-        ? 2
-        : 0;
+  const activeIndex = (() => {
+    if (normalizedStatus === "pushed") {
+      return PUBLISH_STEPS.length;
+    }
+    if (normalizedStatus === "pushing") {
+      return 3;
+    }
+    if (normalizedStatus === "refreshing") {
+      return 2;
+    }
+    if (normalizedStatus === "committing") {
+      return 1;
+    }
+    return 0;
+  })();
   const isRepairStatus = normalizedStatus === "needs_agent";
   const isTerminalFailure = normalizedStatus === "failed" || isRepairStatus;
 
@@ -689,7 +699,7 @@ function PublishPipelineSteps({
       <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
         Publish pipeline
       </div>
-      <div className="grid gap-2 sm:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-5">
         {PUBLISH_STEPS.map((step, index) => {
           const isDone = activeIndex > index;
           const isActive = isPublishing && activeIndex === index;

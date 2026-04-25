@@ -139,6 +139,9 @@ describe("AgentsArtifactPane", () => {
     expect(screen.getByTestId("agents-publish-step-checking")).toHaveTextContent(
       "Check workspace"
     );
+    expect(screen.getByTestId("agents-publish-step-refreshing")).toHaveTextContent(
+      "Refresh branch"
+    );
     expect(screen.getByText(/Fixable errors are sent back to the workspace agent/i))
       .toBeInTheDocument();
   });

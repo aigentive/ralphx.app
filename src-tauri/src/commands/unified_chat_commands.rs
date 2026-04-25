@@ -1694,6 +1694,10 @@ pub async fn publish_agent_conversation_workspace(
         }
     };
 
+    mark_agent_workspace_publish_status(&state, &workspace, "checking")
+        .await
+        .map_err(|e| e.to_string())?;
+
     let has_uncommitted_changes = match GitService::has_uncommitted_changes(&worktree_path).await {
         Ok(has_changes) => has_changes,
         Err(error) => {
@@ -1704,6 +1708,9 @@ pub async fn publish_agent_conversation_workspace(
     };
 
     let commit_sha = if has_uncommitted_changes {
+        mark_agent_workspace_publish_status(&state, &workspace, "committing")
+            .await
+            .map_err(|e| e.to_string())?;
         let message = build_agent_workspace_commit_message(&conversation);
         match GitService::commit_all_including_deletions(&worktree_path, &message).await {
             Ok(commit_sha) => commit_sha,
@@ -1723,6 +1730,10 @@ pub async fn publish_agent_conversation_workspace(
         mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
         return Err(error);
     }
+
+    mark_agent_workspace_publish_status(&state, &workspace, "refreshing")
+        .await
+        .map_err(|e| e.to_string())?;
 
     let repo_path = std::path::Path::new(&project.working_directory);
     let freshness_conversation_id = workspace.conversation_id.as_str();
@@ -1765,6 +1776,10 @@ pub async fn publish_agent_conversation_workspace(
                 return Err(error);
             }
         };
+
+    mark_agent_workspace_publish_status(&state, &workspace, "checking")
+        .await
+        .map_err(|e| e.to_string())?;
 
     let reviewable_commit_count = match GitService::count_commits_not_on_branch(
         &worktree_path,
@@ -1867,6 +1882,23 @@ pub async fn publish_agent_conversation_workspace(
         pr_number: Some(outcome.pr_number),
         pr_url: Some(outcome.pr_url),
     })
+}
+
+async fn mark_agent_workspace_publish_status(
+    state: &AppState,
+    workspace: &AgentConversationWorkspace,
+    push_status: &str,
+) -> crate::error::AppResult<()> {
+    state
+        .agent_conversation_workspace_repo
+        .update_publication(
+            &workspace.conversation_id,
+            workspace.publication_pr_number,
+            workspace.publication_pr_url.as_deref(),
+            workspace.publication_pr_status.as_deref(),
+            Some(push_status),
+        )
+        .await
 }
 
 async fn mark_agent_workspace_publish_failure(
