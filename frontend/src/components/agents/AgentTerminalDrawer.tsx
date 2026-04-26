@@ -48,6 +48,7 @@ import {
 import { formatBranchDisplay } from "@/lib/branch-utils";
 import { cn } from "@/lib/utils";
 import { compactTerminalPath } from "./agentTerminalPaths";
+import { loadAgentTerminalRuntime } from "./agentTerminalRuntime";
 import type { AgentTerminalPlacement } from "./agentTerminalStore";
 
 interface AgentTerminalDrawerProps {
@@ -285,10 +286,7 @@ export function AgentTerminalDrawer({
     };
 
     const start = async () => {
-      const [{ Terminal }, { FitAddon }] = await Promise.all([
-        import("@xterm/xterm"),
-        import("@xterm/addon-fit"),
-      ]);
+      const { Terminal, FitAddon } = await loadAgentTerminalRuntime();
       if (disposed) {
         return;
       }

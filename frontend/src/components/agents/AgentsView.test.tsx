@@ -36,6 +36,8 @@ const {
   getWorkspaceDiffMock,
   toastErrorMock,
   toastSuccessMock,
+  preloadAgentTerminalExperienceMock,
+  terminalDrawerModuleLoadedMock,
   terminalDrawerMountMock,
   terminalDrawerUnmountMock,
 } = vi.hoisted(() => ({
@@ -61,6 +63,8 @@ const {
   getWorkspaceDiffMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
+  preloadAgentTerminalExperienceMock: vi.fn(),
+  terminalDrawerModuleLoadedMock: vi.fn(),
   terminalDrawerMountMock: vi.fn(),
   terminalDrawerUnmountMock: vi.fn(),
 }));
@@ -91,6 +95,7 @@ vi.mock("./useProjectAgentConversations", () => ({
 }));
 
 vi.mock("./AgentTerminalDrawer", async () => {
+  terminalDrawerModuleLoadedMock();
   const React = await vi.importActual<typeof import("react")>("react");
   const ReactDom = await vi.importActual<typeof import("react-dom")>("react-dom");
 
@@ -131,6 +136,12 @@ vi.mock("./AgentTerminalDrawer", async () => {
     },
   };
 });
+
+vi.mock("./agentTerminalPreload", () => ({
+  preloadAgentTerminalDrawer: () => import("./AgentTerminalDrawer"),
+  preloadAgentTerminalExperience: (...args: unknown[]) =>
+    preloadAgentTerminalExperienceMock(...args),
+}));
 
 vi.mock("@/hooks/useChat", () => ({
   chatKeys: {
@@ -241,12 +252,14 @@ vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
 vi.mock("./AgentsArtifactPane", () => ({
   AgentsArtifactPane: ({
     conversation,
+    activeTab,
     onPublishWorkspace,
   }: {
     conversation: AgentConversation | null;
+    activeTab?: string;
     onPublishWorkspace?: (conversationId: string) => Promise<void>;
   }) => (
-    <div data-testid="agents-artifact-pane">
+    <div data-testid="agents-artifact-pane" data-active-tab={activeTab ?? ""}>
       {conversation && onPublishWorkspace ? (
         <button
           type="button"
@@ -469,6 +482,7 @@ describe("AgentsChatHeader", () => {
     useProjectAgentConversationsMock.mockReset();
     useProjectsMock.mockReset();
     useConversationMock.mockReset();
+    preloadAgentTerminalExperienceMock.mockReset();
   });
 
   it("opts the title button out of the high-contrast default button border", () => {
@@ -737,6 +751,31 @@ describe("AgentsChatHeader", () => {
     expect(toggleTerminal).toHaveBeenCalledTimes(1);
   });
 
+  it("preloads terminal code when the terminal header action receives intent", () => {
+    const preloadTerminal = vi.fn();
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation()}
+        workspace={conversationWorkspace()}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        terminalOpen={false}
+        terminalUnavailableReason={null}
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleTerminal={vi.fn()}
+        onPreloadTerminal={preloadTerminal}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    const toggle = screen.getByTestId("agents-terminal-toggle");
+    fireEvent.pointerEnter(toggle);
+    fireEvent.focus(toggle);
+
+    expect(preloadTerminal).toHaveBeenCalledTimes(2);
+  });
+
   it("disables the terminal header action for branchless conversations", () => {
     renderWithProviders(
       <AgentsChatHeader
@@ -783,6 +822,7 @@ describe("AgentsView", () => {
     getWorkspaceDiffMock.mockReset();
     toastErrorMock.mockReset();
     toastSuccessMock.mockReset();
+    preloadAgentTerminalExperienceMock.mockReset();
     terminalDrawerMountMock.mockReset();
     terminalDrawerUnmountMock.mockReset();
 
@@ -916,6 +956,24 @@ describe("AgentsView", () => {
       activeTerminalByConversationId: {},
       placement: "auto",
     });
+  });
+
+  it("does not load the terminal drawer module until the terminal opens", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(
+      conversationWorkspace({ mode: "edit" })
+    );
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
+
+    renderAgentsView();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    expect(terminalDrawerModuleLoadedMock).not.toHaveBeenCalled();
   });
 
   it("defaults to the starter composer when no conversation is selected", async () => {
@@ -1114,9 +1172,12 @@ describe("AgentsView", () => {
     const user = userEvent.setup();
     const invalidateSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
     mockAgentViewData();
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
 
     renderAgentsView();
-    selectSidebarConversationRow();
 
     await waitFor(() =>
       expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
@@ -1239,7 +1300,6 @@ describe("AgentsView", () => {
     });
 
     renderAgentsView();
-    selectSidebarConversationRow();
 
     const pane = await screen.findByTestId("agents-artifact-resizable-pane");
     expect(pane).toHaveStyle({
@@ -1616,9 +1676,12 @@ describe("AgentsView", () => {
       })
     );
     mockSessionWithData();
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
 
     renderAgentsView();
-    selectSidebarConversationRow();
 
     await waitFor(() =>
       expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
@@ -1630,34 +1693,29 @@ describe("AgentsView", () => {
     expect(screen.queryByTestId("agents-artifact-pane")).not.toBeInTheDocument();
   });
 
-  it("does not auto-restore a persisted artifact pane when the conversation still has nothing to show", async () => {
-    mockAgentViewData(
-      conversation({
-        contextType: "ideation",
-        contextId: "session-1",
-        ideationSessionId: "session-1",
-        agentMode: "ideation",
-      })
-    );
-    mockSessionWithData();
+  it("restores a persisted artifact pane and active tab on conversation load", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
     resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
       artifactByConversationId: {
         "conversation-1": {
           isOpen: true,
-          activeTab: "plan",
+          activeTab: "publish",
           taskMode: "graph",
         },
       },
     });
 
     renderAgentsView();
-    selectSidebarConversationRow();
 
     await waitFor(() =>
       expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
     );
-    expect(screen.queryByTestId("agents-artifact-pane")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Open artifacts")).toBeInTheDocument();
+    const pane = await screen.findByTestId("agents-artifact-pane");
+    expect(pane).toHaveAttribute("data-active-tab", "publish");
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toBeInTheDocument();
   });
 
   it("still allows manually opening the artifact pane when the conversation has nothing to show", async () => {

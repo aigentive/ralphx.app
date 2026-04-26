@@ -10,6 +10,7 @@ import {
   type ElementType,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -79,7 +80,10 @@ import {
   normalizeRuntimeSelection,
 } from "./agentOptions";
 import { AgentComposerProjectLine, AgentComposerSurface } from "./AgentComposerSurface";
-import { AgentTerminalDrawer } from "./AgentTerminalDrawer";
+import {
+  preloadAgentTerminalDrawer,
+  preloadAgentTerminalExperience,
+} from "./agentTerminalPreload";
 import { AgentsStartComposer } from "./AgentsStartComposer";
 import {
   AGENT_TERMINAL_DEFAULT_HEIGHT,
@@ -111,6 +115,10 @@ const LazyAgentsArtifactPane = lazy(() =>
   import("./AgentsArtifactPane").then((module) => ({ default: module.AgentsArtifactPane })),
 );
 
+const LazyAgentTerminalDrawer = lazy(() =>
+  preloadAgentTerminalDrawer().then((module) => ({ default: module.AgentTerminalDrawer })),
+);
+
 const AGENTS_ARTIFACT_WIDTH_STORAGE_KEY = "ralphx-agents-artifact-width";
 const AGENTS_ARTIFACT_MIN_WIDTH = 320;
 const AGENTS_CHAT_MIN_WIDTH = 320;
@@ -135,6 +143,51 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return error;
   }
   return fallback;
+}
+
+function AgentTerminalLoadingShell({
+  height,
+  dockElement,
+}: {
+  height: number;
+  dockElement: HTMLElement | null;
+}) {
+  const shell = (
+    <div
+      className="relative shrink-0 overflow-hidden border-t"
+      style={{
+        height,
+        background: "var(--bg-base)",
+        borderColor: "var(--overlay-weak)",
+        boxShadow: "0 -16px 36px var(--shadow-card)",
+      }}
+      data-testid="agent-terminal-loading-shell"
+    >
+      <div
+        className="flex h-9 items-center gap-2 border-b px-3 text-xs"
+        style={{
+          background: "var(--bg-surface)",
+          borderColor: "var(--overlay-faint)",
+          color: "var(--text-secondary)",
+        }}
+      >
+        <TerminalIcon
+          className="h-3.5 w-3.5 shrink-0"
+          style={{ color: "var(--accent-primary)" }}
+        />
+        <span className="font-medium" style={{ color: "var(--text-primary)" }}>
+          Terminal
+        </span>
+        <span className="h-1 w-1 rounded-full" style={{ background: "var(--text-muted)" }} />
+        <span>Opening</span>
+      </div>
+      <div className="px-3 py-2 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+        Starting terminal...
+      </div>
+    </div>
+  );
+
+  return dockElement ? createPortal(shell, dockElement) : shell;
 }
 
 interface AgentsViewProps {
@@ -167,8 +220,6 @@ export function AgentsView({
     return Number.isFinite(parsed) && parsed >= AGENTS_ARTIFACT_MIN_WIDTH ? parsed : null;
   });
   const [isArtifactResizing, setIsArtifactResizing] = useState(false);
-  const [manualArtifactVisibilityByConversationId, setManualArtifactVisibilityByConversationId] =
-    useState<Record<string, boolean>>({});
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const artifactResizeFrameRef = useRef<number | null>(null);
   const pendingArtifactWidthRef = useRef<number | null>(null);
@@ -351,14 +402,9 @@ export function AgentsView({
         attachedIdeationSessionData.proposals.length > 0
     );
   }, [attachedIdeationSessionData]);
-  const hasManualArtifactVisibility =
-    !!selectedConversationId &&
-    Boolean(manualArtifactVisibilityByConversationId[selectedConversationId]);
-  const artifactPaneOpen = hasAutoOpenArtifacts
-    ? hasStoredArtifactState
-      ? artifactState.isOpen
-      : true
-    : hasManualArtifactVisibility && artifactState.isOpen;
+  const artifactPaneOpen = hasStoredArtifactState
+    ? artifactState.isOpen
+    : hasAutoOpenArtifacts;
   useAgentConversationTitleEvents(activeProjectId);
   useProjectAgentBridgeEvents({
     conversation: activeConversation,
@@ -368,10 +414,6 @@ export function AgentsView({
 
   const setArtifactPaneVisibility = useCallback(
     (conversationId: string, isOpen: boolean) => {
-      setManualArtifactVisibilityByConversationId((current) => ({
-        ...current,
-        [conversationId]: true,
-      }));
       setArtifactOpen(conversationId, isOpen);
     },
     [setArtifactOpen],
@@ -379,10 +421,6 @@ export function AgentsView({
 
   const toggleArtifactPaneVisibility = useCallback(
     (conversationId: string, isOpen: boolean) => {
-      setManualArtifactVisibilityByConversationId((current) => ({
-        ...current,
-        [conversationId]: true,
-      }));
       setArtifactOpen(conversationId, !isOpen);
     },
     [setArtifactOpen],
@@ -390,10 +428,6 @@ export function AgentsView({
 
   const openArtifactTab = useCallback(
     (conversationId: string, tab: AgentArtifactTab) => {
-      setManualArtifactVisibilityByConversationId((current) => ({
-        ...current,
-        [conversationId]: true,
-      }));
       setArtifactTab(conversationId, tab);
     },
     [setArtifactTab],
@@ -579,20 +613,39 @@ export function AgentsView({
     },
     [artifactPaneOpen, openArtifactTab, selectedConversationId, setTerminalPlacement],
   );
+  const handlePreloadTerminal = useCallback(() => {
+    preloadAgentTerminalExperience();
+  }, []);
+  const handleToggleTerminal = useCallback(() => {
+    if (!selectedConversationId) {
+      return;
+    }
+    handlePreloadTerminal();
+    toggleTerminalOpen(selectedConversationId);
+  }, [handlePreloadTerminal, selectedConversationId, toggleTerminalOpen]);
   const terminalDrawer =
     shouldRenderTerminal && selectedConversationId && activeWorkspace ? (
-      <AgentTerminalDrawer
-        conversationId={selectedConversationId}
-        workspace={activeWorkspace}
-        height={activeTerminalHeight}
-        onHeightChange={(nextHeight) =>
-          setTerminalHeight(selectedConversationId, nextHeight)
+      <Suspense
+        fallback={
+          <AgentTerminalLoadingShell
+            height={activeTerminalHeight}
+            dockElement={terminalDockElement}
+          />
         }
-        onClose={() => setTerminalOpen(selectedConversationId, false)}
-        placement={terminalPlacement}
-        onPlacementChange={handleTerminalPlacementChange}
-        dockElement={terminalDockElement}
-      />
+      >
+        <LazyAgentTerminalDrawer
+          conversationId={selectedConversationId}
+          workspace={activeWorkspace}
+          height={activeTerminalHeight}
+          onHeightChange={(nextHeight) =>
+            setTerminalHeight(selectedConversationId, nextHeight)
+          }
+          onClose={() => setTerminalOpen(selectedConversationId, false)}
+          placement={terminalPlacement}
+          onPlacementChange={handleTerminalPlacementChange}
+          dockElement={terminalDockElement}
+        />
+      </Suspense>
     ) : null;
 
   useEffect(() => {
@@ -1470,7 +1523,8 @@ export function AgentsView({
                       onOpenPublishPane={handleOpenPublishPane}
                       publishShortcutLabel={publishShortcutLabel}
                       isPublishingWorkspace={publishingConversationId === selectedConversationId}
-                      onToggleTerminal={() => toggleTerminalOpen(selectedConversationId)}
+                      onToggleTerminal={handleToggleTerminal}
+                      onPreloadTerminal={handlePreloadTerminal}
                       onToggleArtifacts={() =>
                         toggleArtifactPaneVisibility(selectedConversationId, artifactPaneOpen)
                       }
@@ -1593,6 +1647,7 @@ interface AgentsChatHeaderProps {
   publishShortcutLabel?: string;
   isPublishingWorkspace?: boolean;
   onToggleTerminal?: () => void;
+  onPreloadTerminal?: () => void;
   onToggleArtifacts: () => void;
   onSelectArtifact: (tab: AgentArtifactTab) => void;
 }
@@ -1610,6 +1665,7 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   publishShortcutLabel = "Commit & Publish",
   isPublishingWorkspace = false,
   onToggleTerminal,
+  onPreloadTerminal,
   onToggleArtifacts,
   onSelectArtifact,
 }: AgentsChatHeaderProps) {
@@ -1697,6 +1753,8 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
               size="sm"
               className="h-8 w-8 p-0"
               onClick={onToggleTerminal}
+              onPointerEnter={onPreloadTerminal}
+              onFocus={onPreloadTerminal}
               disabled={!onToggleTerminal || Boolean(terminalUnavailableReason)}
               aria-label={terminalOpen ? "Close terminal" : "Open terminal"}
               data-testid="agents-terminal-toggle"
