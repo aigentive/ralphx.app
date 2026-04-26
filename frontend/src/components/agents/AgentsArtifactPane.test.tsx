@@ -236,6 +236,22 @@ describe("AgentsArtifactPane", () => {
     expect(screen.queryByTestId("agents-artifact-tab-tasks")).not.toBeInTheDocument();
   });
 
+  it("renders the publish pane shell before hydrating git-backed publish facts", async () => {
+    renderPane("publish", workspace({ mode: "edit" }));
+
+    expect(screen.getByTestId("agents-publish-pane")).toBeInTheDocument();
+    expect(screen.getByText("Loading changed files...")).toBeInTheDocument();
+    expect(getWorkspaceChangesMock).not.toHaveBeenCalled();
+    expect(getWorkspaceFreshnessMock).not.toHaveBeenCalled();
+    expect(listPublicationEventsMock).not.toHaveBeenCalled();
+
+    await waitFor(() =>
+      expect(getWorkspaceChangesMock).toHaveBeenCalledWith("conversation-1")
+    );
+    expect(getWorkspaceFreshnessMock).toHaveBeenCalledWith("conversation-1");
+    expect(listPublicationEventsMock).toHaveBeenCalledWith("conversation-1");
+  });
+
   it("does not start ideation queries for edit workspace publish panes", async () => {
     renderPane(
       "publish",

@@ -94,6 +94,7 @@ import { archivedConversationCountKey } from "./useArchivedConversationCounts";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
+import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
 
 const HEADER_ARTIFACT_TABS: Array<{
   id: AgentArtifactTab;
@@ -519,10 +520,16 @@ export function AgentsView({
       null
     : null;
   const normalizedActiveRuntime = normalizeRuntimeSelection(activeRuntime);
+  const canHydrateActiveWorkspaceFreshness = useDeferredAgentHydration(
+    selectedConversationId && activeWorkspace?.mode === "edit"
+      ? selectedConversationId
+      : null,
+  );
   const activeWorkspaceFreshnessQuery = useQuery({
     queryKey: ["agents", "conversation-workspace-freshness", selectedConversationId],
     queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(selectedConversationId!),
     enabled:
+      canHydrateActiveWorkspaceFreshness &&
       !!selectedConversationId &&
       activeWorkspace?.mode === "edit" &&
       activeWorkspace.status !== "missing",

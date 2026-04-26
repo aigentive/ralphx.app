@@ -49,6 +49,7 @@ import type { IdeationSession, TaskProposal } from "@/types/ideation";
 import type { DependencyGraphResponse } from "@/api/ideation.types";
 import type { AgentConversation } from "./agentConversations";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
+import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
 
 const EMPTY_PROPOSAL_HIGHLIGHTS = new Set<string>();
 
@@ -555,24 +556,25 @@ function AgentPublishPanel({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [commitFiles, setCommitFiles] = useState<DiffViewerFileChange[]>([]);
   const conversationId = workspace?.conversationId ?? null;
+  const canHydratePublishFacts = useDeferredAgentHydration(conversationId);
   const changesQuery = useQuery({
     queryKey: ["agents", "workspace-diff", conversationId],
     queryFn: () => diffApi.getAgentConversationWorkspaceFileChanges(conversationId!),
-    enabled: !!conversationId,
+    enabled: canHydratePublishFacts && !!conversationId,
     staleTime: 2_000,
   });
   const publicationEventsQuery = useQuery({
     queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
     queryFn: () =>
       chatApi.listAgentConversationWorkspacePublicationEvents(conversationId!),
-    enabled: !!conversationId,
+    enabled: canHydratePublishFacts && !!conversationId,
     staleTime: 0,
     refetchInterval: isPublishingWorkspace ? 1_500 : false,
   });
   const freshnessQuery = useQuery({
     queryKey: ["agents", "conversation-workspace-freshness", conversationId],
     queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(conversationId!),
-    enabled: !!conversationId && workspace?.mode === "edit",
+    enabled: canHydratePublishFacts && !!conversationId && workspace?.mode === "edit",
     staleTime: 5_000,
   });
   const updateFromBaseMutation = useMutation({
@@ -627,6 +629,11 @@ function AgentPublishPanel({
   });
   const changes = changesQuery.data ?? [];
   const publicationEvents = publicationEventsQuery.data ?? [];
+  const isChangesLoading =
+    Boolean(conversationId) && (!canHydratePublishFacts || changesQuery.isLoading);
+  const isPublicationEventsLoading =
+    Boolean(conversationId) &&
+    (!canHydratePublishFacts || publicationEventsQuery.isLoading);
 
   if (!workspace) {
     return <EmptyArtifactState title="No workspace selected" />;
@@ -759,7 +766,7 @@ function AgentPublishPanel({
                 Commit & Publish
               </div>
               <div className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
-                {changesQuery.isLoading
+                {isChangesLoading
                   ? "Loading changed files..."
                   : changes.length > 0
                     ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} ready for review.`
@@ -772,7 +779,7 @@ function AgentPublishPanel({
                 variant="ghost"
                 className="h-9 gap-2 px-3 text-xs"
                 onClick={() => setReviewOpen(true)}
-                disabled={changesQuery.isLoading || changes.length === 0}
+                disabled={isChangesLoading || changes.length === 0}
                 data-testid="agents-review-changes"
               >
                 <Code className="h-3.5 w-3.5" />
@@ -814,7 +821,7 @@ function AgentPublishPanel({
         </section>
         <PublishEventLog
           events={publicationEvents}
-          isLoading={publicationEventsQuery.isLoading}
+          isLoading={isPublicationEventsLoading}
           isPublishing={effectivePublishing}
         />
       </div>
