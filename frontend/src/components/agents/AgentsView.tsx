@@ -8,19 +8,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Menu } from "lucide-react";
 import { toast } from "sonner";
 
-import { chatApi } from "@/api/chat";
 import type {
   AgentConversationWorkspace,
   AgentConversationWorkspaceMode,
 } from "@/api/chat";
-import { executionApi } from "@/api/execution";
-import { ideationApi } from "@/api/ideation";
-import { projectsApi } from "@/api/projects";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { chatKeys } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
-import { projectKeys, useProjects } from "@/hooks/useProjects";
+import { useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
 import { withAlpha } from "@/lib/theme-colors";
 import { useChatStore } from "@/stores/chatStore";
@@ -67,6 +63,7 @@ import { useAgentsActiveComposerControls } from "./useAgentsActiveComposerContro
 import { useAgentWorkspacePublisher } from "./useAgentWorkspacePublisher";
 import { useStartAgentConversation } from "./useStartAgentConversation";
 import { useAgentConversationLookup } from "./useAgentConversationLookup";
+import { useAgentConversationActions } from "./useAgentConversationActions";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
@@ -172,60 +169,10 @@ export function AgentsView({
     setFocusedProject(projectId);
   }, [projectId, setFocusedProject]);
 
-  const handleSelectConversation = useCallback(
-    (conversationProjectId: string, conversation: AgentConversation) => {
-      if (
-        selectedProjectId === conversationProjectId &&
-        selectedConversationId === conversation.id
-      ) {
-        clearAgentConversationSelection();
-        return;
-      }
-
-      setOptimisticSelectedConversationId(conversation.id);
-      selectConversation(conversationProjectId, conversation.id);
-      setActiveConversation(
-        getAgentConversationStoreKey(conversation),
-        conversation.id
-      );
-    },
-    [
-      clearAgentConversationSelection,
-      selectConversation,
-      selectedConversationId,
-      selectedProjectId,
-      setActiveConversation,
-    ]
-  );
-
   const findConversationById = useAgentConversationLookup({
     focusedConversations,
     selectedConversationFallback,
   });
-
-  const showStarterComposer = useCallback(
-    (targetProjectId?: string | null) => {
-      const nextProjectId =
-        targetProjectId ??
-        focusedProjectId ??
-        selectedProjectId ??
-        projectId ??
-        projects[0]?.id ??
-        null;
-      if (nextProjectId) {
-        setFocusedProject(nextProjectId);
-      }
-      clearAgentConversationSelection();
-    },
-    [
-      clearAgentConversationSelection,
-      focusedProjectId,
-      projectId,
-      projects,
-      selectedProjectId,
-      setFocusedProject,
-    ]
-  );
 
   const invalidateProjectConversations = useCallback(
     async (targetProjectId: string) => {
@@ -289,32 +236,33 @@ export function AgentsView({
     setRuntimeForConversation,
   });
 
-  const handleSidebarFocusProject = useCallback(
-    (targetProjectId: string) => {
-      setFocusedProject(targetProjectId);
-      if (isSidebarOverlayOpen) {
-        closeSidebarOverlay();
-      }
-    },
-    [closeSidebarOverlay, isSidebarOverlayOpen, setFocusedProject]
-  );
-
-  const handleSidebarSelectConversation = useCallback(
-    (conversationProjectId: string, conversation: AgentConversation) => {
-      handleSelectConversation(conversationProjectId, conversation);
-      if (isSidebarOverlayOpen) {
-        closeSidebarOverlay();
-      }
-    },
-    [closeSidebarOverlay, handleSelectConversation, isSidebarOverlayOpen]
-  );
-
-  const handleSidebarCreateAgent = useCallback(() => {
-    showStarterComposer();
-    if (isSidebarOverlayOpen) {
-      closeSidebarOverlay();
-    }
-  }, [closeSidebarOverlay, isSidebarOverlayOpen, showStarterComposer]);
+  const {
+    handleArchiveConversation,
+    handleArchiveProject,
+    handleRenameConversation,
+    handleRestoreConversation,
+    handleSidebarCreateAgent,
+    handleSidebarFocusProject,
+    handleSidebarSelectConversation,
+  } = useAgentConversationActions({
+    activeProjectId,
+    clearAgentConversationSelection,
+    clearAutoManagedTitle,
+    closeSidebarOverlay,
+    findConversationById,
+    focusedProjectId,
+    invalidateProjectConversations,
+    isSidebarOverlayOpen,
+    projectId,
+    projects,
+    queryClient,
+    selectConversation,
+    selectedConversationId,
+    selectedProjectId,
+    setActiveConversation,
+    setFocusedProject,
+    setOptimisticSelectedConversationId,
+  });
 
   const handleSelectArtifact = useCallback(
     (tab: AgentArtifactTab) => {
@@ -349,99 +297,6 @@ export function AgentsView({
   const handlePreloadArtifacts = useCallback(() => {
     scheduleArtifactPanePreload();
   }, [scheduleArtifactPanePreload]);
-
-  const handleArchiveProject = useCallback(
-    async (targetProjectId: string) => {
-      try {
-        try {
-          await projectsApi.archive(targetProjectId);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          if (!message.includes("currently active project")) {
-            throw err;
-          }
-          await executionApi.setActiveProject(undefined);
-          await projectsApi.archive(targetProjectId);
-        }
-        if (focusedProjectId === targetProjectId) {
-          setFocusedProject(null);
-        }
-        if (selectedProjectId === targetProjectId) {
-          clearAgentConversationSelection();
-        }
-        await queryClient.invalidateQueries({ queryKey: projectKeys.list() });
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to archive project");
-      }
-    },
-    [
-      clearAgentConversationSelection,
-      focusedProjectId,
-      queryClient,
-      selectedProjectId,
-      setFocusedProject,
-    ]
-  );
-
-  const handleArchiveConversation = useCallback(
-    async (conversation: AgentConversation) => {
-      try {
-        if (conversation.contextType === "ideation") {
-          await ideationApi.sessions.archive(conversation.contextId);
-        }
-        await chatApi.archiveConversation(conversation.id);
-        if (selectedConversationId === conversation.id) {
-          clearAgentConversationSelection();
-        }
-        await invalidateProjectConversations(conversation.projectId);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to archive session");
-      }
-    },
-    [clearAgentConversationSelection, invalidateProjectConversations, selectedConversationId]
-  );
-
-  const handleRestoreConversation = useCallback(
-    async (conversation: AgentConversation) => {
-      try {
-        if (conversation.contextType === "ideation") {
-          await ideationApi.sessions.reopen(conversation.contextId);
-        }
-        await chatApi.restoreConversation(conversation.id);
-        await invalidateProjectConversations(conversation.projectId);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to restore session");
-      }
-    },
-    [invalidateProjectConversations]
-  );
-
-  const handleRenameConversation = useCallback(
-    async (conversationId: string, title: string) => {
-      const trimmed = title.trim();
-      if (!trimmed) {
-        return;
-      }
-      const conversation = findConversationById(conversationId);
-      if (conversation?.contextType === "ideation") {
-        await Promise.all([
-          chatApi.updateConversationTitle(conversationId, trimmed),
-          ideationApi.sessions.updateTitle(conversation.contextId, trimmed),
-        ]);
-      } else {
-        await chatApi.updateConversationTitle(conversationId, trimmed);
-      }
-      clearAutoManagedTitle(conversationId);
-      await invalidateProjectConversations(conversation?.projectId ?? activeProjectId ?? projectId);
-    },
-    [
-      activeProjectId,
-      clearAutoManagedTitle,
-      findConversationById,
-      invalidateProjectConversations,
-      projectId,
-    ]
-  );
 
   const handleAgentUserMessageSent = useCallback(
     ({ content, result }: { content: string; result: { conversationId: string } }) => {
