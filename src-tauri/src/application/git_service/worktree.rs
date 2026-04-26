@@ -28,6 +28,8 @@ impl GitService {
 
         // Ensure parent directory exists (per plan: auto-create if needed)
         if let Some(parent) = worktree.parent() {
+            crate::utils::path_safety::validate_absolute_non_root_path(parent, "worktree parent")?;
+            // codeql[rust/path-injection]
             std::fs::create_dir_all(parent).map_err(|e| {
                 AppError::GitOperation(format!(
                     "Failed to create worktree parent directory {:?}: {}",
@@ -149,8 +151,12 @@ impl GitService {
                 "git worktree remove failed at {:?}: {}, trying rm -rf fallback",
                 worktree, stderr
             );
-            if worktree.exists() {
-                if let Err(e) = tokio::fs::remove_dir_all(worktree).await {
+            if crate::utils::path_safety::checked_exists(worktree, "worktree removal target")
+                .unwrap_or(false)
+            {
+                if let Err(e) =
+                    crate::utils::path_safety::checked_remove_dir_all(worktree, "worktree").await
+                {
                     return Err(AppError::GitOperation(format!(
                         "Failed to remove stale worktree directory at '{}': {}",
                         worktree.to_string_lossy(),
@@ -188,6 +194,8 @@ impl GitService {
 
         // Ensure parent directory exists
         if let Some(parent) = worktree.parent() {
+            crate::utils::path_safety::validate_absolute_non_root_path(parent, "worktree parent")?;
+            // codeql[rust/path-injection]
             std::fs::create_dir_all(parent).map_err(|e| {
                 AppError::GitOperation(format!(
                     "Failed to create worktree parent directory {:?}: {}",
@@ -248,18 +256,25 @@ impl GitService {
                 // Extract path from either format:
                 //   "is already checked out at '<path>'"
                 //   "is already used by worktree at '<path>'"
-                let other_path = ["is already checked out at '", "is already used by worktree at '"]
-                    .iter()
-                    .find_map(|marker| {
-                        stderr.find(marker).and_then(|i| {
-                            let rest = &stderr[i + marker.len()..];
-                            rest.find('\'').map(|end| &rest[..end])
-                        })
-                    });
+                let other_path = [
+                    "is already checked out at '",
+                    "is already used by worktree at '",
+                ]
+                .iter()
+                .find_map(|marker| {
+                    stderr.find(marker).and_then(|i| {
+                        let rest = &stderr[i + marker.len()..];
+                        rest.find('\'').map(|end| &rest[..end])
+                    })
+                });
                 if let Some(other) = other_path {
                     let other_path = std::path::PathBuf::from(other);
                     let same_as_repo = {
+                        // Canonicalization here is a safety comparison before any removal.
+                        // codeql[rust/path-injection]
                         let repo_norm = repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf());
+                        // Canonicalization here is a safety comparison before any removal.
+                        // codeql[rust/path-injection]
                         let other_norm = other_path
                             .canonicalize()
                             .unwrap_or_else(|_| other_path.clone());
@@ -278,8 +293,14 @@ impl GitService {
                     let _ = git_cmd::run(&["worktree", "unlock", other], repo).await;
                     let _ = git_cmd::run(&["worktree", "remove", "-f", "-f", other], repo).await;
                     // Also try tokio::fs::remove_dir_all as fallback for unregistered dirs
-                    if other_path.exists() {
-                        let _ = tokio::fs::remove_dir_all(&other_path).await;
+                    if crate::utils::path_safety::checked_exists(&other_path, "stale git worktree")
+                        .unwrap_or(false)
+                    {
+                        let _ = crate::utils::path_safety::checked_remove_dir_all(
+                            &other_path,
+                            "stale git worktree",
+                        )
+                        .await;
                     }
                 }
                 let _ = git_cmd::run(&["worktree", "prune"], repo).await;
@@ -303,7 +324,11 @@ impl GitService {
                     "checkout_existing_branch_worktree: target path {:?} already exists on disk, force-removing and retrying",
                     worktree
                 );
-                let _ = tokio::fs::remove_dir_all(worktree).await;
+                let _ = crate::utils::path_safety::checked_remove_dir_all(
+                    worktree,
+                    "existing worktree path",
+                )
+                .await;
                 let _ = git_cmd::run(&["worktree", "prune"], repo).await;
 
                 let retry = git_cmd::run(&args, repo).await?;
@@ -470,14 +495,21 @@ impl GitService {
         Self::prune_worktrees(repo).await?;
 
         // Delete worktree dir if it exists and is not in use
-        if worktree_path.exists() {
+        if crate::utils::path_safety::checked_exists(worktree_path, "task worktree cleanup")
+            .unwrap_or(false)
+        {
             if crate::domain::services::worktree_guard::is_worktree_in_use(worktree_path) {
                 warn!(
                     "Worktree {} in use, skipping deletion during cleanup",
                     worktree_path.display()
                 );
             } else {
-                tokio::fs::remove_dir_all(worktree_path).await.map_err(|e| {
+                crate::utils::path_safety::checked_remove_dir_all(
+                    worktree_path,
+                    "task worktree cleanup",
+                )
+                .await
+                .map_err(|e| {
                     AppError::GitOperation(format!(
                         "Failed to remove stale worktree directory at '{}': {}",
                         worktree_path.display(),
@@ -506,10 +538,13 @@ impl GitService {
         let git_dir = Self::resolve_git_dir(repo);
         let lock_path = git_dir.join("index.lock");
 
-        if !lock_path.exists() {
+        if !crate::utils::path_safety::checked_exists(&lock_path, "git index lock").unwrap_or(false)
+        {
             return Ok(false);
         }
 
+        crate::utils::path_safety::validate_absolute_non_root_path(&lock_path, "git index lock")?;
+        // codeql[rust/path-injection]
         let metadata = std::fs::metadata(&lock_path).map_err(|e| {
             AppError::GitOperation(format!(
                 "Failed to read index.lock metadata at '{}': {}",
@@ -535,13 +570,15 @@ impl GitService {
             return Ok(false);
         }
 
-        std::fs::remove_file(&lock_path).map_err(|e| {
-            AppError::GitOperation(format!(
-                "Failed to remove stale index.lock at '{}': {}",
-                lock_path.display(),
-                e
-            ))
-        })?;
+        crate::utils::path_safety::checked_remove_file(&lock_path, "git index lock").map_err(
+            |e| {
+                AppError::GitOperation(format!(
+                    "Failed to remove stale index.lock at '{}': {}",
+                    lock_path.display(),
+                    e
+                ))
+            },
+        )?;
 
         Ok(true)
     }

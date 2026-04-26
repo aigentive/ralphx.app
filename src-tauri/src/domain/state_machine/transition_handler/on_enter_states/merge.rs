@@ -265,7 +265,14 @@ impl<'a> TransitionHandler<'a> {
                     std::path::PathBuf::from(compute_merge_worktree_path(&project, task_id));
                 let repo_path = std::path::Path::new(&project.working_directory);
 
-                if !wt_path.exists() && repo_path.exists() {
+                let wt_exists =
+                    crate::utils::path_safety::checked_exists(&wt_path, "merge worktree")
+                        .unwrap_or(false);
+                let repo_exists =
+                    crate::utils::path_safety::checked_exists(repo_path, "project repository")
+                        .unwrap_or(false);
+
+                if !wt_exists && repo_exists {
                     let tid = TaskId::from_string(task_id.to_string());
                     if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
                         let meta = task
@@ -362,7 +369,9 @@ impl<'a> TransitionHandler<'a> {
                     }
                 }
 
-                if wt_path.exists() {
+                if crate::utils::path_safety::checked_exists(&wt_path, "merge worktree")
+                    .unwrap_or(false)
+                {
                     merge_helpers::clean_stale_git_state(&wt_path, task_id).await;
 
                     for rel in &[
@@ -371,13 +380,21 @@ impl<'a> TransitionHandler<'a> {
                         "plugins/app/ralphx-mcp-server/node_modules",
                     ] {
                         let sym = wt_path.join(rel);
-                        if sym.is_symlink() {
+                        if crate::utils::path_safety::checked_is_symlink(
+                            &sym,
+                            "worktree symlink cleanup",
+                        )
+                        .unwrap_or(false)
+                        {
                             tracing::info!(
                                 task_id = task_id,
                                 path = %sym.display(),
                                 "on_enter(Merging): Removing worktree symlink"
                             );
-                            if let Err(e) = std::fs::remove_file(&sym) {
+                            if let Err(e) = crate::utils::path_safety::checked_remove_file(
+                                &sym,
+                                "worktree symlink cleanup",
+                            ) {
                                 tracing::warn!(
                                     task_id = task_id,
                                     path = %sym.display(),

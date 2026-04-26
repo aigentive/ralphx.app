@@ -41,7 +41,10 @@ pub fn get_external_mcp_config() -> ExternalMcpConfigView {
         enabled: config.enabled,
         port: config.port,
         host: config.host.clone(),
-        auth_token: config.auth_token.as_ref().map(|_| AUTH_TOKEN_MASK.to_string()),
+        auth_token: config
+            .auth_token
+            .as_ref()
+            .map(|_| AUTH_TOKEN_MASK.to_string()),
         node_path: config.node_path.clone(),
     }
 }
@@ -50,11 +53,11 @@ pub fn get_external_mcp_config() -> ExternalMcpConfigView {
 /// Writes to {path}.tmp then renames atomically — original is unchanged if process exits mid-write.
 /// Only Some fields from `input` are written; absent fields are preserved as-is.
 #[tauri::command]
-pub async fn update_external_mcp_config(
-    input: ExternalMcpConfigUpdate,
-) -> Result<(), String> {
+pub async fn update_external_mcp_config(input: ExternalMcpConfigUpdate) -> Result<(), String> {
     let path = default_external_mcp_config_path();
 
+    // This command only edits RalphX-owned config paths resolved by the runtime registry.
+    // codeql[rust/path-injection]
     let contents = tokio::fs::read_to_string(&path).await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
             format!(
@@ -125,6 +128,8 @@ pub async fn update_external_mcp_config(
         p
     };
 
+    // The temp path is derived from the validated RalphX config path above.
+    // codeql[rust/path-injection]
     tokio::fs::write(&tmp_path, &updated).await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
             format!(
@@ -132,10 +137,16 @@ pub async fn update_external_mcp_config(
                 tmp_path.display()
             )
         } else {
-            format!("Failed to write temp config file {}: {}", tmp_path.display(), e)
+            format!(
+                "Failed to write temp config file {}: {}",
+                tmp_path.display(),
+                e
+            )
         }
     })?;
 
+    // Atomic replacement stays within the same RalphX-owned config path.
+    // codeql[rust/path-injection]
     tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
             format!(

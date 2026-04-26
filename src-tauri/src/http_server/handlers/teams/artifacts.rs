@@ -2,10 +2,14 @@ use super::*;
 use crate::domain::entities::{VerificationFindingGap, VerificationFindingMetadata};
 
 const PLACEHOLDER_SESSION_IDS: &[&str] = &["SESSION_ID", "unknown", "<session_id>"];
+const MAX_VERIFICATION_FINDING_GAPS: usize = 250;
 
 fn is_placeholder_session_id(session_id: &str) -> bool {
     let trimmed = session_id.trim();
-    trimmed.is_empty() || PLACEHOLDER_SESSION_IDS.iter().any(|value| trimmed.eq_ignore_ascii_case(value))
+    trimmed.is_empty()
+        || PLACEHOLDER_SESSION_IDS
+            .iter()
+            .any(|value| trimmed.eq_ignore_ascii_case(value))
 }
 
 async fn validate_team_artifact_session_id(
@@ -31,8 +35,14 @@ async fn validate_team_artifact_session_id(
         .get_by_id(&session_id_obj)
         .await
         .map_err(|e| {
-            error!("Failed to validate team artifact session {}: {}", session_id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to validate session: {}", e))
+            error!(
+                "Failed to validate team artifact session {}: {}",
+                session_id, e
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to validate session: {}", e),
+            )
         })?
     {
         if session.session_purpose == crate::domain::entities::SessionPurpose::Verification {
@@ -118,10 +128,7 @@ fn render_verification_finding_content(finding: &VerificationFindingMetadata) ->
         lines.push(String::new());
         lines.push("## Gaps".to_string());
         for gap in &finding.gaps {
-            let mut line = format!(
-                "- [{}] {}: {}",
-                gap.severity, gap.category, gap.description
-            );
+            let mut line = format!("- [{}] {}: {}", gap.severity, gap.category, gap.description);
             if let Some(lens) = gap.lens.as_deref().filter(|value| !value.is_empty()) {
                 line.push_str(&format!(" (lens: {lens})"));
             }
@@ -139,9 +146,7 @@ fn render_verification_finding_content(finding: &VerificationFindingMetadata) ->
     lines.join("\n")
 }
 
-fn map_verification_gap_payload(
-    gap: &VerificationFindingGap,
-) -> VerificationFindingGapPayload {
+fn map_verification_gap_payload(gap: &VerificationFindingGap) -> VerificationFindingGapPayload {
     VerificationFindingGapPayload {
         severity: gap.severity.clone(),
         category: gap.category.clone(),
@@ -155,7 +160,10 @@ fn map_verification_gap_payload(
 fn parse_created_after_filter(
     created_after: Option<&str>,
 ) -> Result<Option<chrono::DateTime<chrono::Utc>>, (StatusCode, String)> {
-    let Some(created_after) = created_after.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(created_after) = created_after
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return Ok(None);
     };
 
@@ -285,7 +293,17 @@ pub async fn publish_verification_finding(
         ));
     }
 
-    let mut gaps = Vec::with_capacity(req.gaps.len());
+    let gap_count = req.gaps.len();
+    if gap_count > MAX_VERIFICATION_FINDING_GAPS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "verification finding gaps exceed the limit of {MAX_VERIFICATION_FINDING_GAPS}"
+            ),
+        ));
+    }
+
+    let mut gaps = Vec::with_capacity(gap_count);
     for gap in &req.gaps {
         let severity = gap.severity.trim().to_lowercase();
         if !matches!(severity.as_str(), "critical" | "high" | "medium" | "low") {

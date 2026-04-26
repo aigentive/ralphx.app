@@ -9,16 +9,21 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::time::Duration;
 
-use crate::application::AppState;
-use crate::application::git_service::{GitService, StaleRebaseResult};
+use crate::application::chat_service::freshness_routing;
 use crate::application::git_service::checkout_free::update_branch_ref;
+use crate::application::git_service::{GitService, StaleRebaseResult};
+use crate::application::harness_runtime_registry::{
+    default_reconciliation_merge_watcher_grace_secs,
+    default_reconciliation_merge_watcher_poll_secs, default_scheduler_merge_settle_ms,
+};
 use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::application::runtime_factory::{
-    RuntimeFactoryDeps, build_task_scheduler_with_fallback,
-    build_transition_service_with_fallback,
+    build_task_scheduler_with_fallback, build_transition_service_with_fallback, RuntimeFactoryDeps,
 };
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
+use crate::application::AppState;
+use crate::application::InteractiveProcessRegistry;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Project, Task, TaskId};
 use crate::domain::repositories::{
@@ -27,23 +32,16 @@ use crate::domain::repositories::{
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     TaskDependencyRepository, TaskRepository,
 };
-use crate::application::InteractiveProcessRegistry;
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::{
     complete_merge_internal_with_pr_sync, PlanBranchPrSyncServices,
 };
-use crate::application::harness_runtime_registry::{
-    default_reconciliation_merge_watcher_grace_secs,
-    default_reconciliation_merge_watcher_poll_secs,
-    default_scheduler_merge_settle_ms,
-};
 use crate::domain::state_machine::transition_handler::{
-    format_validation_error_metadata, merge_metadata_into, parse_metadata,
-    run_validation_commands, set_source_conflict_resolved,
+    format_validation_error_metadata, merge_metadata_into, parse_metadata, run_validation_commands,
+    set_source_conflict_resolved,
 };
-use crate::application::chat_service::freshness_routing;
 
 /// RAII guard that removes a task from ExecutionState::auto_completes_in_flight on drop.
 /// Ensures cleanup on all return paths, including early returns and panics.
@@ -268,7 +266,9 @@ async fn resolve_environment<R: Runtime>(
     let worktree_path = match &task.worktree_path {
         Some(wt) => {
             let path = PathBuf::from(wt);
-            if path.exists() {
+            if crate::utils::path_safety::checked_exists(&path, "stored merge worktree")
+                .unwrap_or(false)
+            {
                 path
             } else {
                 tracing::error!(
@@ -313,7 +313,8 @@ async fn check_git_state<R: Runtime>(
                 conflict_count = files.len(),
                 "attempt_merge_auto_complete: stale rebase has real conflicts, transitioning to MergeConflict"
             );
-            ctx.transition_conflict("Stale rebase has unresolved conflicts").await;
+            ctx.transition_conflict("Stale rebase has unresolved conflicts")
+                .await;
             return ControlFlow::Break(());
         }
         StaleRebaseResult::Failed { reason } => {
@@ -322,7 +323,8 @@ async fn check_git_state<R: Runtime>(
                 reason = &reason,
                 "attempt_merge_auto_complete: stale rebase recovery failed, transitioning to MergeConflict"
             );
-            ctx.transition_conflict(&format!("Stale rebase recovery failed: {}", reason)).await;
+            ctx.transition_conflict(&format!("Stale rebase recovery failed: {}", reason))
+                .await;
             return ControlFlow::Break(());
         }
         StaleRebaseResult::NoRebase => {
@@ -336,7 +338,8 @@ async fn check_git_state<R: Runtime>(
             task_id = ctx.task_id_str,
             "attempt_merge_auto_complete: rebase still in progress after recovery attempt, transitioning to MergeConflict"
         );
-        ctx.transition_conflict("Rebase still in progress after recovery attempt").await;
+        ctx.transition_conflict("Rebase still in progress after recovery attempt")
+            .await;
         return ControlFlow::Break(());
     }
 
@@ -345,7 +348,8 @@ async fn check_git_state<R: Runtime>(
             task_id = ctx.task_id_str,
             "attempt_merge_auto_complete: merge in progress (MERGE_HEAD exists), transitioning to MergeConflict"
         );
-        ctx.transition_conflict("Agent exited with incomplete merge (MERGE_HEAD exists)").await;
+        ctx.transition_conflict("Agent exited with incomplete merge (MERGE_HEAD exists)")
+            .await;
         return ControlFlow::Break(());
     }
 
@@ -355,7 +359,8 @@ async fn check_git_state<R: Runtime>(
                 task_id = ctx.task_id_str,
                 "attempt_merge_auto_complete: conflict markers found, transitioning to MergeConflict"
             );
-            ctx.transition_conflict("Agent exited with unresolved conflict markers").await;
+            ctx.transition_conflict("Agent exited with unresolved conflict markers")
+                .await;
             return ControlFlow::Break(());
         }
         Ok(false) => {
@@ -367,7 +372,8 @@ async fn check_git_state<R: Runtime>(
                 error = %e,
                 "attempt_merge_auto_complete: failed to check conflict markers, transitioning to MergeIncomplete"
             );
-            ctx.transition_incomplete(&format!("Auto-complete failed: {}", e)).await;
+            ctx.transition_incomplete(&format!("Auto-complete failed: {}", e))
+                .await;
             return ControlFlow::Break(());
         }
     }
@@ -391,7 +397,8 @@ async fn resolve_branches_and_metadata<R: Runtime>(
             task_id = ctx.task_id_str,
             "attempt_merge_auto_complete: source_branch is empty after resolve_merge_branches"
         );
-        ctx.transition_incomplete("Auto-complete failed: could not determine source branch name").await;
+        ctx.transition_incomplete("Auto-complete failed: could not determine source branch name")
+            .await;
         return None;
     }
 
@@ -406,8 +413,7 @@ async fn resolve_branches_and_metadata<R: Runtime>(
         v.get("merge_target_branch")
             .or_else(|| v.get("target_branch"))
             .and_then(|s| s.as_str().map(String::from))
-    })
-    {
+    }) {
         if stored != target_branch {
             tracing::info!(
                 task_id = ctx.task_id_str,
@@ -501,8 +507,11 @@ async fn handle_plan_update_resolution<R: Runtime>(
         // tries to create the same worktree path.
         {
             use crate::domain::state_machine::transition_handler::compute_merge_worktree_path;
-            let merge_wt_path = PathBuf::from(compute_merge_worktree_path(project, ctx.task_id_str));
-            if merge_wt_path.exists() {
+            let merge_wt_path =
+                PathBuf::from(compute_merge_worktree_path(project, ctx.task_id_str));
+            if crate::utils::path_safety::checked_exists(&merge_wt_path, "merge worktree")
+                .unwrap_or(false)
+            {
                 if let Err(e) = GitService::delete_worktree(main_repo_path, &merge_wt_path).await {
                     tracing::warn!(
                         task_id = ctx.task_id_str,
@@ -588,9 +597,11 @@ async fn handle_source_update_resolution<R: Runtime>(
         .and_then(|v| v.get("target_branch")?.as_str().map(String::from))
         .unwrap_or_else(|| target_branch.to_string());
     let source_up_to_date = match GitService::get_branch_sha(main_repo_path, &target_branch).await {
-        Ok(target_sha) => GitService::is_commit_on_branch(main_repo_path, &target_sha, source_branch)
-            .await
-            .unwrap_or(false),
+        Ok(target_sha) => {
+            GitService::is_commit_on_branch(main_repo_path, &target_sha, source_branch)
+                .await
+                .unwrap_or(false)
+        }
         Err(e) => {
             tracing::warn!(
                 task_id = ctx.task_id_str,
@@ -719,20 +730,36 @@ async fn handle_validation_recovery<R: Runtime>(
 
     // Emit validation_start event so the frontend clears stale live steps
     if let Some(handle) = ctx.app_handle {
-        let _ = handle.emit("merge:validation_start", serde_json::json!({
-            "task_id": ctx.task_id_str,
-        }));
+        let _ = handle.emit(
+            "merge:validation_start",
+            serde_json::json!({
+                "task_id": ctx.task_id_str,
+            }),
+        );
     }
 
     // Downcast generic app_handle to Wry for run_validation_commands
     let wry_handle: Option<tauri::AppHandle<tauri::Wry>> = ctx.app_handle.and_then(|h| {
         let any: Box<dyn std::any::Any> = Box::new(h.clone());
-        any.downcast::<tauri::AppHandle<tauri::Wry>>().ok().map(|b| *b)
+        any.downcast::<tauri::AppHandle<tauri::Wry>>()
+            .ok()
+            .map(|b| *b)
     });
 
     // Re-run validation commands on the merge path
     let validation_cancel = tokio_util::sync::CancellationToken::new();
-    match run_validation_commands(project, task, worktree, ctx.task_id_str, wry_handle.as_ref(), None, &project.merge_validation_mode, &validation_cancel).await {
+    match run_validation_commands(
+        project,
+        task,
+        worktree,
+        ctx.task_id_str,
+        wry_handle.as_ref(),
+        None,
+        &project.merge_validation_mode,
+        &validation_cancel,
+    )
+    .await
+    {
         Some(result) if !result.all_passed => {
             // Agent didn't fix it — revert and fall back to MergeIncomplete
             tracing::warn!(
@@ -770,10 +797,13 @@ async fn handle_validation_recovery<R: Runtime>(
             let prev_revert_count: u32 = parse_metadata(task)
                 .and_then(|v| v.get("validation_revert_count")?.as_u64())
                 .unwrap_or(0) as u32;
-            merge_metadata_into(task, &serde_json::json!({
-                "validation_revert_count": prev_revert_count + 1,
-                "merge_failure_source": "ValidationFailed",
-            }));
+            merge_metadata_into(
+                task,
+                &serde_json::json!({
+                    "validation_revert_count": prev_revert_count + 1,
+                    "merge_failure_source": "ValidationFailed",
+                }),
+            );
             // Remove revalidating flag (merge_metadata_into only inserts, so remove manually)
             {
                 let mut meta = parse_metadata(task).unwrap_or_else(|| serde_json::json!({}));
@@ -785,7 +815,8 @@ async fn handle_validation_recovery<R: Runtime>(
             task.touch();
             let _ = ctx.task_repo.update(task).await;
 
-            ctx.transition_incomplete("Validation re-check failed after agent fix attempt").await;
+            ctx.transition_incomplete("Validation re-check failed after agent fix attempt")
+                .await;
             return ControlFlow::Break(());
         }
         Some(result) => {
@@ -909,7 +940,9 @@ async fn resolve_merge_commit<R: Runtime>(
         // Clean up: delete the merge-resolve worktree and branch
         let merge_wt_path = task.worktree_path.as_deref().map(PathBuf::from);
         if let Some(ref wt_path) = merge_wt_path {
-            if wt_path.exists() {
+            if crate::utils::path_safety::checked_exists(wt_path, "merge resolve worktree")
+                .unwrap_or(false)
+            {
                 if let Err(e) = GitService::delete_worktree(main_repo_path, wt_path).await {
                     tracing::warn!(
                         task_id = ctx.task_id_str,
@@ -1015,7 +1048,9 @@ async fn complete_merge_and_schedule<R: Runtime>(
         pr_creation_guard: app_state
             .as_ref()
             .map(|state| Arc::clone(&state.pr_poller_registry.pr_creation_guard)),
-        github_service: app_state.as_ref().and_then(|state| state.github_service.clone()),
+        github_service: app_state
+            .as_ref()
+            .and_then(|state| state.github_service.clone()),
         ideation_session_repo: Some(Arc::clone(ctx.ideation_session_repo)),
         artifact_repo: Some(Arc::clone(ctx.artifact_repo)),
     };
@@ -1051,7 +1086,8 @@ async fn complete_merge_and_schedule<R: Runtime>(
         // - triggers try_retry_deferred_merges
         // - surfaces task in needs_attention panel
         ctx.transition_incomplete(&format!(
-            "Auto-complete failed: complete_merge_internal error: {}", e
+            "Auto-complete failed: complete_merge_internal error: {}",
+            e
         ))
         .await;
     } else {
@@ -1066,9 +1102,14 @@ async fn complete_merge_and_schedule<R: Runtime>(
             let cleanup_plan_branch = Some(target_branch.to_string());
             tokio::spawn(async move {
                 deferred_merge_cleanup(
-                    cleanup_task_id, cleanup_repo, cleanup_dir,
-                    cleanup_branch, cleanup_wt, cleanup_plan_branch,
-                ).await;
+                    cleanup_task_id,
+                    cleanup_repo,
+                    cleanup_dir,
+                    cleanup_branch,
+                    cleanup_wt,
+                    cleanup_plan_branch,
+                )
+                .await;
             });
         }
 
@@ -1117,9 +1158,7 @@ async fn complete_merge_and_schedule<R: Runtime>(
 /// - Rebase in progress or conflict markers → transition to MergeConflict
 ///
 /// This enables "fire and forget" merge agents that don't need to call complete_merge.
-pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
-    ctx: &MergeAutoCompleteContext<'_, R>,
-) {
+pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(ctx: &MergeAutoCompleteContext<'_, R>) {
     // Dedup guard: prevent concurrent auto-complete calls for the same task.
     if !ctx.execution_state.try_start_auto_complete(ctx.task_id_str) {
         tracing::info!(
@@ -1179,8 +1218,12 @@ pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
         Arc::clone(ctx.task_repo),
         &ts,
         &project,
-        ctx.interactive_process_registry.as_ref().map(|arc| arc.as_ref()),
-    ).await {
+        ctx.interactive_process_registry
+            .as_ref()
+            .map(|arc| arc.as_ref()),
+    )
+    .await
+    {
         Ok(freshness_routing::FreshnessRouteResult::FreshnessRouted(_)) => return,
         Ok(freshness_routing::FreshnessRouteResult::NormalMerge) => {}
         Err(e) => {
@@ -1194,12 +1237,32 @@ pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
     }
 
     // 6. Handle plan_update_conflict resolution
-    if handle_plan_update_resolution(ctx, &mut task, &meta, &main_repo_path, &target_branch, &project).await.is_break() {
+    if handle_plan_update_resolution(
+        ctx,
+        &mut task,
+        &meta,
+        &main_repo_path,
+        &target_branch,
+        &project,
+    )
+    .await
+    .is_break()
+    {
         return;
     }
 
     // 7. Handle source_update_conflict resolution
-    if handle_source_update_resolution(ctx, &mut task, &meta, &source_branch, &target_branch, &main_repo_path).await.is_break() {
+    if handle_source_update_resolution(
+        ctx,
+        &mut task,
+        &meta,
+        &source_branch,
+        &target_branch,
+        &main_repo_path,
+    )
+    .await
+    .is_break()
+    {
         return;
     }
 
@@ -1208,18 +1271,49 @@ pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
         .as_ref()
         .and_then(|v| v.get("validation_recovery")?.as_bool())
         .unwrap_or(false);
-    if handle_validation_recovery(ctx, &mut task, &worktree_path, worktree, &main_repo_path, &project, is_validation_recovery).await.is_break() {
+    if handle_validation_recovery(
+        ctx,
+        &mut task,
+        &worktree_path,
+        worktree,
+        &main_repo_path,
+        &project,
+        is_validation_recovery,
+    )
+    .await
+    .is_break()
+    {
         return;
     }
 
     // 9. Resolve the merge commit SHA (fast-forward + verify)
-    let commit_sha = match resolve_merge_commit(ctx, &task, &main_repo_path, &source_branch, &target_branch, is_validation_recovery).await {
+    let commit_sha = match resolve_merge_commit(
+        ctx,
+        &task,
+        &main_repo_path,
+        &source_branch,
+        &target_branch,
+        is_validation_recovery,
+    )
+    .await
+    {
         Some(sha) => sha,
         None => return,
     };
 
     // 10. Complete merge, unblock dependents, schedule ready tasks
-    complete_merge_and_schedule(ctx, &mut task, &project, &commit_sha, &source_branch, &target_branch, &worktree_path, &main_repo_path, worktree).await;
+    complete_merge_and_schedule(
+        ctx,
+        &mut task,
+        &project,
+        &commit_sha,
+        &source_branch,
+        &target_branch,
+        &worktree_path,
+        &main_repo_path,
+        worktree,
+    )
+    .await;
 }
 
 /// Reconcile merge state when agent run finished but status is still Merging.
@@ -1358,7 +1452,10 @@ pub async fn merge_completion_watcher_loop(
         }
 
         // Check if task is still in Merging state
-        let task = match task_repo.get_by_id(&TaskId::from_string(task_id.clone())).await {
+        let task = match task_repo
+            .get_by_id(&TaskId::from_string(task_id.clone()))
+            .await
+        {
             Ok(Some(t)) => t,
             _ => {
                 tracing::warn!(task_id = %task_id, "Merge watcher: task not found, stopping");
@@ -1427,8 +1524,7 @@ pub async fn resolve_watcher_context(
 
     let project = project_repo.get_by_id(&task.project_id).await.ok()??;
 
-    let (source, target) =
-        resolve_merge_branches(&task, &project, plan_branch_repo).await;
+    let (source, target) = resolve_merge_branches(&task, &project, plan_branch_repo).await;
 
     Some((source, target, PathBuf::from(&project.working_directory)))
 }

@@ -25,6 +25,8 @@ pub fn find_node_binary() -> PathBuf {
     // 1. Explicit override via env var — caller controls exact binary.
     if let Ok(path) = std::env::var("RALPHX_NODE_PATH") {
         let p = PathBuf::from(&path);
+        // User-provided Node path is only selected if it exists; process launch validates again.
+        // codeql[rust/path-injection]
         if p.exists() {
             return p;
         }
@@ -37,12 +39,16 @@ pub fn find_node_binary() -> PathBuf {
 
     // 3. Homebrew ARM (Apple Silicon default).
     let homebrew_arm = PathBuf::from("/opt/homebrew/bin/node");
+    // Fixed Homebrew path.
+    // codeql[rust/path-injection]
     if homebrew_arm.exists() {
         return homebrew_arm;
     }
 
     // 4. Homebrew Intel.
     let homebrew_intel = PathBuf::from("/usr/local/bin/node");
+    // Fixed Homebrew path.
+    // codeql[rust/path-injection]
     if homebrew_intel.exists() {
         return homebrew_intel;
     }
@@ -65,6 +71,8 @@ fn find_nvm_latest() -> Option<PathBuf> {
     let home = std::env::var("HOME").ok()?;
     let versions_dir = PathBuf::from(home).join(".nvm/versions/node");
 
+    // NVM lookup is limited to the current user's home directory.
+    // codeql[rust/path-injection]
     let mut entries: Vec<_> = std::fs::read_dir(&versions_dir)
         .ok()?
         .filter_map(|e| e.ok())
@@ -76,6 +84,8 @@ fn find_nvm_latest() -> Option<PathBuf> {
 
     for entry in entries {
         let node_bin = entry.path().join("bin/node");
+        // Candidate paths come from NVM version directories discovered above.
+        // codeql[rust/path-injection]
         if node_bin.exists() {
             return Some(node_bin);
         }

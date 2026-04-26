@@ -123,7 +123,7 @@ pub(crate) async fn clean_stale_git_state(wt_path: &Path, task_id_str: &str) {
 pub(crate) async fn pre_delete_worktree(repo_path: &Path, worktree: &Path, task_id: &str) {
     // Skip silently if the path was never created — avoids spurious WARN-level
     // "git worktree remove: not a working tree" logs on paths that don't exist.
-    if !worktree.exists() {
+    if !crate::utils::path_safety::checked_exists(worktree, "stale worktree").unwrap_or(false) {
         return;
     }
 
@@ -161,7 +161,12 @@ pub(crate) async fn pre_delete_worktree(repo_path: &Path, worktree: &Path, task_
             // Covers file-lock scenarios where the first attempt races a process still
             // holding handles inside the worktree directory.
             tokio::time::sleep(Duration::from_millis(100)).await;
-            let second_chance_ok = match tokio::fs::remove_dir_all(worktree).await {
+            let second_chance_ok = match crate::utils::path_safety::checked_remove_dir_all(
+                worktree,
+                "stale worktree second-chance cleanup",
+            )
+            .await
+            {
                 Ok(()) => {
                     tracing::info!(
                         task_id = task_id,
@@ -178,7 +183,12 @@ pub(crate) async fn pre_delete_worktree(repo_path: &Path, worktree: &Path, task_
                         "Second-chance remove_dir_all also failed — worktree may block creation"
                     );
                     // Emit a directory listing to help diagnose which process holds the lock.
-                    if let Ok(mut entries) = tokio::fs::read_dir(worktree).await {
+                    if let Ok(mut entries) = crate::utils::path_safety::checked_read_dir(
+                        worktree,
+                        "locked worktree diagnostics",
+                    )
+                    .await
+                    {
                         let mut names = Vec::new();
                         while let Ok(Some(entry)) = entries.next_entry().await {
                             names.push(entry.file_name().to_string_lossy().into_owned());
@@ -196,7 +206,13 @@ pub(crate) async fn pre_delete_worktree(repo_path: &Path, worktree: &Path, task_
             // Run git worktree prune unconditionally — cleans stale internal git entries
             // even if the directory removal succeeded (git may still track the old path).
             super::cleanup_helpers::git_worktree_prune(repo_path).await;
-            if !second_chance_ok && worktree.exists() {
+            if !second_chance_ok
+                && crate::utils::path_safety::checked_exists(
+                    worktree,
+                    "stale worktree post-cleanup check",
+                )
+                .unwrap_or(false)
+            {
                 tracing::error!(
                     task_id = task_id,
                     worktree_path = %wt_display,
@@ -1821,7 +1837,9 @@ pub(crate) async fn restore_task_worktree(
     let task_wt_str = compute_task_worktree_path(project, task_id_str);
     let task_wt_path = PathBuf::from(&task_wt_str);
 
-    if task_wt_path.exists() {
+    if crate::utils::path_safety::checked_exists(&task_wt_path, "task worktree restore")
+        .unwrap_or(false)
+    {
         tracing::info!(
             task_id = task_id_str,
             worktree_path = %task_wt_path.display(),

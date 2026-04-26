@@ -811,8 +811,7 @@ pub async fn process_stream_background<R: Runtime>(
     let conversation_id_str = event_ctx.conversation_id.clone();
     let context_type_str = event_ctx.context_type.clone();
     let context_id_str = event_ctx.context_id.clone();
-    let debug_path =
-        std::env::temp_dir().join(format!("ralphx-stream-debug-{}.log", conversation_id_str));
+    let debug_path = crate::utils::runtime_log_paths::stream_debug_log_file(&conversation_id_str);
     tracing::debug!(
         path = %debug_path.display(),
         "Debug log path (written on parse failure)"
@@ -2537,11 +2536,16 @@ pub async fn process_stream_background<R: Runtime>(
         {
             use std::io::Write;
             use std::os::unix::fs::OpenOptionsExt;
-            let _ = std::fs::remove_file(&debug_path);
+            if let Some(parent) = debug_path.parent() {
+                // codeql[rust/path-injection]
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = crate::utils::path_safety::checked_remove_file(&debug_path, "stream debug log");
             match std::fs::OpenOptions::new()
                 .create_new(true)
                 .write(true)
                 .mode(0o600)
+                // codeql[rust/path-injection]
                 .open(&debug_path)
             {
                 Ok(mut f) => {

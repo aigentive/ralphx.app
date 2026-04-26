@@ -109,16 +109,26 @@ impl<'a> super::TransitionHandler<'a> {
         pc: super::ProjectCtx<'_>,
         plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     ) -> bool {
-        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (task, task_id, task_id_str, task_repo) =
+            (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         let (project, repo_path) = (pc.project, pc.repo_path);
 
         // Pre-fetch session_title for payload enrichment
         let session_title = if let (Some(ref sid), Some(session_repo)) = (
             &task.ideation_session_id,
-            self.machine.context.services.ideation_session_repo.as_deref(),
+            self.machine
+                .context
+                .services
+                .ideation_session_repo
+                .as_deref(),
         ) {
-            session_repo.get_by_id(sid).await.ok().flatten().and_then(|s| s.title)
+            session_repo
+                .get_by_id(sid)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|s| s.title)
         } else {
             None
         };
@@ -129,9 +139,7 @@ impl<'a> super::TransitionHandler<'a> {
         if let Some(ref session_id) = task.ideation_session_id {
             if let Some(ref pb_repo) = plan_branch_repo {
                 if let Ok(Some(pb)) = pb_repo.get_by_session_id(session_id).await {
-                    if pb.branch_name != target_branch
-                        && task.category != TaskCategory::PlanMerge
-                    {
+                    if pb.branch_name != target_branch && task.category != TaskCategory::PlanMerge {
                         // Plan branch differs from resolved target — check plan branch too
                         if let Ok(source_sha) =
                             GitService::get_branch_sha(repo_path, source_branch).await
@@ -164,7 +172,12 @@ impl<'a> super::TransitionHandler<'a> {
                                     let merge_wt =
                                         compute_merge_worktree_path(project, task_id_str);
                                     let merge_wt_path = Path::new(&merge_wt);
-                                    if merge_wt_path.exists() {
+                                    if crate::utils::path_safety::checked_exists(
+                                        merge_wt_path,
+                                        "orphaned merge worktree",
+                                    )
+                                    .unwrap_or(false)
+                                    {
                                         if let Err(e) =
                                             GitService::delete_worktree(repo_path, merge_wt_path)
                                                 .await
@@ -257,7 +270,8 @@ impl<'a> super::TransitionHandler<'a> {
         // Firing the "already merged" fast-path here is a false positive: DB records
         // Merged but no plan work actually landed on the target. Return false so the
         // pipeline runs properly (no-op merge or proper error).
-        match GitService::count_commits_not_on_branch(repo_path, source_branch, target_branch).await {
+        match GitService::count_commits_not_on_branch(repo_path, source_branch, target_branch).await
+        {
             Ok(0) => {
                 tracing::warn!(
                     task_id = task_id_str,
@@ -321,7 +335,9 @@ impl<'a> super::TransitionHandler<'a> {
         // Clean up orphaned merge worktree (if any from prior agent run)
         let merge_wt = compute_merge_worktree_path(project, task_id_str);
         let merge_wt_path = Path::new(&merge_wt);
-        if merge_wt_path.exists() {
+        if crate::utils::path_safety::checked_exists(merge_wt_path, "orphaned merge worktree")
+            .unwrap_or(false)
+        {
             if let Err(e) = GitService::delete_worktree(repo_path, merge_wt_path).await {
                 tracing::warn!(
                     error = %e,
@@ -346,9 +362,11 @@ impl<'a> super::TransitionHandler<'a> {
             self.machine.context.services.webhook_publisher.as_ref(),
             self.machine.context.services.app_handle.as_ref(),
             session_title.clone(),
-            Some(super::merge_helpers::PlanBranchPrSyncServices::from_task_services(
-                &self.machine.context.services,
-            )),
+            Some(
+                super::merge_helpers::PlanBranchPrSyncServices::from_task_services(
+                    &self.machine.context.services,
+                ),
+            ),
         )
         .await
         {
@@ -366,9 +384,14 @@ impl<'a> super::TransitionHandler<'a> {
             let cleanup_plan_branch = Some(target_branch.to_string());
             tokio::spawn(async move {
                 super::merge_completion::deferred_merge_cleanup(
-                    cleanup_task_id, cleanup_repo, cleanup_dir,
-                    cleanup_branch, cleanup_wt, cleanup_plan_branch,
-                ).await;
+                    cleanup_task_id,
+                    cleanup_repo,
+                    cleanup_dir,
+                    cleanup_branch,
+                    cleanup_wt,
+                    cleanup_plan_branch,
+                )
+                .await;
             });
         }
         true
@@ -388,21 +411,34 @@ impl<'a> super::TransitionHandler<'a> {
         pc: super::ProjectCtx<'_>,
         plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     ) -> bool {
-        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (task, task_id, task_id_str, task_repo) =
+            (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         let (project, repo_path) = (pc.project, pc.repo_path);
 
         // Pre-fetch session_title for payload enrichment
         let session_title = if let (Some(ref sid), Some(session_repo)) = (
             &task.ideation_session_id,
-            self.machine.context.services.ideation_session_repo.as_deref(),
+            self.machine
+                .context
+                .services
+                .ideation_session_repo
+                .as_deref(),
         ) {
-            session_repo.get_by_id(sid).await.ok().flatten().and_then(|s| s.title)
+            session_repo
+                .get_by_id(sid)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|s| s.title)
         } else {
             None
         };
 
-        if GitService::branch_exists(repo_path, source_branch).await.unwrap_or(false) {
+        if GitService::branch_exists(repo_path, source_branch)
+            .await
+            .unwrap_or(false)
+        {
             return false;
         }
 
@@ -412,16 +448,13 @@ impl<'a> super::TransitionHandler<'a> {
         if let Some(ref session_id) = task.ideation_session_id {
             if let Some(ref pb_repo) = plan_branch_repo {
                 if let Ok(Some(pb)) = pb_repo.get_by_session_id(session_id).await {
-                    if pb.branch_name != target_branch
-                        && task.category != TaskCategory::PlanMerge
-                    {
-                        if let Ok(Some(found_sha)) =
-                            GitService::find_commit_by_message_grep(
-                                repo_path,
-                                source_branch,
-                                &pb.branch_name,
-                            )
-                            .await
+                    if pb.branch_name != target_branch && task.category != TaskCategory::PlanMerge {
+                        if let Ok(Some(found_sha)) = GitService::find_commit_by_message_grep(
+                            repo_path,
+                            source_branch,
+                            &pb.branch_name,
+                        )
+                        .await
                         {
                             if has_prior_validation_failure(task) {
                                 tracing::warn!(
@@ -442,10 +475,14 @@ impl<'a> super::TransitionHandler<'a> {
                                      branch (target mismatch detected) — recovering"
                                 );
 
-                                let merge_wt =
-                                    compute_merge_worktree_path(project, task_id_str);
+                                let merge_wt = compute_merge_worktree_path(project, task_id_str);
                                 let merge_wt_path = Path::new(&merge_wt);
-                                if merge_wt_path.exists() {
+                                if crate::utils::path_safety::checked_exists(
+                                    merge_wt_path,
+                                    "orphaned merge worktree",
+                                )
+                                .unwrap_or(false)
+                                {
                                     if let Err(e) =
                                         GitService::delete_worktree(repo_path, merge_wt_path).await
                                     {
@@ -521,7 +558,8 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        match GitService::find_commit_by_message_grep(repo_path, source_branch, target_branch).await {
+        match GitService::find_commit_by_message_grep(repo_path, source_branch, target_branch).await
+        {
             Ok(Some(found_sha)) => {
                 // Safety gate: don't fast-path to completion if prior validation
                 // failures exist. The commits on target may be from a merge that
@@ -550,7 +588,12 @@ impl<'a> super::TransitionHandler<'a> {
                 // Clean up orphaned merge worktree (same as "already merged" path)
                 let merge_wt = compute_merge_worktree_path(project, task_id_str);
                 let merge_wt_path = Path::new(&merge_wt);
-                if merge_wt_path.exists() {
+                if crate::utils::path_safety::checked_exists(
+                    merge_wt_path,
+                    "orphaned merge worktree",
+                )
+                .unwrap_or(false)
+                {
                     if let Err(e) = GitService::delete_worktree(repo_path, merge_wt_path).await {
                         tracing::warn!(
                             error = %e,
@@ -574,9 +617,11 @@ impl<'a> super::TransitionHandler<'a> {
                     self.machine.context.services.webhook_publisher.as_ref(),
                     self.machine.context.services.app_handle.as_ref(),
                     session_title,
-                    Some(super::merge_helpers::PlanBranchPrSyncServices::from_task_services(
-                        &self.machine.context.services,
-                    )),
+                    Some(
+                        super::merge_helpers::PlanBranchPrSyncServices::from_task_services(
+                            &self.machine.context.services,
+                        ),
+                    ),
                 )
                 .await
                 {
@@ -594,9 +639,14 @@ impl<'a> super::TransitionHandler<'a> {
                     let cleanup_plan_branch = Some(target_branch.to_string());
                     tokio::spawn(async move {
                         super::merge_completion::deferred_merge_cleanup(
-                            cleanup_task_id, cleanup_repo, cleanup_dir,
-                            cleanup_branch, cleanup_wt, cleanup_plan_branch,
-                        ).await;
+                            cleanup_task_id,
+                            cleanup_repo,
+                            cleanup_dir,
+                            cleanup_branch,
+                            cleanup_wt,
+                            cleanup_plan_branch,
+                        )
+                        .await;
                     });
                 }
                 true
@@ -1004,8 +1054,14 @@ impl<'a> super::TransitionHandler<'a> {
                     .ideation_session_repo
                     .as_deref(),
             ) {
-                build_plan_merge_commit_msg(session_id, source_branch, target_branch, task_repo, session_repo)
-                    .await
+                build_plan_merge_commit_msg(
+                    session_id,
+                    source_branch,
+                    target_branch,
+                    task_repo,
+                    session_repo,
+                )
+                .await
             } else {
                 tracing::warn!(
                     task_id = task_id_str,
@@ -1042,16 +1098,26 @@ impl<'a> super::TransitionHandler<'a> {
         remaining: std::time::Duration,
         deadline_secs: u64,
     ) {
-        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (task, task_id, task_id_str, task_repo) =
+            (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         let (project, repo_path) = (pc.project, pc.repo_path);
 
         // Pre-fetch session_title for merge:ready enrichment
         let session_title_for_ready = if let (Some(ref sid), Some(session_repo)) = (
             &task.ideation_session_id,
-            self.machine.context.services.ideation_session_repo.as_deref(),
+            self.machine
+                .context
+                .services
+                .ideation_session_repo
+                .as_deref(),
         ) {
-            session_repo.get_by_id(sid).await.ok().flatten().and_then(|s| s.title)
+            session_repo
+                .get_by_id(sid)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|s| s.title)
         } else {
             None
         };
@@ -1249,7 +1315,12 @@ impl<'a> super::TransitionHandler<'a> {
                     "strategy": format!("{:?}", project.merge_strategy),
                 });
                 self.transition_to_merge_incomplete(
-                    super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
+                    super::TaskCore {
+                        task: &mut *task,
+                        task_id,
+                        task_id_str,
+                        task_repo,
+                    },
                     metadata,
                     true,
                 )

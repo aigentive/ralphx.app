@@ -492,6 +492,8 @@ fn parse_claude_config_overlay(yaml: &str) -> Option<ClaudeConfigOverlay> {
 
 fn load_claude_config_overlay() -> Option<(PathBuf, ClaudeConfigOverlay)> {
     let path = claude_config_path();
+    // Harness config paths are RalphX-owned runtime config paths.
+    // codeql[rust/path-injection]
     let raw = std::fs::read_to_string(&path).ok()?;
     let overlay = parse_claude_config_overlay(&raw)?;
     Some((path, overlay))
@@ -512,6 +514,8 @@ fn parse_codex_config_overlay(yaml: &str) -> Option<CodexConfigOverlay> {
 
 fn load_codex_config_overlay() -> Option<(PathBuf, CodexConfigOverlay)> {
     let path = codex_config_path();
+    // Harness config paths are RalphX-owned runtime config paths.
+    // codeql[rust/path-injection]
     let raw = std::fs::read_to_string(&path).ok()?;
     let overlay = parse_codex_config_overlay(&raw)?;
     Some((path, overlay))
@@ -535,6 +539,8 @@ fn apply_process_config_overlay(cfg: &mut LoadedConfig, overlay: ProcessConfigOv
 
 fn load_process_config_overlay() -> Option<(PathBuf, ProcessConfigOverlay)> {
     let path = process_config_path();
+    // Process config paths are RalphX-owned runtime config paths.
+    // codeql[rust/path-injection]
     let raw = std::fs::read_to_string(&path).ok()?;
     let overlay = parse_process_config_overlay(&raw)?;
     Some((path, overlay))
@@ -600,6 +606,8 @@ fn parse_external_mcp_config_overlay(yaml: &str) -> Option<ExternalMcpConfigOver
 
 fn load_external_mcp_config_overlay() -> Option<(PathBuf, ExternalMcpConfigOverlay)> {
     let path = external_mcp_config_path();
+    // External MCP config paths are RalphX-owned runtime config paths.
+    // codeql[rust/path-injection]
     let raw = std::fs::read_to_string(&path).ok()?;
     let overlay = parse_external_mcp_config_overlay(&raw)?;
     Some((path, overlay))
@@ -624,6 +632,8 @@ pub fn resolve_file_logging_early() -> bool {
     }
 
     let path = config_path();
+    // Main config path is a RalphX-owned runtime config path.
+    // codeql[rust/path-injection]
     if let Ok(contents) = std::fs::read_to_string(path) {
         if let Ok(cfg) = serde_yaml::from_str::<MinimalConfig>(&contents) {
             return cfg.file_logging;
@@ -1461,6 +1471,8 @@ fn apply_prefixed_env_overrides_with(
 
 fn load_config() -> LoadedConfig {
     let path = config_path();
+    // Main config path is a RalphX-owned runtime config path.
+    // codeql[rust/path-injection]
     if let Ok(raw) = std::fs::read_to_string(&path) {
         if let Some(mut parsed) = parse_raw_config(&raw) {
             if let Some((claude_path, overlay)) = load_claude_config_overlay() {

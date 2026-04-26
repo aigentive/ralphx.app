@@ -20,9 +20,13 @@ use crate::domain::entities::{InternalStatus, MergeStrategy, Project, ProjectId,
 use crate::domain::state_machine::transition_handler::merge_helpers::{
     compute_merge_worktree_path, compute_rebase_worktree_path, pre_delete_worktree,
 };
-use crate::domain::state_machine::{State, TransitionHandler, TaskStateMachine};
+use crate::domain::state_machine::{State, TaskStateMachine, TransitionHandler};
 use std::path::PathBuf;
 use std::process::Command;
+
+fn path_absent(path: &std::path::Path) -> bool {
+    !crate::utils::path_safety::checked_exists(path, "test worktree path").unwrap_or(false)
+}
 
 /// RC#4 guard 1: pre_delete_worktree is a no-op when the path does not exist.
 ///
@@ -41,7 +45,10 @@ async fn test_pre_delete_worktree_nonexistent_path_is_noop() {
     pre_delete_worktree(dir.path(), &nonexistent, "test-rc4").await;
 
     // Path still doesn't exist — nothing was created
-    assert!(!nonexistent.exists(), "path should remain absent after no-op pre_delete");
+    assert!(
+        path_absent(&nonexistent),
+        "path should remain absent after no-op pre_delete"
+    );
 }
 
 /// RC#4 guard 2: Successful RebaseSquash merge leaves no stale rebase or merge worktrees.
@@ -57,32 +64,68 @@ async fn test_rebase_squash_leaves_no_stale_worktrees() {
     let dir = tempfile::TempDir::new().expect("create temp dir");
     let path = dir.path();
 
-    let _ = Command::new("git").args(["init", "-b", "main"]).current_dir(path).output();
-    let _ = Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(path).output();
-    let _ = Command::new("git").args(["config", "user.name", "Test"]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(path)
+        .output();
 
     // Initial commit on main
     std::fs::write(path.join("README.md"), "# test").unwrap();
-    let _ = Command::new("git").args(["add", "."]).current_dir(path).output();
-    let _ = Command::new("git").args(["commit", "-m", "initial commit"]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(path)
+        .output();
 
     // Add a second commit on main so rebase has a real base (base_commit_count > 1 skips squash fallback)
     std::fs::write(path.join("base.rs"), "// base").unwrap();
-    let _ = Command::new("git").args(["add", "."]).current_dir(path).output();
-    let _ = Command::new("git").args(["commit", "-m", "base commit"]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["commit", "-m", "base commit"])
+        .current_dir(path)
+        .output();
 
     // Create task branch with a feature commit
     let task_branch = "task/rc4-test";
-    let _ = Command::new("git").args(["checkout", "-b", task_branch]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["checkout", "-b", task_branch])
+        .current_dir(path)
+        .output();
     std::fs::write(path.join("feature.rs"), "fn feature() {}").unwrap();
-    let _ = Command::new("git").args(["add", "."]).current_dir(path).output();
-    let _ = Command::new("git").args(["commit", "-m", "add feature"]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["commit", "-m", "add feature"])
+        .current_dir(path)
+        .output();
 
     // Return to main, then create a "workspace" branch to be the current checked-out branch.
     // We need: current_branch != "main" (target) to force the worktree path, AND
     //          task_branch not checked out in the main repo (so git can create a rebase worktree for it).
-    let _ = Command::new("git").args(["checkout", "main"]).current_dir(path).output();
-    let _ = Command::new("git").args(["checkout", "-b", "workspace"]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["checkout", "-b", "workspace"])
+        .current_dir(path)
+        .output();
     // Now: current="workspace" != target="main" → rebase_squash_worktree_strategy worktree path
 
     // --- 2. Set up project with temp worktree_parent_directory ---
@@ -90,7 +133,10 @@ async fn test_rebase_squash_leaves_no_stale_worktrees() {
     std::fs::create_dir_all(&worktree_parent).unwrap();
 
     let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut project = Project::new("test-project".to_string(), path.to_string_lossy().to_string());
+    let mut project = Project::new(
+        "test-project".to_string(),
+        path.to_string_lossy().to_string(),
+    );
     project.id = project_id.clone();
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::RebaseSquash;
@@ -116,7 +162,8 @@ async fn test_rebase_squash_leaves_no_stale_worktrees() {
     let services = TaskServices::new_mock()
         .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
         .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>);
-    let context = crate::domain::state_machine::context::TaskContext::new(&task_id_str, "proj-1", services);
+    let context =
+        crate::domain::state_machine::context::TaskContext::new(&task_id_str, "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
@@ -134,12 +181,12 @@ async fn test_rebase_squash_leaves_no_stale_worktrees() {
 
     // --- 7. Verify no stale worktrees remain ---
     assert!(
-        !rebase_wt_path.exists(),
+        path_absent(&rebase_wt_path),
         "RC#4: rebase worktree should be cleaned up after merge (no double-delete WARN). Path: {}",
         rebase_wt_path.display()
     );
     assert!(
-        !merge_wt_path.exists(),
+        path_absent(&merge_wt_path),
         "RC#4: merge worktree should be cleaned up after merge. Path: {}",
         merge_wt_path.display()
     );
@@ -157,32 +204,71 @@ async fn test_rebase_squash_git_worktree_list_shows_only_main_worktree() {
     let dir = tempfile::TempDir::new().expect("create temp dir");
     let path = dir.path();
 
-    let _ = Command::new("git").args(["init", "-b", "main"]).current_dir(path).output();
-    let _ = Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(path).output();
-    let _ = Command::new("git").args(["config", "user.name", "Test"]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(path)
+        .output();
 
     std::fs::write(path.join("README.md"), "# test").unwrap();
-    let _ = Command::new("git").args(["add", "."]).current_dir(path).output();
-    let _ = Command::new("git").args(["commit", "-m", "initial commit"]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(path)
+        .output();
 
     std::fs::write(path.join("base.rs"), "// base").unwrap();
-    let _ = Command::new("git").args(["add", "."]).current_dir(path).output();
-    let _ = Command::new("git").args(["commit", "-m", "base commit"]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["commit", "-m", "base commit"])
+        .current_dir(path)
+        .output();
 
     let task_branch = "task/rc4-registry-test";
-    let _ = Command::new("git").args(["checkout", "-b", task_branch]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["checkout", "-b", task_branch])
+        .current_dir(path)
+        .output();
     std::fs::write(path.join("feature2.rs"), "fn feature2() {}").unwrap();
-    let _ = Command::new("git").args(["add", "."]).current_dir(path).output();
-    let _ = Command::new("git").args(["commit", "-m", "add feature2"]).current_dir(path).output();
-    let _ = Command::new("git").args(["checkout", "main"]).current_dir(path).output();
-    let _ = Command::new("git").args(["checkout", "-b", "workspace"]).current_dir(path).output();
+    let _ = Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["commit", "-m", "add feature2"])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output();
+    let _ = Command::new("git")
+        .args(["checkout", "-b", "workspace"])
+        .current_dir(path)
+        .output();
 
     // --- 2. Set up project ---
     let worktree_parent = dir.path().join("wt2");
     std::fs::create_dir_all(&worktree_parent).unwrap();
 
     let project_id = ProjectId::from_string("proj-2".to_string());
-    let mut project = Project::new("registry-test".to_string(), path.to_string_lossy().to_string());
+    let mut project = Project::new(
+        "registry-test".to_string(),
+        path.to_string_lossy().to_string(),
+    );
     project.id = project_id.clone();
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::RebaseSquash;
@@ -206,7 +292,8 @@ async fn test_rebase_squash_git_worktree_list_shows_only_main_worktree() {
     let services = TaskServices::new_mock()
         .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
         .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>);
-    let context = crate::domain::state_machine::context::TaskContext::new(&task_id_str, "proj-2", services);
+    let context =
+        crate::domain::state_machine::context::TaskContext::new(&task_id_str, "proj-2", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
     let _ = handler.on_enter(&State::PendingMerge).await;
@@ -223,12 +310,12 @@ async fn test_rebase_squash_git_worktree_list_shows_only_main_worktree() {
 
     // --- 5. Verify worktree paths are absent from disk ---
     assert!(
-        !rebase_wt_path.exists(),
+        path_absent(&rebase_wt_path),
         "RC#4 Scenario 3: rebase worktree must not exist on disk after merge. Path: {}",
         rebase_wt_path.display()
     );
     assert!(
-        !merge_wt_path.exists(),
+        path_absent(&merge_wt_path),
         "RC#4 Scenario 3: merge worktree must not exist on disk after merge. Path: {}",
         merge_wt_path.display()
     );

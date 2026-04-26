@@ -1,6 +1,9 @@
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
-use axum::{extract::{Path, Query, State}, Json};
 use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
 use ralphx_lib::domain::entities::{
     ideation::{IdeationSession, IdeationSessionStatus, SessionPurpose},
@@ -152,7 +155,10 @@ fn request_team_plan_deserialization_missing_team_name_fails() {
     }"#;
 
     let result: Result<RequestTeamPlanRequest, _> = serde_json::from_str(json);
-    assert!(result.is_err(), "team_name is required — deserialization must fail when missing");
+    assert!(
+        result.is_err(),
+        "team_name is required — deserialization must fail when missing"
+    );
 }
 
 #[test]
@@ -514,7 +520,10 @@ fn resolve_mcp_agent_type_worker_process_no_preset() {
 fn resolve_mcp_agent_type_preset_overrides_worker_process() {
     // Even if process is worker-*, preset takes priority
     assert_eq!(
-        resolve_mcp_agent_type("worker-parallel", Some("ralphx-ideation-specialist-frontend")),
+        resolve_mcp_agent_type(
+            "worker-parallel",
+            Some("ralphx-ideation-specialist-frontend")
+        ),
         "ralphx-ideation-specialist-frontend"
     );
 }
@@ -548,7 +557,10 @@ fn resolve_effort_for_ideation_team_member_returns_default() {
     // should resolve to the default effort.
     let effort = resolve_effort(Some("ideation-team-member"));
     // Just ensure it returns a non-empty string (the default)
-    assert!(!effort.is_empty(), "Expected non-empty effort for ideation-team-member");
+    assert!(
+        !effort.is_empty(),
+        "Expected non-empty effort for ideation-team-member"
+    );
 }
 
 #[test]
@@ -556,7 +568,10 @@ fn resolve_effort_for_specialist_returns_non_empty() {
     use ralphx_lib::infrastructure::agents::claude::resolve_effort;
     // ralphx-ideation-specialist-backend has a YAML entry with opus model
     let effort = resolve_effort(Some("ralphx-ideation-specialist-backend"));
-    assert!(!effort.is_empty(), "Expected non-empty effort for ralphx-ideation-specialist-backend");
+    assert!(
+        !effort.is_empty(),
+        "Expected non-empty effort for ralphx-ideation-specialist-backend"
+    );
 }
 
 #[tokio::test]
@@ -592,7 +607,9 @@ async fn test_create_team_artifact_remaps_verification_child_session_id_to_paren
         .ideation_session_repo
         .create(
             IdeationSession::builder()
-                .id(IdeationSessionId::from_string("parent-session-1".to_string()))
+                .id(IdeationSessionId::from_string(
+                    "parent-session-1".to_string(),
+                ))
                 .project_id(ProjectId::from_string("project-1".to_string()))
                 .status(IdeationSessionStatus::Active)
                 .build(),
@@ -663,7 +680,10 @@ async fn test_create_team_artifact_allows_non_ideation_session_ids() {
         .await
         .expect("artifact lookup should succeed");
     let Json(GetTeamArtifactsResponse { count, artifacts }) = artifacts;
-    assert_eq!(count, 1, "expected artifact to be retrievable by session id");
+    assert_eq!(
+        count, 1,
+        "expected artifact to be retrievable by session id"
+    );
     assert_eq!(artifacts[0].name, "Execution Notes");
 }
 
@@ -676,7 +696,9 @@ async fn test_get_team_artifacts_remaps_verification_child_session_id_to_parent(
         .ideation_session_repo
         .create(
             IdeationSession::builder()
-                .id(IdeationSessionId::from_string("parent-session-2".to_string()))
+                .id(IdeationSessionId::from_string(
+                    "parent-session-2".to_string(),
+                ))
                 .project_id(ProjectId::from_string("project-2".to_string()))
                 .status(IdeationSessionStatus::Active)
                 .build(),
@@ -719,7 +741,10 @@ async fn test_get_team_artifacts_remaps_verification_child_session_id_to_parent(
         .expect("verification child read should be remapped to parent");
 
     let Json(GetTeamArtifactsResponse { count, artifacts }) = artifacts;
-    assert_eq!(count, 1, "expected remapped parent artifacts to be returned");
+    assert_eq!(
+        count, 1,
+        "expected remapped parent artifacts to be returned"
+    );
     assert_eq!(artifacts[0].name, "Feasibility: Round 1");
 }
 
@@ -745,6 +770,40 @@ async fn test_publish_verification_finding_rejects_placeholder_session_id() {
     let (status, message) = result.expect_err("placeholder session id must be rejected");
     assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
     assert!(message.contains("placeholder values"));
+}
+
+#[tokio::test]
+async fn test_publish_verification_finding_rejects_too_many_gaps() {
+    let state = test_state();
+    let gaps = (0..251)
+        .map(|idx| VerificationFindingGapPayload {
+            severity: "medium".to_string(),
+            category: "completeness".to_string(),
+            description: format!("Gap {idx}"),
+            why_it_matters: None,
+            source: None,
+            lens: None,
+        })
+        .collect();
+
+    let result = publish_verification_finding(
+        State(state),
+        Json(PublishVerificationFindingRequest {
+            session_id: "verification-parent-too-many".to_string(),
+            critic: "completeness".to_string(),
+            round: 1,
+            status: "partial".to_string(),
+            coverage: None,
+            summary: "Too many gaps".to_string(),
+            gaps,
+            title_suffix: None,
+        }),
+    )
+    .await;
+
+    let (status, message) = result.expect_err("oversized gap list must be rejected");
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    assert!(message.contains("gaps exceed the limit"));
 }
 
 #[tokio::test]
@@ -807,7 +866,9 @@ async fn test_publish_verification_finding_remaps_verification_child_to_parent()
         .ideation_session_repo
         .create(
             IdeationSession::builder()
-                .id(IdeationSessionId::from_string("parent-session-3".to_string()))
+                .id(IdeationSessionId::from_string(
+                    "parent-session-3".to_string(),
+                ))
                 .project_id(ProjectId::from_string("project-3".to_string()))
                 .status(IdeationSessionStatus::Active)
                 .build(),
