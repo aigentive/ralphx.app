@@ -13,8 +13,6 @@ import { useChatStore } from "@/stores/chatStore";
 import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import type { AgentConversation } from "./agentConversations";
 import { useAgentArtifactController } from "./useAgentArtifactController";
-import { AgentsArtifactPaneRegion } from "./AgentsArtifactPaneRegion";
-import { AgentsTerminalRegion } from "./AgentsTerminalRegion";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
 import { useAgentArtifactResize } from "./useAgentArtifactResize";
@@ -33,6 +31,7 @@ import { AgentsStartConversationPanel } from "./AgentsStartConversationPanel";
 import { useAgentArtifactActions } from "./useAgentArtifactActions";
 import { useAgentConversationInvalidation } from "./useAgentConversationInvalidation";
 import { useAgentUserMessageAutoTitle } from "./useAgentUserMessageAutoTitle";
+import { AgentsConversationSideRegions } from "./AgentsConversationSideRegions";
 
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
@@ -331,35 +330,25 @@ export function AgentsView({
             />
           )}
 
-          {selectedConversationId && activeConversation ? (
-            <AgentsArtifactPaneRegion
-              conversationId={selectedConversationId}
-              conversation={activeConversation}
-              workspace={activeWorkspace}
-              hasAutoOpenArtifacts={hasAutoOpenArtifacts}
-              artifactWidthCss={artifactWidthCss}
-              isArtifactResizing={isArtifactResizing}
-              onResizeStart={handleArtifactResizeStart}
-              onResizeReset={handleArtifactResizeReset}
-              onTabChange={handleSelectArtifact}
-              onTaskModeChange={(mode) =>
-                setArtifactTaskMode(selectedConversationId, mode)
-              }
-              onPublishWorkspace={handlePublishWorkspace}
-              isPublishingWorkspace={publishingConversationId === selectedConversationId}
-              onClose={() => setArtifactPaneVisibility(selectedConversationId, false)}
-              terminalUnavailableReason={terminalUnavailableReason}
-              setTerminalPanelDockElement={setTerminalPanelDockElement}
-            />
-          ) : null}
-          <AgentsTerminalRegion
-            conversationId={selectedConversationId}
-            workspace={activeWorkspace}
-            terminalUnavailableReason={terminalUnavailableReason}
-            hasAutoOpenArtifacts={hasAutoOpenArtifacts}
+          <AgentsConversationSideRegions
+            activeConversation={activeConversation}
+            activeWorkspace={activeWorkspace}
+            artifactWidthCss={artifactWidthCss}
             chatDockElement={terminalChatDockElement}
+            hasAutoOpenArtifacts={hasAutoOpenArtifacts}
+            isArtifactResizing={isArtifactResizing}
+            openArtifactTab={openArtifactTab}
             panelDockElement={terminalPanelDockElement}
-            onOpenArtifactTab={openArtifactTab}
+            publishingConversationId={publishingConversationId}
+            selectedConversationId={selectedConversationId}
+            setArtifactPaneVisibility={setArtifactPaneVisibility}
+            setArtifactTaskMode={setArtifactTaskMode}
+            setTerminalPanelDockElement={setTerminalPanelDockElement}
+            terminalUnavailableReason={terminalUnavailableReason}
+            onPublishWorkspace={handlePublishWorkspace}
+            onResizeReset={handleArtifactResizeReset}
+            onResizeStart={handleArtifactResizeStart}
+            onSelectArtifact={handleSelectArtifact}
           />
     </AgentsShellLayout>
   );
