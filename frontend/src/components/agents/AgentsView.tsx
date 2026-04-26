@@ -25,6 +25,7 @@ import { useSyncedAgentProjectFocus } from "./useSyncedAgentProjectFocus";
 import { useAgentsOptimisticState } from "./useAgentsOptimisticState";
 import { useAgentsTerminalDocks } from "./useAgentsTerminalDocks";
 import { useAgentsSidebarState } from "./useAgentsSidebarState";
+import { useAgentsSidebarProps } from "./useAgentsSidebarProps";
 
 interface AgentsViewProps {
   projectId: string;
@@ -246,9 +247,10 @@ export function AgentsView({
     setRuntimeForConversation,
   });
 
-  const sidebarProps = {
+  const sidebarProps = useAgentsSidebarProps({
     projects,
-    focusedProjectId: focusedProjectId ?? defaultProjectId,
+    defaultProjectId,
+    focusedProjectId,
     selectedConversationId,
     pinnedConversation: selectedConversationFallback,
     onFocusProject: handleSidebarFocusProject,
@@ -261,7 +263,7 @@ export function AgentsView({
     onRestoreConversation: handleRestoreConversation,
     showArchived,
     onShowArchivedChange: setShowArchived,
-  } as const;
+  });
 
   return (
     <AgentsShellLayout
