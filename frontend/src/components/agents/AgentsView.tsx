@@ -55,13 +55,8 @@ import { AgentsArtifactPaneRegion } from "./AgentsArtifactPaneRegion";
 import { AgentsChatHeaderController } from "./AgentsChatHeaderController";
 import {
   AGENT_CONVERSATION_MODE_OPTIONS,
-  isWorkspaceModeLocked,
   resolveConversationAgentMode,
 } from "./agentConversationMode";
-import {
-  getAgentTerminalUnavailableReason,
-  runtimeFromConversation,
-} from "./agentConversationRuntime";
 import { AgentsStartComposer } from "./AgentsStartComposer";
 import {
   AgentsTerminalDockHost,
@@ -74,10 +69,10 @@ import { archivedConversationCountKey } from "./useArchivedConversationCounts";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
-import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
 import { uploadDraftAttachment } from "./chatAttachmentUpload";
 import { useAgentArtifactResize } from "./useAgentArtifactResize";
 import { useAgentsSelectionModel } from "./useAgentsSelectionModel";
+import { useAgentsWorkspaceModel } from "./useAgentsWorkspaceModel";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
@@ -175,23 +170,19 @@ export function AgentsView({
     showArchived,
     storedSelectedConversationId,
   });
-  const conversationWorkspaceQuery = useQuery({
-    queryKey: ["agents", "conversation-workspace", selectedConversationId],
-    queryFn: () => chatApi.getAgentConversationWorkspace(selectedConversationId!),
-    enabled:
-      !!selectedConversationId &&
-      activeConversation?.contextType === "project",
-    staleTime: 5_000,
+  const {
+    activeConversationMode,
+    activeConversationModeLocked,
+    activeWorkspace,
+    normalizedActiveRuntime,
+    publishShortcutLabel,
+    terminalUnavailableReason,
+  } = useAgentsWorkspaceModel({
+    activeConversation,
+    optimisticWorkspacesByConversationId,
+    runtimeByConversationId,
+    selectedConversationId,
   });
-  const activeWorkspace =
-    conversationWorkspaceQuery.data ??
-    (selectedConversationId
-      ? optimisticWorkspacesByConversationId[selectedConversationId] ?? null
-      : null);
-  const activeConversationMode =
-    activeConversation?.contextType === "project"
-      ? resolveConversationAgentMode(activeConversation, activeWorkspace)
-      : null;
   const shouldHydrateAttachedIdeation =
     activeConversation?.contextType === "ideation" ||
     (activeConversation?.contextType === "project" &&
@@ -246,37 +237,6 @@ export function AgentsView({
     hasAutoOpenArtifacts,
     selectedConversationId,
   });
-
-  const activeRuntime = selectedConversationId
-    ? runtimeByConversationId[selectedConversationId] ??
-      runtimeFromConversation(activeConversation) ??
-      null
-    : null;
-  const normalizedActiveRuntime = normalizeRuntimeSelection(activeRuntime);
-  const canHydrateActiveWorkspaceFreshness = useDeferredAgentHydration(
-    selectedConversationId && activeWorkspace?.mode === "edit"
-      ? selectedConversationId
-      : null,
-  );
-  const activeWorkspaceFreshnessQuery = useQuery({
-    queryKey: ["agents", "conversation-workspace-freshness", selectedConversationId],
-    queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(selectedConversationId!),
-    enabled:
-      canHydrateActiveWorkspaceFreshness &&
-      !!selectedConversationId &&
-      activeWorkspace?.mode === "edit" &&
-      activeWorkspace.status !== "missing",
-    staleTime: 5_000,
-  });
-  const publishShortcutLabel = activeWorkspaceFreshnessQuery.data?.isBaseAhead
-    ? `Update from ${activeWorkspace?.baseRef ?? activeWorkspaceFreshnessQuery.data.baseRef}`
-    : "Commit & Publish";
-  const activeConversationModeLocked =
-    activeConversationMode === "ideation" || isWorkspaceModeLocked(activeWorkspace);
-  const terminalUnavailableReason = getAgentTerminalUnavailableReason(
-    activeConversation,
-    activeWorkspace,
-  );
 
   useEffect(() => {
     if (!projectId || syncedProjectIdRef.current === projectId) {
