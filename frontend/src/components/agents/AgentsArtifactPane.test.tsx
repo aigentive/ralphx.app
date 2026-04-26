@@ -257,6 +257,71 @@ describe("AgentsArtifactPane", () => {
     expect(useVerificationStatusMock).toHaveBeenCalledWith(undefined);
   });
 
+  it("does not hydrate graph or verification data for the ideation plan tab", async () => {
+    useConversationMock.mockReturnValue({
+      data: {
+        conversation: conversation(),
+        messages: [
+          {
+            id: "message-1",
+            conversationId: "conversation-1",
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "tool-1",
+                name: "v1_start_ideation",
+                arguments: {},
+                result: { session_id: "session-1" },
+              },
+            ],
+            contentBlocks: [],
+            createdAt: "2026-04-23T09:00:00Z",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+    getIdeationSessionMock.mockResolvedValue({
+      session: {
+        id: "session-1",
+        projectId: "project-1",
+        title: "Agent Plan",
+        titleSource: "auto",
+        status: "active",
+        planArtifactId: null,
+        seedTaskId: null,
+        parentSessionId: null,
+        teamMode: null,
+        teamConfig: null,
+        createdAt: "2026-04-23T09:00:00Z",
+        updatedAt: "2026-04-23T09:00:00Z",
+        archivedAt: null,
+        convertedAt: null,
+        verificationStatus: "unverified",
+        verificationInProgress: false,
+        gapScore: null,
+        inheritedPlanArtifactId: null,
+        sessionPurpose: "general",
+        acceptanceStatus: null,
+      },
+      proposals: [],
+      messages: [],
+    });
+
+    renderPane(
+      "plan",
+      workspace({ mode: "ideation" }),
+      vi.fn(),
+      false,
+      conversation(),
+    );
+
+    await waitFor(() => expect(getIdeationSessionMock).toHaveBeenCalledWith("session-1"));
+    expect(useDependencyGraphMock).toHaveBeenCalledWith("");
+    expect(useVerificationStatusMock).toHaveBeenCalledWith(undefined);
+  });
+
   it("confirms publish from the publish pane", () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     renderPane("publish", workspace({ mode: "edit" }), publish);

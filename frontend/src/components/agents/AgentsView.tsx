@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -59,7 +61,6 @@ import {
   type AgentArtifactTab,
   type AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
-import { AgentsArtifactPane } from "./AgentsArtifactPane";
 import { AgentsSidebar } from "./AgentsSidebar";
 import {
   getAgentConversationStoreKey,
@@ -103,6 +104,10 @@ const HEADER_ARTIFACT_TABS: Array<{
   { id: "proposal", label: "Proposals", icon: GitPullRequestArrow },
   { id: "tasks", label: "Tasks", icon: ClipboardList },
 ];
+
+const LazyAgentsArtifactPane = lazy(() =>
+  import("./AgentsArtifactPane").then((module) => ({ default: module.AgentsArtifactPane })),
+);
 
 const AGENTS_ARTIFACT_WIDTH_STORAGE_KEY = "ralphx-agents-artifact-width";
 const AGENTS_ARTIFACT_MIN_WIDTH = 320;
@@ -275,6 +280,28 @@ export function AgentsView({
     selectedConversationFallback,
     selectedConversationId,
   ]);
+  const conversationWorkspaceQuery = useQuery({
+    queryKey: ["agents", "conversation-workspace", selectedConversationId],
+    queryFn: () => chatApi.getAgentConversationWorkspace(selectedConversationId!),
+    enabled:
+      !!selectedConversationId &&
+      activeConversation?.contextType === "project",
+    staleTime: 5_000,
+  });
+  const activeWorkspace =
+    conversationWorkspaceQuery.data ??
+    (selectedConversationId
+      ? optimisticWorkspacesByConversationId[selectedConversationId] ?? null
+      : null);
+  const activeConversationMode =
+    activeConversation?.contextType === "project"
+      ? resolveConversationAgentMode(activeConversation, activeWorkspace)
+      : null;
+  const shouldHydrateAttachedIdeation =
+    activeConversation?.contextType === "ideation" ||
+    (activeConversation?.contextType === "project" &&
+      (activeConversationMode === "ideation" ||
+        Boolean(activeWorkspace?.linkedIdeationSessionId || activeWorkspace?.linkedPlanBranchId)));
   const selectedConversationMessages = useMemo(
     () =>
       selectedConversationData && selectedConversationData.conversation?.id === selectedConversationId
@@ -283,21 +310,16 @@ export function AgentsView({
     [selectedConversationData, selectedConversationId],
   );
   const attachedIdeationSessionId = useMemo(
-    () => resolveAttachedIdeationSessionId(activeConversation, selectedConversationMessages),
-    [activeConversation, selectedConversationMessages],
+    () =>
+      shouldHydrateAttachedIdeation
+        ? resolveAttachedIdeationSessionId(activeConversation, selectedConversationMessages)
+        : null,
+    [activeConversation, selectedConversationMessages, shouldHydrateAttachedIdeation],
   );
   const attachedIdeationSessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedIdeationSessionId ?? ""),
     queryFn: () => ideationApi.sessions.getWithData(attachedIdeationSessionId!),
-    enabled: !!attachedIdeationSessionId,
-    staleTime: 5_000,
-  });
-  const conversationWorkspaceQuery = useQuery({
-    queryKey: ["agents", "conversation-workspace", selectedConversationId],
-    queryFn: () => chatApi.getAgentConversationWorkspace(selectedConversationId!),
-    enabled:
-      !!selectedConversationId &&
-      activeConversation?.contextType === "project",
+    enabled: shouldHydrateAttachedIdeation && !!attachedIdeationSessionId,
     staleTime: 5_000,
   });
   const attachedIdeationSessionData =
@@ -424,15 +446,6 @@ export function AgentsView({
       null
     : null;
   const normalizedActiveRuntime = normalizeRuntimeSelection(activeRuntime);
-  const activeWorkspace =
-    conversationWorkspaceQuery.data ??
-    (selectedConversationId
-      ? optimisticWorkspacesByConversationId[selectedConversationId] ?? null
-      : null);
-  const activeConversationMode =
-    activeConversation?.contextType === "project"
-      ? resolveConversationAgentMode(activeConversation, activeWorkspace)
-      : null;
   const activeWorkspaceFreshnessQuery = useQuery({
     queryKey: ["agents", "conversation-workspace-freshness", selectedConversationId],
     queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(selectedConversationId!),
@@ -1430,17 +1443,28 @@ export function AgentsView({
               >
                 <div className="flex h-full min-h-0 flex-col">
                   <div className="min-h-0 flex-1">
-                    <AgentsArtifactPane
-                      conversation={activeConversation}
-                      workspace={activeWorkspace}
-                      activeTab={artifactState.activeTab}
-                      taskMode={artifactState.taskMode}
-                      onTabChange={handleSelectArtifact}
-                      onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
-                      onPublishWorkspace={handlePublishWorkspace}
-                      isPublishingWorkspace={publishingConversationId === selectedConversationId}
-                      onClose={() => setArtifactPaneVisibility(selectedConversationId, false)}
-                    />
+                    <Suspense
+                      fallback={
+                        <div
+                          className="flex h-full min-h-[220px] items-center justify-center p-6 text-center text-sm font-medium text-[var(--text-primary)]"
+                          data-testid="agents-artifact-pane-loading"
+                        >
+                          Loading panel...
+                        </div>
+                      }
+                    >
+                      <LazyAgentsArtifactPane
+                        conversation={activeConversation}
+                        workspace={activeWorkspace}
+                        activeTab={artifactState.activeTab}
+                        taskMode={artifactState.taskMode}
+                        onTabChange={handleSelectArtifact}
+                        onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
+                        onPublishWorkspace={handlePublishWorkspace}
+                        isPublishingWorkspace={publishingConversationId === selectedConversationId}
+                        onClose={() => setArtifactPaneVisibility(selectedConversationId, false)}
+                      />
+                    </Suspense>
                   </div>
                   {terminalDockTarget === "panel" && terminalDrawer}
                 </div>

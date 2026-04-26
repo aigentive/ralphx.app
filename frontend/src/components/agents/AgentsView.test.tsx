@@ -1421,6 +1421,49 @@ describe("AgentsView", () => {
     expect(publishAgentConversationWorkspaceMock).not.toHaveBeenCalled();
   });
 
+  it("does not hydrate attached ideation session data for edit conversations", async () => {
+    const agentConversation = conversation({ agentMode: "edit" });
+    mockAgentViewData(agentConversation);
+    useConversationMock.mockImplementation((conversationId: string | null) => ({
+      data:
+        conversationId === agentConversation.id
+          ? {
+              conversation: agentConversation,
+              messages: [
+                {
+                  id: "message-1",
+                  conversationId: agentConversation.id,
+                  role: "assistant",
+                  content: "",
+                  toolCalls: [
+                    {
+                      id: "tool-1",
+                      name: "v1_start_ideation",
+                      arguments: {},
+                      result: { session_id: "session-1" },
+                    },
+                  ],
+                  contentBlocks: [],
+                  createdAt: "2026-04-23T09:00:00Z",
+                },
+              ],
+            }
+          : null,
+      isLoading: false,
+    }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(
+      conversationWorkspace({ mode: "edit" })
+    );
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() =>
+      expect(getAgentConversationWorkspaceMock).toHaveBeenCalledWith("conversation-1")
+    );
+    expect(vi.mocked(ideationApi.sessions.getWithData)).not.toHaveBeenCalled();
+  });
+
   it("shows Update from base in the header shortcut when the workspace base moved", async () => {
     mockAgentViewData(conversation({ agentMode: "edit" }));
     getAgentConversationWorkspaceMock.mockResolvedValue(

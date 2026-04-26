@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { ElementType } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
@@ -25,9 +25,7 @@ import {
   type AgentConversationWorkspace,
   type AgentConversationWorkspacePublicationEvent,
 } from "@/api/chat";
-import { DiffViewer, type FileChange as DiffViewerFileChange } from "@/components/diff";
-import { TaskGraphView } from "@/components/TaskGraph";
-import { TaskBoard } from "@/components/tasks/TaskBoard";
+import type { FileChange as DiffViewerFileChange } from "@/components/diff";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
@@ -37,13 +35,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { withAlpha } from "@/lib/theme-colors";
-import { ExportPlanDialog } from "@/components/Ideation/ExportPlanDialog";
-import { PlanDisplay } from "@/components/Ideation/PlanDisplay";
 import type { TeamMetadata } from "@/components/Ideation/PlanDisplay";
-import { PlanEditor } from "@/components/Ideation/PlanEditor";
-import { PlanEmptyState } from "@/components/Ideation/PlanEmptyState";
-import { ProposalsTabContent } from "@/components/Ideation/ProposalsTabContent";
-import { VerificationPanel } from "@/components/Ideation/VerificationPanel";
 import type {
   AgentArtifactTab,
   AgentTaskArtifactMode,
@@ -61,6 +53,42 @@ import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 const EMPTY_PROPOSAL_HIGHLIGHTS = new Set<string>();
 
 function noop() {}
+
+const LazyDiffViewer = lazy(() =>
+  import("@/components/diff").then((module) => ({ default: module.DiffViewer })),
+);
+const LazyTaskGraphView = lazy(() =>
+  import("@/components/TaskGraph").then((module) => ({ default: module.TaskGraphView })),
+);
+const LazyTaskBoard = lazy(() =>
+  import("@/components/tasks/TaskBoard").then((module) => ({ default: module.TaskBoard })),
+);
+const LazyExportPlanDialog = lazy(() =>
+  import("@/components/Ideation/ExportPlanDialog").then((module) => ({
+    default: module.ExportPlanDialog,
+  })),
+);
+const LazyPlanDisplay = lazy(() =>
+  import("@/components/Ideation/PlanDisplay").then((module) => ({ default: module.PlanDisplay })),
+);
+const LazyPlanEditor = lazy(() =>
+  import("@/components/Ideation/PlanEditor").then((module) => ({ default: module.PlanEditor })),
+);
+const LazyPlanEmptyState = lazy(() =>
+  import("@/components/Ideation/PlanEmptyState").then((module) => ({
+    default: module.PlanEmptyState,
+  })),
+);
+const LazyProposalsTabContent = lazy(() =>
+  import("@/components/Ideation/ProposalsTabContent").then((module) => ({
+    default: module.ProposalsTabContent,
+  })),
+);
+const LazyVerificationPanel = lazy(() =>
+  import("@/components/Ideation/VerificationPanel").then((module) => ({
+    default: module.VerificationPanel,
+  })),
+);
 
 const ARTIFACT_TABS: Array<{
   id: AgentArtifactTab;
@@ -91,7 +119,7 @@ interface AgentsArtifactPaneProps {
   onClose: () => void;
 }
 
-export function AgentsArtifactPane({
+export const AgentsArtifactPane = memo(function AgentsArtifactPane({
   conversation,
   workspace = null,
   activeTab,
@@ -107,6 +135,24 @@ export function AgentsArtifactPane({
   const showPublishTab =
     workspace?.mode === "edit" && !workspace.linkedIdeationSessionId && !workspace.linkedPlanBranchId;
   const shouldLoadIdeationData = showIdeationTabs;
+  const visibleTabs = useMemo(
+    () => [
+      ...(showIdeationTabs ? ARTIFACT_TABS : []),
+      ...(showPublishTab ? [PUBLISH_TAB] : []),
+    ],
+    [showIdeationTabs, showPublishTab],
+  );
+  const effectiveActiveTab =
+    visibleTabs.some((tab) => tab.id === activeTab)
+      ? activeTab
+      : showPublishTab
+        ? "publish"
+        : "plan";
+  const shouldLoadVerificationData =
+    shouldLoadIdeationData && effectiveActiveTab === "verification";
+  const shouldLoadDependencyGraph =
+    shouldLoadIdeationData &&
+    (effectiveActiveTab === "proposal" || effectiveActiveTab === "tasks");
   const conversationQuery = useConversation(conversation?.id ?? null, {
     enabled: shouldLoadIdeationData && !!conversation?.id,
   });
@@ -158,10 +204,10 @@ export function AgentsArtifactPane({
     staleTime: 5_000,
   });
   const verificationQuery = useVerificationStatus(
-    shouldLoadIdeationData ? attachedSessionId ?? undefined : undefined,
+    shouldLoadVerificationData ? attachedSessionId ?? undefined : undefined,
   );
   const dependencyQuery = useDependencyGraph(
-    shouldLoadIdeationData ? attachedSessionId ?? "" : "",
+    shouldLoadDependencyGraph ? attachedSessionId ?? "" : "",
   );
   const verificationData =
     attachedSessionId && verificationQuery.data?.sessionId === attachedSessionId
@@ -173,19 +219,6 @@ export function AgentsArtifactPane({
     verificationData?.status ?? sessionData?.session.verificationStatus ?? "unverified";
   const verificationInProgress =
     verificationData?.inProgress ?? sessionData?.session.verificationInProgress ?? false;
-  const visibleTabs = useMemo(
-    () => [
-      ...(showIdeationTabs ? ARTIFACT_TABS : []),
-      ...(showPublishTab ? [PUBLISH_TAB] : []),
-    ],
-    [showIdeationTabs, showPublishTab],
-  );
-  const effectiveActiveTab =
-    visibleTabs.some((tab) => tab.id === activeTab)
-      ? activeTab
-      : showPublishTab
-        ? "publish"
-        : "plan";
   const handlePlanUpdated = useCallback(
     (updatedPlan: Artifact) => {
       queryClient.setQueryData(["agents", "artifact", updatedPlan.id], updatedPlan);
@@ -381,7 +414,7 @@ export function AgentsArtifactPane({
       </div>
     </aside>
   );
-}
+});
 
 type ArtifactContentProps = {
   activeTab: AgentArtifactTab;
@@ -418,6 +451,11 @@ function ArtifactContent({
   onPublishWorkspace,
   isPublishingWorkspace,
 }: ArtifactContentProps) {
+  const criticalPathSet = useMemo(
+    () => new Set(dependencyGraph?.criticalPath ?? []),
+    [dependencyGraph?.criticalPath],
+  );
+
   if (activeTab === "publish") {
     return (
       <AgentPublishPanel
@@ -460,7 +498,9 @@ function ArtifactContent({
     }
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <VerificationPanel session={session} />
+        <Suspense fallback={<EmptyArtifactState title="Loading verification..." />}>
+          <LazyVerificationPanel session={session} />
+        </Suspense>
       </div>
     );
   }
@@ -470,24 +510,26 @@ function ArtifactContent({
       return <EmptyArtifactState title="No proposals yet" />;
     }
     return (
-      <ProposalsTabContent
-        session={session}
-        proposals={proposals}
-        dependencyGraph={dependencyGraph}
-        criticalPathSet={new Set(dependencyGraph?.criticalPath ?? [])}
-        highlightedIds={EMPTY_PROPOSAL_HIGHLIGHTS}
-        isReadOnly
-        onEditProposal={noop}
-        onNavigateToTask={noop}
-        onViewHistoricalPlan={noop}
-        onImportPlan={noop}
-        onClearAll={noop}
-        onAcceptPlan={noop}
-        onReviewSync={noop}
-        onUndoSync={noop}
-        onDismissSync={noop}
-        hideToolbar
-      />
+      <Suspense fallback={<EmptyArtifactState title="Loading proposals..." />}>
+        <LazyProposalsTabContent
+          session={session}
+          proposals={proposals}
+          dependencyGraph={dependencyGraph}
+          criticalPathSet={criticalPathSet}
+          highlightedIds={EMPTY_PROPOSAL_HIGHLIGHTS}
+          isReadOnly
+          onEditProposal={noop}
+          onNavigateToTask={noop}
+          onViewHistoricalPlan={noop}
+          onImportPlan={noop}
+          onClearAll={noop}
+          onAcceptPlan={noop}
+          onReviewSync={noop}
+          onUndoSync={noop}
+          onDismissSync={noop}
+          hideToolbar
+        />
+      </Suspense>
     );
   }
 
@@ -784,32 +826,36 @@ function AgentPublishPanel({
             border: "1px solid var(--border-subtle)",
           }}
         >
-          <DiffViewer
-            changes={changes}
-            commits={[]}
-            commitFiles={commitFiles}
-            onFetchDiff={async (filePath) => {
-              if (!conversationId) {
-                return null;
-              }
-              const diff = await diffApi.getAgentConversationWorkspaceFileDiff(
-                conversationId,
-                filePath,
-              );
-              return {
-                filePath: diff.filePath,
-                oldContent: diff.oldContent,
-                newContent: diff.newContent,
-                hunks: [],
-                language: diff.language,
-              };
-            }}
-            onFetchCommitFiles={async () => setCommitFiles([])}
-            isLoadingChanges={changesQuery.isLoading}
-            changesLabel="Workspace Changes"
-            changesEmptyTitle="No workspace changes"
-            changesEmptySubtitle="There are no changed files to review for this agent branch."
-          />
+          {reviewOpen && (
+            <Suspense fallback={<EmptyArtifactState title="Loading workspace diff..." />}>
+              <LazyDiffViewer
+                changes={changes}
+                commits={[]}
+                commitFiles={commitFiles}
+                onFetchDiff={async (filePath) => {
+                  if (!conversationId) {
+                    return null;
+                  }
+                  const diff = await diffApi.getAgentConversationWorkspaceFileDiff(
+                    conversationId,
+                    filePath,
+                  );
+                  return {
+                    filePath: diff.filePath,
+                    oldContent: diff.oldContent,
+                    newContent: diff.newContent,
+                    hunks: [],
+                    language: diff.language,
+                  };
+                }}
+                onFetchCommitFiles={async () => setCommitFiles([])}
+                isLoadingChanges={changesQuery.isLoading}
+                changesLabel="Workspace Changes"
+                changesEmptyTitle="No workspace changes"
+                changesEmptySubtitle="There are no changed files to review for this agent branch."
+              />
+            </Suspense>
+          )}
         </DialogContent>
       </Dialog>
     </div>
@@ -1217,40 +1263,48 @@ function AgentPlanPanel({
     <div className="min-h-full p-4">
       {planArtifact ? (
         isEditing ? (
-          <PlanEditor
-            plan={planArtifact}
-            onSave={(updated) => {
-              onPlanUpdated(updated);
-              setIsEditing(false);
-            }}
-            onCancel={() => setIsEditing(false)}
-          />
+          <Suspense fallback={<EmptyArtifactState title="Loading plan editor..." />}>
+            <LazyPlanEditor
+              plan={planArtifact}
+              onSave={(updated) => {
+                onPlanUpdated(updated);
+                setIsEditing(false);
+              }}
+              onCancel={() => setIsEditing(false)}
+            />
+          </Suspense>
         ) : (
-          <PlanDisplay
-            plan={planArtifact}
-            linkedProposalsCount={proposals.filter((proposal) => proposal.planArtifactId === planArtifact.id).length}
-            onEdit={() => setIsEditing(true)}
-            onExport={() => setExportDialogOpen(true)}
-            isExpanded={isPlanExpanded}
-            onExpandedChange={setIsPlanExpanded}
-            {...(teamMetadata !== undefined && { teamMetadata })}
-            {...(session !== null && { onCreateProposals: handleCreateProposals })}
-          />
+          <Suspense fallback={<EmptyArtifactState title="Loading plan..." />}>
+            <LazyPlanDisplay
+              plan={planArtifact}
+              linkedProposalsCount={proposals.filter((proposal) => proposal.planArtifactId === planArtifact.id).length}
+              onEdit={() => setIsEditing(true)}
+              onExport={() => setExportDialogOpen(true)}
+              isExpanded={isPlanExpanded}
+              onExpandedChange={setIsPlanExpanded}
+              {...(teamMetadata !== undefined && { teamMetadata })}
+              {...(session !== null && { onCreateProposals: handleCreateProposals })}
+            />
+          </Suspense>
         )
       ) : (
-        <PlanEmptyState />
+        <Suspense fallback={<EmptyArtifactState title="Loading plan..." />}>
+          <LazyPlanEmptyState />
+        </Suspense>
       )}
 
-      {session && (
-        <ExportPlanDialog
-          open={exportDialogOpen}
-          onOpenChange={setExportDialogOpen}
-          sessionId={session.id}
-          sessionTitle={sessionTitle}
-          verificationStatus={session.verificationStatus ?? "unverified"}
-          planArtifact={planArtifact}
-          projectId={session.projectId}
-        />
+      {session && exportDialogOpen && (
+        <Suspense fallback={null}>
+          <LazyExportPlanDialog
+            open={exportDialogOpen}
+            onOpenChange={setExportDialogOpen}
+            sessionId={session.id}
+            sessionTitle={sessionTitle}
+            verificationStatus={session.verificationStatus ?? "unverified"}
+            planArtifact={planArtifact}
+            projectId={session.projectId}
+          />
+        </Suspense>
       )}
     </div>
   );
@@ -1272,18 +1326,22 @@ function TaskArtifactSurface({
   if (mode === "kanban") {
     return (
       <div className="h-full min-h-[520px] overflow-hidden bg-[var(--bg-base)]">
-        <TaskBoard projectId={projectId} ideationSessionId={sessionId} />
+        <Suspense fallback={<EmptyArtifactState title="Loading task board..." />}>
+          <LazyTaskBoard projectId={projectId} ideationSessionId={sessionId} />
+        </Suspense>
       </div>
     );
   }
 
   return (
     <div className="h-full min-h-[520px] overflow-hidden bg-[var(--bg-base)]">
-      <TaskGraphView
-        projectId={projectId}
-        ideationSessionId={sessionId}
-        hideCanvasControls
-      />
+      <Suspense fallback={<EmptyArtifactState title="Loading task graph..." />}>
+        <LazyTaskGraphView
+          projectId={projectId}
+          ideationSessionId={sessionId}
+          hideCanvasControls
+        />
+      </Suspense>
     </div>
   );
 }
