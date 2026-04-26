@@ -26,6 +26,7 @@ import { AgentsConversationSideRegions } from "./AgentsConversationSideRegions";
 import { useAgentsSessionBindings } from "./useAgentsSessionBindings";
 import { useSyncedAgentProjectFocus } from "./useSyncedAgentProjectFocus";
 import { useAgentsOptimisticState } from "./useAgentsOptimisticState";
+import { useAgentsTerminalDocks } from "./useAgentsTerminalDocks";
 
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
@@ -82,10 +83,12 @@ export function AgentsView({
   } = useAgentsSessionBindings({
     setOptimisticSelectedConversationId,
   });
-  const [terminalChatDockElement, setTerminalChatDockElement] =
-    useState<HTMLDivElement | null>(null);
-  const [terminalPanelDockElement, setTerminalPanelDockElement] =
-    useState<HTMLDivElement | null>(null);
+  const {
+    setTerminalChatDockElement,
+    setTerminalPanelDockElement,
+    terminalChatDockElement,
+    terminalPanelDockElement,
+  } = useAgentsTerminalDocks();
   const {
     activeConversation,
     activeProjectId,
