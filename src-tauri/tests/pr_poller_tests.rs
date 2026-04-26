@@ -5,21 +5,29 @@
 
 mod common;
 
+use std::path::Path;
 use std::sync::Arc;
 
+use ralphx_lib::application::agent_conversation_workspace::resolve_agent_conversation_workspace_path;
 use ralphx_lib::application::services::PrPollerRegistry;
-use ralphx_lib::application::{AppState, TaskTransitionService};
+use ralphx_lib::application::{AppState, ChatService, MockChatService, TaskTransitionService};
 use ralphx_lib::commands::ExecutionState;
-use ralphx_lib::domain::entities::{
-    ArtifactId, ExecutionPlanId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchId,
-    Project, ReviewOutcome, ReviewerType, Task, TaskCategory,
-};
 use ralphx_lib::domain::entities::plan_branch::PrStatus as DbPrStatus;
-use ralphx_lib::domain::repositories::PlanBranchRepository;
-use ralphx_lib::domain::services::github_service::{
-    PrReviewCommentFeedback, PrReviewFeedback, PrStatus,
+use ralphx_lib::domain::entities::{
+    AgentConversationWorkspace, AgentConversationWorkspaceMode, ArtifactId, ChatConversationId,
+    ExecutionPlanId, IdeationAnalysisBaseRefKind, IdeationSessionId, InternalStatus, PlanBranch,
+    PlanBranchId, Project, ProjectId, ReviewOutcome, ReviewerType, Task, TaskCategory,
 };
-use ralphx_lib::infrastructure::memory::MemoryPlanBranchRepository;
+use ralphx_lib::domain::repositories::{
+    AgentConversationWorkspaceRepository, PlanBranchRepository,
+};
+use ralphx_lib::domain::services::github_service::{
+    GithubServiceTrait, PrReviewCommentFeedback, PrReviewFeedback, PrStatus,
+};
+use ralphx_lib::infrastructure::agents::claude::agent_names::AGENT_GENERAL_WORKER;
+use ralphx_lib::infrastructure::memory::{
+    MemoryAgentConversationWorkspaceRepository, MemoryPlanBranchRepository,
+};
 
 use common::MockGithubService;
 
@@ -74,6 +82,284 @@ fn build_transition_service_with_pr_deps(
         .with_plan_branch_repo(plan_branch_repo)
         .with_review_repo(Arc::clone(&app_state.review_repo)),
     )
+}
+
+fn make_agent_workspace(
+    conversation_id: ChatConversationId,
+    project_id: ProjectId,
+) -> AgentConversationWorkspace {
+    let mut workspace = AgentConversationWorkspace::new(
+        conversation_id,
+        project_id,
+        AgentConversationWorkspaceMode::Edit,
+        IdeationAnalysisBaseRefKind::CurrentBranch,
+        "feature/agent-screen".to_string(),
+        Some("Current branch (feature/agent-screen)".to_string()),
+        Some("base-sha".to_string()),
+        "ralphx/ralphx/agent-12345678".to_string(),
+        "/tmp/agent-workspace".to_string(),
+    );
+    workspace.publication_pr_number = Some(72);
+    workspace.publication_pr_url = Some("https://github.com/owner/repo/pull/72".to_string());
+    workspace.publication_pr_status = Some("open".to_string());
+    workspace.publication_push_status = Some("pushed".to_string());
+    workspace
+}
+
+fn requested_changes_feedback(review_id: &str) -> PrReviewFeedback {
+    PrReviewFeedback {
+        review_id: review_id.to_string(),
+        author: "reviewer".to_string(),
+        submitted_at: Some("2026-04-26T10:00:00Z".to_string()),
+        body: Some("Please cover the publish retry path.".to_string()),
+        comments: vec![PrReviewCommentFeedback {
+            id: "comment-1".to_string(),
+            author: "reviewer".to_string(),
+            path: Some("src-tauri/src/application/services/pr_merge_poller.rs".to_string()),
+            line: Some(42),
+            body: "This should wake the workspace agent.".to_string(),
+        }],
+    }
+}
+
+fn initialize_git_workspace(path: &Path, branch_name: &str) {
+    let status = std::process::Command::new("git")
+        .arg("init")
+        .arg("-b")
+        .arg(branch_name)
+        .arg(path)
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["config", "user.email", "test@example.com"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["config", "user.name", "Test User"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+async fn seed_valid_agent_workspace_project(
+    app_state: &AppState,
+    conversation_id: ChatConversationId,
+) -> (tempfile::TempDir, AgentConversationWorkspace) {
+    let temp_dir = tempfile::tempdir_in(std::env::current_dir().unwrap()).unwrap();
+    let project_root = temp_dir.path().join("repo");
+    let worktree_parent = temp_dir.path().join("worktrees");
+    std::fs::create_dir_all(&project_root).unwrap();
+    std::fs::create_dir_all(&worktree_parent).unwrap();
+
+    let mut project = Project::new(
+        "Workspace PR Project".to_string(),
+        project_root.to_string_lossy().to_string(),
+    );
+    project.worktree_parent_directory = Some(worktree_parent.to_string_lossy().to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut workspace = make_agent_workspace(conversation_id, project.id.clone());
+    let expected_worktree_path =
+        resolve_agent_conversation_workspace_path(&project, &workspace.conversation_id).unwrap();
+    std::fs::create_dir_all(expected_worktree_path.parent().unwrap()).unwrap();
+    initialize_git_workspace(&expected_worktree_path, &workspace.branch_name);
+    workspace.worktree_path = expected_worktree_path.to_string_lossy().to_string();
+
+    (temp_dir, workspace)
+}
+
+#[tokio::test]
+async fn agent_workspace_review_feedback_routes_to_same_workspace_agent_once() {
+    let workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
+    let conversation_id = ChatConversationId::from_string("22222222-2222-2222-2222-222222222222");
+    let project_id = ProjectId::from_string("project-1".to_string());
+    let workspace = make_agent_workspace(conversation_id, project_id.clone());
+    workspace_repo
+        .create_or_update(workspace.clone())
+        .await
+        .unwrap();
+
+    let github = Arc::new(MockGithubService::new());
+    let feedback = requested_changes_feedback("review-1");
+    github.will_return_review_feedback(feedback.clone());
+
+    let registry = PrPollerRegistry::new(
+        Some(Arc::clone(&github) as Arc<dyn GithubServiceTrait>),
+        Arc::new(MemoryPlanBranchRepository::new()),
+    );
+    let chat_service = Arc::new(MockChatService::new());
+
+    let routed = registry
+        .process_agent_workspace_review_feedback_once(
+            &workspace.conversation_id,
+            72,
+            std::path::Path::new("/tmp/agent-workspace"),
+            Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+            Arc::clone(&chat_service) as Arc<dyn ChatService>,
+        )
+        .await
+        .unwrap();
+
+    assert!(routed);
+    assert_eq!(chat_service.call_count(), 1);
+    let messages = chat_service.get_sent_messages().await;
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].contains("GitHub PR #72 requested changes"));
+    assert!(messages[0].contains("GitHub review id: review-1"));
+    assert!(messages[0].contains("Please cover the publish retry path."));
+    assert!(messages[0].contains("pr_merge_poller.rs:42"));
+
+    let options = chat_service.get_sent_options().await;
+    assert_eq!(options.len(), 1);
+    assert_eq!(
+        options[0].conversation_id_override,
+        Some(workspace.conversation_id)
+    );
+    assert_eq!(
+        options[0].agent_name_override.as_deref(),
+        Some(AGENT_GENERAL_WORKER)
+    );
+
+    let updated = workspace_repo
+        .get_by_conversation_id(&workspace.conversation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.publication_pr_status.as_deref(),
+        Some("changes_requested")
+    );
+    assert_eq!(
+        updated.publication_push_status.as_deref(),
+        Some("needs_agent")
+    );
+
+    let events = workspace_repo
+        .list_publication_events(&workspace.conversation_id)
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].classification.as_deref(),
+        Some("github_pr_review:review-1")
+    );
+
+    github.will_return_review_feedback(feedback);
+    let routed_again = registry
+        .process_agent_workspace_review_feedback_once(
+            &workspace.conversation_id,
+            72,
+            std::path::Path::new("/tmp/agent-workspace"),
+            Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+            Arc::clone(&chat_service) as Arc<dyn ChatService>,
+        )
+        .await
+        .unwrap();
+
+    assert!(!routed_again);
+    assert_eq!(chat_service.call_count(), 1);
+    assert_eq!(
+        workspace_repo
+            .list_publication_events(&workspace.conversation_id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn recover_agent_workspace_pr_pollers_restarts_active_direct_workspaces() {
+    let app_state = AppState::new_test();
+    let workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
+    let conversation_id = ChatConversationId::from_string("33333333-3333-3333-3333-333333333333");
+    let (_temp_dir, workspace) =
+        seed_valid_agent_workspace_project(&app_state, conversation_id).await;
+
+    workspace_repo
+        .create_or_update(workspace.clone())
+        .await
+        .unwrap();
+
+    let github = Arc::new(MockGithubService::new());
+    let registry = Arc::new(PrPollerRegistry::new(
+        Some(Arc::clone(&github) as Arc<dyn GithubServiceTrait>),
+        Arc::new(MemoryPlanBranchRepository::new()),
+    ));
+    let chat_service = Arc::new(MockChatService::new());
+
+    ralphx_lib::application::pr_startup_recovery::recover_agent_workspace_pr_pollers(
+        Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&registry),
+        Arc::clone(&chat_service) as Arc<dyn ChatService>,
+    )
+    .await;
+
+    assert!(
+        registry.is_agent_workspace_polling(&workspace.conversation_id),
+        "active direct published workspace PR should restart a backend poller"
+    );
+
+    registry.stop_agent_workspace_polling(&workspace.conversation_id);
+}
+
+#[tokio::test]
+async fn recover_agent_workspace_pr_pollers_skips_workspaces_waiting_on_agent() {
+    let app_state = AppState::new_test();
+    let workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
+    let conversation_id = ChatConversationId::from_string("44445555-3333-2222-1111-000000000000");
+    let (_temp_dir, mut workspace) =
+        seed_valid_agent_workspace_project(&app_state, conversation_id).await;
+    workspace.publication_pr_status = Some("changes_requested".to_string());
+    workspace.publication_push_status = Some("needs_agent".to_string());
+
+    workspace_repo
+        .create_or_update(workspace.clone())
+        .await
+        .unwrap();
+
+    let github = Arc::new(MockGithubService::new());
+    let registry = Arc::new(PrPollerRegistry::new(
+        Some(Arc::clone(&github) as Arc<dyn GithubServiceTrait>),
+        Arc::new(MemoryPlanBranchRepository::new()),
+    ));
+    let chat_service = Arc::new(MockChatService::new());
+
+    ralphx_lib::application::pr_startup_recovery::recover_agent_workspace_pr_pollers(
+        Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&registry),
+        Arc::clone(&chat_service) as Arc<dyn ChatService>,
+    )
+    .await;
+
+    assert!(
+        !registry.is_agent_workspace_polling(&workspace.conversation_id),
+        "workspace already waiting on the agent must not restart PR polling on app startup"
+    );
+    assert_eq!(github.review_feedback_calls(), 0);
+    assert_eq!(chat_service.call_count(), 0);
 }
 
 // ============================================================================

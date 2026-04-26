@@ -5,9 +5,9 @@ use chrono::Utc;
 use tokio::sync::RwLock;
 
 use crate::domain::entities::{
-    AgentConversationWorkspace, AgentConversationWorkspacePublicationEvent,
-    AgentConversationWorkspaceStatus, ChatConversationId, IdeationSessionId, PlanBranchId,
-    ProjectId,
+    AgentConversationWorkspace, AgentConversationWorkspaceMode,
+    AgentConversationWorkspacePublicationEvent, AgentConversationWorkspaceStatus,
+    ChatConversationId, IdeationSessionId, PlanBranchId, ProjectId,
 };
 use crate::domain::repositories::AgentConversationWorkspaceRepository;
 use crate::error::AppResult;
@@ -65,6 +65,19 @@ impl AgentConversationWorkspaceRepository for MemoryAgentConversationWorkspaceRe
             .await
             .values()
             .filter(|workspace| workspace.project_id == *project_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn list_active_direct_published_workspaces(
+        &self,
+    ) -> AppResult<Vec<AgentConversationWorkspace>> {
+        Ok(self
+            .workspaces
+            .read()
+            .await
+            .values()
+            .filter(|workspace| is_active_direct_published_workspace(workspace))
             .cloned()
             .collect())
     }
@@ -141,16 +154,32 @@ impl AgentConversationWorkspaceRepository for MemoryAgentConversationWorkspaceRe
 
     async fn delete(&self, conversation_id: &ChatConversationId) -> AppResult<()> {
         self.workspaces.write().await.remove(conversation_id);
-        self.publication_events.write().await.remove(conversation_id);
+        self.publication_events
+            .write()
+            .await
+            .remove(conversation_id);
         Ok(())
     }
 }
 
+fn is_active_direct_published_workspace(workspace: &AgentConversationWorkspace) -> bool {
+    workspace.status == AgentConversationWorkspaceStatus::Active
+        && workspace.mode == AgentConversationWorkspaceMode::Edit
+        && workspace.linked_plan_branch_id.is_none()
+        && workspace.publication_pr_number.is_some()
+        && matches!(
+            workspace.publication_push_status.as_deref(),
+            None | Some("pushed")
+        )
+        && !matches!(
+            workspace.publication_pr_status.as_deref(),
+            Some("closed") | Some("merged")
+        )
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::domain::entities::{
-        AgentConversationWorkspacePublicationEvent, ChatConversationId,
-    };
+    use crate::domain::entities::{AgentConversationWorkspacePublicationEvent, ChatConversationId};
     use crate::domain::repositories::AgentConversationWorkspaceRepository;
 
     use super::MemoryAgentConversationWorkspaceRepository;

@@ -24,6 +24,10 @@ pub trait AgentConversationWorkspaceRepository: Send + Sync {
         project_id: &ProjectId,
     ) -> AppResult<Vec<AgentConversationWorkspace>>;
 
+    async fn list_active_direct_published_workspaces(
+        &self,
+    ) -> AppResult<Vec<AgentConversationWorkspace>>;
+
     async fn update_links(
         &self,
         conversation_id: &ChatConversationId,

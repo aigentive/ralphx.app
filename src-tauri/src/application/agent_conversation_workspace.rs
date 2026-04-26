@@ -10,6 +10,9 @@ use crate::domain::entities::{
 };
 use crate::domain::state_machine::transition_handler::run_pre_execution_setup;
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::agents::claude::agent_names::{
+    AGENT_CHAT_PROJECT, AGENT_GENERAL_EXPLORER, AGENT_GENERAL_WORKER,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct AgentConversationWorkspaceBaseSelection {
@@ -179,6 +182,14 @@ pub fn agent_conversation_branch_name(
         short_id
     };
     format!("ralphx/{project_slug}/agent-{short_id}")
+}
+
+pub fn agent_name_for_workspace_mode(mode: AgentConversationWorkspaceMode) -> &'static str {
+    match mode {
+        AgentConversationWorkspaceMode::Chat => AGENT_GENERAL_EXPLORER,
+        AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
+        AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
+    }
 }
 
 async fn ensure_agent_conversation_worktree(
@@ -404,10 +415,9 @@ mod tests {
                 .exists(),
             "agent conversation worktree should run project worktree_setup commands"
         );
-        let captured_head =
-            GitService::get_head_sha(Path::new(&workspace.worktree_path))
-                .await
-                .expect("workspace HEAD should resolve");
+        let captured_head = GitService::get_head_sha(Path::new(&workspace.worktree_path))
+            .await
+            .expect("workspace HEAD should resolve");
         assert_eq!(
             workspace.base_commit.as_deref(),
             Some(captured_head.as_str()),

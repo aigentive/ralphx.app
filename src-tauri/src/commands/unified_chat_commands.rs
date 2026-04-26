@@ -19,8 +19,8 @@ use serde_json::{Map as JsonMap, Value as JsonValue};
 use tauri::{Emitter, State};
 
 use crate::application::agent_conversation_workspace::{
-    prepare_agent_conversation_workspace, resolve_valid_agent_conversation_workspace_path,
-    AgentConversationWorkspaceBaseSelection,
+    agent_name_for_workspace_mode, prepare_agent_conversation_workspace,
+    resolve_valid_agent_conversation_workspace_path, AgentConversationWorkspaceBaseSelection,
 };
 use crate::application::chat_service::{
     create_assistant_message, AgentConversationCreatedPayload, SendMessageOptions,
@@ -32,21 +32,17 @@ use crate::application::publish_resilience::{
     PublishBranchFreshnessOutcome, PublishFailureClass,
 };
 use crate::application::{
-    AgentMessageCreatedPayload, AppChatService, AppState, ChatService, ChatServiceError,
-    SendResult,
+    AgentMessageCreatedPayload, AppChatService, AppState, ChatService, ChatServiceError, SendResult,
 };
 use crate::commands::ExecutionState;
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
     AgentConversationWorkspace, AgentConversationWorkspaceMode,
     AgentConversationWorkspacePublicationEvent, AgentRunId, AgentRunStatus, ChatContextType,
-    ChatConversation, ChatConversationId, DelegatedSessionId,
-    IdeationAnalysisBaseRefKind, IdeationSessionId, ProjectId, TaskId,
+    ChatConversation, ChatConversationId, DelegatedSessionId, IdeationAnalysisBaseRefKind,
+    IdeationSessionId, ProjectId, TaskId,
 };
 use crate::domain::services::{AgentWorkspacePrPublisher, QueuedMessage, RunningAgentKey};
-use crate::infrastructure::agents::claude::agent_names::{
-    AGENT_CHAT_PROJECT, AGENT_GENERAL_EXPLORER, AGENT_GENERAL_WORKER,
-};
 
 // ============================================================================
 // Request/Response types
@@ -802,14 +798,6 @@ fn parse_agent_workspace_base_kind(
         .filter(|value| !value.is_empty())
         .map(str::parse::<IdeationAnalysisBaseRefKind>)
         .transpose()
-}
-
-fn agent_name_for_workspace_mode(mode: AgentConversationWorkspaceMode) -> &'static str {
-    match mode {
-        AgentConversationWorkspaceMode::Chat => AGENT_GENERAL_EXPLORER,
-        AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
-        AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
-    }
 }
 
 fn agent_mode_requires_workspace(mode: AgentConversationWorkspaceMode) -> bool {
@@ -1750,14 +1738,8 @@ pub async fn publish_agent_conversation_workspace(
         Some(github) => github,
         None => {
             let error = "GitHub integration is not available".to_string();
-            mark_agent_workspace_publish_failure(
-                &state,
-                &workspace,
-                &error,
-                None,
-                &repair_service,
-            )
-            .await;
+            mark_agent_workspace_publish_failure(&state, &workspace, &error, None, &repair_service)
+                .await;
             return Err(error);
         }
     };
@@ -1770,14 +1752,8 @@ pub async fn publish_agent_conversation_workspace(
         Ok(has_changes) => has_changes,
         Err(error) => {
             let error = error.to_string();
-            mark_agent_workspace_publish_failure(
-                &state,
-                &workspace,
-                &error,
-                None,
-                &repair_service,
-            )
-            .await;
+            mark_agent_workspace_publish_failure(&state, &workspace, &error, None, &repair_service)
+                .await;
             return Err(error);
         }
     };
@@ -1796,9 +1772,9 @@ pub async fn publish_agent_conversation_workspace(
                     &workspace,
                     &error,
                     None,
-                &repair_service,
-            )
-            .await;
+                    &repair_service,
+                )
+                .await;
                 return Err(error);
             }
         }
@@ -1809,13 +1785,7 @@ pub async fn publish_agent_conversation_workspace(
     if let Err(error) =
         review_base_for_publish(workspace.base_commit.as_deref(), &workspace.base_ref)
     {
-        mark_agent_workspace_publish_failure(
-            &state,
-            &workspace,
-            &error,
-            None,
-                &repair_service,
-            )
+        mark_agent_workspace_publish_failure(&state, &workspace, &error, None, &repair_service)
             .await;
         return Err(error);
     }
@@ -1880,9 +1850,9 @@ pub async fn publish_agent_conversation_workspace(
                     &workspace,
                     &error,
                     None,
-                &repair_service,
-            )
-            .await;
+                    &repair_service,
+                )
+                .await;
                 return Err(error);
             }
         };
@@ -1891,27 +1861,24 @@ pub async fn publish_agent_conversation_workspace(
         .await
         .map_err(|e| e.to_string())?;
 
-    let reviewable_commit_count = match count_publish_reviewable_commits(
-        &worktree_path,
-        &workspace.branch_name,
-        review_base,
-    )
-    .await
-    {
-        Ok(count) => count,
-        Err(error) => {
-            let error = error.to_string();
-            mark_agent_workspace_publish_failure(
-                &state,
-                &workspace,
-                &error,
-                None,
-                &repair_service,
-            )
-            .await;
-            return Err(error);
-        }
-    };
+    let reviewable_commit_count =
+        match count_publish_reviewable_commits(&worktree_path, &workspace.branch_name, review_base)
+            .await
+        {
+            Ok(count) => count,
+            Err(error) => {
+                let error = error.to_string();
+                mark_agent_workspace_publish_failure(
+                    &state,
+                    &workspace,
+                    &error,
+                    None,
+                    &repair_service,
+                )
+                .await;
+                return Err(error);
+            }
+        };
     if reviewable_commit_count == 0 {
         let _ = mark_agent_workspace_publish_status(&state, &workspace, "no_changes").await;
         return Err("No committed changes to publish on this agent branch".to_string());
@@ -1923,13 +1890,7 @@ pub async fn publish_agent_conversation_workspace(
 
     if let Err(error) = push_publish_branch(github, &worktree_path, &workspace.branch_name).await {
         let error = error.to_string();
-        mark_agent_workspace_publish_failure(
-            &state,
-            &workspace,
-            &error,
-            None,
-                &repair_service,
-            )
+        mark_agent_workspace_publish_failure(&state, &workspace, &error, None, &repair_service)
             .await;
         return Err(error);
     }
@@ -1979,6 +1940,15 @@ pub async fn publish_agent_conversation_workspace(
     )
     .await
     .map_err(|e| e.to_string())?;
+
+    let review_chat_service: Arc<dyn ChatService> = Arc::new(repair_service);
+    state.pr_poller_registry.start_agent_workspace_polling(
+        workspace.conversation_id,
+        outcome.pr_number,
+        worktree_path.clone(),
+        Arc::clone(&state.agent_conversation_workspace_repo),
+        review_chat_service,
+    );
 
     let refreshed = state
         .agent_conversation_workspace_repo
@@ -2060,7 +2030,9 @@ where
             &build_agent_workspace_publish_repair_message(error, workspace),
             SendMessageOptions {
                 conversation_id_override: Some(workspace.conversation_id),
-                agent_name_override: Some(agent_name_for_workspace_mode(workspace.mode).to_string()),
+                agent_name_override: Some(
+                    agent_name_for_workspace_mode(workspace.mode).to_string(),
+                ),
                 ..Default::default()
             },
         )

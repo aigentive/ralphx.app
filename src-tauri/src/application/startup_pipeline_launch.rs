@@ -23,6 +23,8 @@ pub(crate) fn launch_startup_pipeline(
     let startup_chat_attachment_repo = Arc::clone(&app_state.chat_attachment_repo);
     let startup_artifact_repo = Arc::clone(&app_state.artifact_repo);
     let startup_conversation_repo = Arc::clone(&app_state.chat_conversation_repo);
+    let startup_agent_conversation_workspace_repo =
+        Arc::clone(&app_state.agent_conversation_workspace_repo);
     let startup_agent_run_repo = Arc::clone(&app_state.agent_run_repo);
     let startup_ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
     let startup_activity_event_repo = Arc::clone(&app_state.activity_event_repo);
@@ -63,6 +65,7 @@ pub(crate) fn launch_startup_pipeline(
                 chat_attachment_repo: startup_chat_attachment_repo,
                 artifact_repo: startup_artifact_repo,
                 conversation_repo: startup_conversation_repo,
+                agent_conversation_workspace_repo: startup_agent_conversation_workspace_repo,
                 agent_run_repo: startup_agent_run_repo,
                 ideation_session_repo: startup_ideation_session_repo,
                 activity_event_repo: startup_activity_event_repo,
