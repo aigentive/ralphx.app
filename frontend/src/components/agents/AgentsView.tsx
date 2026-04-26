@@ -38,10 +38,6 @@ import {
   type AgentConversation,
 } from "./agentConversations";
 import {
-  deriveAgentTitleFromMessages,
-  isDefaultAgentTitle,
-} from "./agentTitle";
-import {
   DEFAULT_AGENT_RUNTIME,
   AGENT_MODEL_OPTIONS,
   AGENT_PROVIDER_OPTIONS,
@@ -73,6 +69,7 @@ import { useAgentArtifactResize } from "./useAgentArtifactResize";
 import { useAgentsSelectionModel } from "./useAgentsSelectionModel";
 import { useAgentsWorkspaceModel } from "./useAgentsWorkspaceModel";
 import { useAgentsAttachedIdeation } from "./useAgentsAttachedIdeation";
+import { useAgentsAutoTitle } from "./useAgentsAutoTitle";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
@@ -114,9 +111,6 @@ export function AgentsView({
     isArtifactResizing,
     splitContainerRef,
   } = useAgentArtifactResize();
-  const autoTitleStateRef = useRef<
-    Map<string, { messages: string[]; lastTitle: string | null }>
-  >(new Map());
   const syncedProjectIdRef = useRef<string | null>(null);
   const {
     sidebarWidth,
@@ -295,69 +289,10 @@ export function AgentsView({
     selectedConversationId,
   });
 
-  const handleAutoManagedTitle = useCallback(
-    ({
-      content,
-      conversationId,
-      targetProjectId,
-      shouldSpawnSessionNamer,
-    }: {
-      content: string;
-      conversationId: string;
-      targetProjectId: string;
-      shouldSpawnSessionNamer: boolean;
-    }) => {
-      const conversation = findConversationById(conversationId);
-      const titleIsAutoManaged =
-        isDefaultAgentTitle(conversation?.title) ||
-        autoTitleStateRef.current.get(conversationId)?.lastTitle === conversation?.title;
-      if (!titleIsAutoManaged) {
-        return;
-      }
-
-      const state = autoTitleStateRef.current.get(conversationId) ?? {
-        messages: [],
-        lastTitle: null,
-      };
-      const isFirstTrackedMessage = state.messages.length === 0;
-      if (shouldSpawnSessionNamer && isFirstTrackedMessage) {
-        void chatApi
-          .spawnConversationSessionNamer(conversationId, content)
-          .catch(() => {
-            // Session namer is best-effort; local auto-titling remains as fallback.
-          });
-      }
-
-      if (state.messages.length >= 3) {
-        return;
-      }
-
-      state.messages = [...state.messages, content].slice(0, 3);
-      const nextTitle = deriveAgentTitleFromMessages(state.messages);
-      if (!nextTitle || nextTitle === conversation?.title || nextTitle === state.lastTitle) {
-        autoTitleStateRef.current.set(conversationId, state);
-        return;
-      }
-
-      state.lastTitle = nextTitle;
-      autoTitleStateRef.current.set(conversationId, state);
-      const titleUpdate =
-        conversation?.contextType === "ideation"
-          ? Promise.all([
-              chatApi.updateConversationTitle(conversationId, nextTitle),
-              ideationApi.sessions.updateTitle(conversation.contextId, nextTitle),
-            ])
-          : chatApi.updateConversationTitle(conversationId, nextTitle);
-      void titleUpdate
-        .then(() => {
-          void invalidateProjectConversations(conversation?.projectId ?? targetProjectId);
-        })
-        .catch(() => {
-          // Auto-titling is best-effort; manual title editing remains available.
-        });
-    },
-    [findConversationById, invalidateProjectConversations]
-  );
+  const { clearAutoManagedTitle, handleAutoManagedTitle } = useAgentsAutoTitle({
+    findConversationById,
+    invalidateProjectConversations,
+  });
 
   const handleStartAgentConversation = useCallback(
     async ({
@@ -591,10 +526,16 @@ export function AgentsView({
       } else {
         await chatApi.updateConversationTitle(conversationId, trimmed);
       }
-      autoTitleStateRef.current.delete(conversationId);
+      clearAutoManagedTitle(conversationId);
       await invalidateProjectConversations(conversation?.projectId ?? activeProjectId ?? projectId);
     },
-    [activeProjectId, findConversationById, invalidateProjectConversations, projectId]
+    [
+      activeProjectId,
+      clearAutoManagedTitle,
+      findConversationById,
+      invalidateProjectConversations,
+      projectId,
+    ]
   );
 
   const handleAgentUserMessageSent = useCallback(
