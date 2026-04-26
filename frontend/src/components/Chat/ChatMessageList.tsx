@@ -43,6 +43,7 @@ import { TeamMessageBubble } from "./TeamMessageBubble";
 import { isProviderRole } from "@/lib/chat/provider-role";
 import { normalizeStreamingVerificationContentBlocks } from "./verification-tool-calls";
 import { cn } from "@/lib/utils";
+import { isTranscriptRootReadyForReveal } from "./ChatMessageList.readiness";
 
 // ============================================================================
 // Constants
@@ -58,6 +59,8 @@ export const AT_BOTTOM_THRESHOLD = 150;
 /** Bucket size for text length change detection during streaming.
  *  ~2 visible lines per trigger (average line ~80 chars at standard chat width → 2 lines × 80 = 160, rounded to 150). */
 export const TEXT_LENGTH_BUCKET_SIZE = 150;
+
+const INITIAL_TRANSCRIPT_PAINT_MAX_FRAMES = 240;
 
 /** Shared styles for content containers to handle long text */
 const contentContainerStyle: React.CSSProperties = {
@@ -280,8 +283,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const footerPrevHeightRef = useRef<number>(-1); // -1 = uninitialized sentinel
     const footerMountedRef = useRef(false); // H2 fix: skip initial mount observation
     const hasFooterStreamingContentRef = useRef(false);
+    const transcriptRootRef = useRef<HTMLDivElement | null>(null);
     const initialPaintReadyFrameRef = useRef<number | null>(null);
     const initialPaintReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const initialPaintReadyAttemptRef = useRef(0);
     const [pendingInitialPaintCoverKey, setPendingInitialPaintCoverKey] =
       useState<string | null>(() => (initialPaintCoverKey && messages.length > 0 ? initialPaintCoverKey : null));
     const shouldShowInitialPaintCover =
@@ -296,6 +301,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         clearTimeout(initialPaintReadyTimerRef.current);
         initialPaintReadyTimerRef.current = null;
       }
+      initialPaintReadyAttemptRef.current = 0;
     }, []);
 
     useEffect(
@@ -310,7 +316,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       );
     }, [cancelInitialPaintReadyJob, initialPaintCoverKey, messages.length]);
 
-    const markInitialPaintReady = useCallback(() => {
+    const isTranscriptDomReady = useCallback(() => {
+      return isTranscriptRootReadyForReveal(transcriptRootRef.current);
+    }, []);
+
+    const scheduleInitialPaintReadyCheck = useCallback(() => {
       if (!pendingInitialPaintCoverKey) {
         return;
       }
@@ -321,15 +331,28 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       const complete = () => {
         const readyKey = pendingInitialPaintCoverKey;
         initialPaintReadyTimerRef.current = null;
+        initialPaintReadyAttemptRef.current = 0;
         setPendingInitialPaintCoverKey(null);
         onInitialPaintReady?.(readyKey);
       };
 
-      initialPaintReadyFrameRef.current = requestAnimationFrame(() => {
+      const check = () => {
         initialPaintReadyFrameRef.current = null;
+        initialPaintReadyAttemptRef.current += 1;
+
+        if (
+          !isTranscriptDomReady() &&
+          initialPaintReadyAttemptRef.current < INITIAL_TRANSCRIPT_PAINT_MAX_FRAMES
+        ) {
+          initialPaintReadyFrameRef.current = requestAnimationFrame(check);
+          return;
+        }
+
         initialPaintReadyTimerRef.current = setTimeout(complete, 0);
-      });
-    }, [onInitialPaintReady, pendingInitialPaintCoverKey]);
+      };
+
+      initialPaintReadyFrameRef.current = requestAnimationFrame(check);
+    }, [isTranscriptDomReady, onInitialPaintReady, pendingInitialPaintCoverKey]);
 
     useEffect(() => {
       conversationLastUserMessageIdRef.current = lastUserMessageId;
@@ -827,18 +850,18 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const handleRangeChanged = useCallback(
       (range: ListRange) => {
         if (timeline.length > 0 && range.endIndex >= range.startIndex) {
-          markInitialPaintReady();
+          scheduleInitialPaintReadyCheck();
         }
       },
-      [markInitialPaintReady, timeline.length],
+      [scheduleInitialPaintReadyCheck, timeline.length],
     );
 
     useEffect(() => {
-      if (!isTestEnv || !shouldShowInitialPaintCover || timeline.length === 0) {
+      if (!shouldShowInitialPaintCover) {
         return;
       }
-      markInitialPaintReady();
-    }, [isTestEnv, markInitialPaintReady, shouldShowInitialPaintCover, timeline.length]);
+      scheduleInitialPaintReadyCheck();
+    }, [scheduleInitialPaintReadyCheck, shouldShowInitialPaintCover]);
 
     // Initial load scroll — fires when conversation changes and timeline populates.
     // Uses one-shot ResizeObserver on the scroller element to detect when virtual
@@ -1119,7 +1142,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     if (isTestEnv) {
       return (
-        <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
+        <div
+          ref={transcriptRootRef}
+          className="flex-1 overflow-hidden relative"
+          data-testid="integrated-chat-messages"
+        >
           {shouldShowInitialPaintCover && (
             <ConversationTranscriptPlaceholders
               contentWidthClassName={contentWidthClassName}
@@ -1250,7 +1277,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     return (
       <ToolCallStoreKeyContext.Provider value={contextKey ?? null}>
-      <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
+      <div
+        ref={transcriptRootRef}
+        className="flex-1 overflow-hidden relative"
+        data-testid="integrated-chat-messages"
+      >
         {shouldShowInitialPaintCover && (
           <ConversationTranscriptPlaceholders
             contentWidthClassName={contentWidthClassName}

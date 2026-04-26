@@ -217,6 +217,7 @@ export const MessageItem = React.memo(function MessageItem({
         isLastInList ? "mb-0" : "mb-5",
         isUser ? "justify-end" : "justify-start"
       )}
+      data-chat-message-item="true"
       style={teammateColor ? { borderLeft: `2px solid ${teammateColor}`, paddingLeft: "8px" } : undefined}
     >
       {/* Agent indicator for assistant messages */}

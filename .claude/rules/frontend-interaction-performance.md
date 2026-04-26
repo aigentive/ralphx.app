@@ -13,6 +13,9 @@ Performance is a product requirement, not a polish pass. Applies to user-trigger
 | Defer teardown (NON-NEGOTIABLE) | Closing a heavy panel should visually close first, then unmount costly subtrees after paint; avoid expensive unmount in the same click commit. |
 | Stable shells | Persisted-open panes still render a lightweight frame first so app/page hydration is not blocked by heavy module evaluation. |
 | Transcript hydration (NON-NEGOTIABLE) | Existing conversations should paint chat chrome and visual message placeholders first; sorting/filtering/parsing and virtualized transcript hydration must happen after a paint boundary for every `IntegratedChatPanel` host. |
+| Transcript readiness | Do not remove transcript placeholders because a virtualizer emitted a range alone; wait until rendered message DOM is visible and no virtualizer-hidden list state remains. |
+| Message item boundaries | Keep `MessageItem`, markdown bubbles, tool widgets, and transcript rows memoizable with stable props; avoid parent state, transient panel state, or streaming-only state forcing historical message rerenders. |
+| Widget hydration | Heavy chat widgets, markdown/code blocks, diffs, and expandable tool details should render a cheap collapsed shell first and hydrate expensive parsing/highlighting/details after paint or on expansion/visibility. |
 | Container-aware composition | Use container width/state for responsive control density; avoid viewport-only rules when panels can shrink inside split layouts. |
 | Memoize intentionally | Split controller vs. heavy content components, pass stable callbacks/props, and memoize expensive derived state only after isolating render boundaries. |
 | Opportunistic cleanup (NON-NEGOTIABLE) | When current-scope frontend work encounters a safe first-paint/lazy-hydration/decoupling opportunity, add focused coverage and fix it instead of leaving known blocking behavior behind. |

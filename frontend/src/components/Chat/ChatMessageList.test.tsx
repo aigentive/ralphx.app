@@ -11,7 +11,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AT_BOTTOM_THRESHOLD, TEXT_LENGTH_BUCKET_SIZE, ChatMessageList, type ChatMessageData } from "./ChatMessageList";
+import {
+  AT_BOTTOM_THRESHOLD,
+  TEXT_LENGTH_BUCKET_SIZE,
+  ChatMessageList,
+  type ChatMessageData,
+} from "./ChatMessageList";
+import { isTranscriptRootReadyForReveal } from "./ChatMessageList.readiness";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ToolCall } from "./ToolCallIndicator";
 import type { StreamingContentBlock } from "@/types/streaming-task";
@@ -168,6 +174,31 @@ describe("ChatMessageList - Scroll Behavior", () => {
         expect(screen.queryByTestId("chat-transcript-settling-placeholders")).not.toBeInTheDocument()
       );
       expect(onInitialPaintReady).toHaveBeenCalledWith("conv-1");
+    });
+
+    it("does not treat the transcript as reveal-ready while the virtualized item list is hidden", () => {
+      const root = document.createElement("div");
+      const list = document.createElement("div");
+      const message = document.createElement("div");
+
+      list.dataset.testid = "virtuoso-item-list";
+      list.style.visibility = "hidden";
+      message.dataset.chatMessageItem = "true";
+      list.appendChild(message);
+      root.appendChild(list);
+      document.body.appendChild(root);
+
+      try {
+        expect(isTranscriptRootReadyForReveal(root)).toBe(false);
+
+        list.style.visibility = "visible";
+        expect(isTranscriptRootReadyForReveal(root)).toBe(true);
+
+        message.remove();
+        expect(isTranscriptRootReadyForReveal(root)).toBe(false);
+      } finally {
+        root.remove();
+      }
     });
   });
 
