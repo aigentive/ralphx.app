@@ -77,6 +77,7 @@ interface AgentsSidebarProps {
   projects: Project[];
   focusedProjectId: string | null;
   selectedConversationId: string | null;
+  pinnedConversation?: AgentConversation | null;
   onFocusProject: (projectId: string) => void;
   onSelectConversation: (projectId: string, conversation: AgentConversation) => void;
   onCreateAgent: () => void;
@@ -94,6 +95,7 @@ export function AgentsSidebar({
   projects,
   focusedProjectId,
   selectedConversationId,
+  pinnedConversation = null,
   onFocusProject,
   onSelectConversation,
   onCreateAgent,
@@ -362,6 +364,9 @@ export function AgentsSidebar({
               project={project}
               isFocused={focusedProjectId === project.id}
               selectedConversationId={selectedConversationId}
+              pinnedConversation={
+                pinnedConversation?.projectId === project.id ? pinnedConversation : null
+              }
               searchQuery={normalizedSearch}
               onFocusProject={onFocusProject}
               onSelectConversation={onSelectConversation}
@@ -403,6 +408,7 @@ interface ProjectSessionGroupProps {
   project: Project;
   isFocused: boolean;
   selectedConversationId: string | null;
+  pinnedConversation: AgentConversation | null;
   searchQuery: string;
   onFocusProject: (projectId: string) => void;
   onSelectConversation: (projectId: string, conversation: AgentConversation) => void;
@@ -418,6 +424,7 @@ function ProjectSessionGroup({
   project,
   isFocused,
   selectedConversationId,
+  pinnedConversation,
   searchQuery,
   onFocusProject,
   onSelectConversation,
@@ -444,10 +451,16 @@ function ProjectSessionGroup({
   const activeConversationIds = useChatStore((s) => s.activeConversationIds);
   const agentStatuses = useChatStore((s) => s.agentStatus);
   const projectMatchesSearch = project.name.toLowerCase().includes(searchQuery);
-  const visibleConversations = useMemo(
-    () => conversations.data ?? [],
-    [conversations.data]
-  );
+  const visibleConversations = useMemo(() => {
+    const items = conversations.data ?? [];
+    if (
+      !pinnedConversation ||
+      items.some((conversation) => conversation.id === pinnedConversation.id)
+    ) {
+      return items;
+    }
+    return [pinnedConversation, ...items];
+  }, [conversations.data, pinnedConversation]);
   const totalConversationCount = conversations.total;
   const activeRuntimeCount = visibleConversations.filter((conversation) => {
     const rowKey = getAgentConversationStoreKey(conversation);

@@ -9,6 +9,7 @@ import type { AgentConversationWorkspace } from "@/api/chat";
 import { ideationApi } from "@/api/ideation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAgentSessionStore, type AgentRuntimeSelection } from "@/stores/agentSessionStore";
+import { useAgentTerminalStore } from "./agentTerminalStore";
 import type { AgentConversation } from "./agentConversations";
 import { AgentsChatHeader, AgentsView } from "./AgentsView";
 
@@ -83,6 +84,26 @@ vi.mock("./useProjectAgentConversations", () => ({
     includeArchived = false,
     options?: { search?: string }
   ) => useProjectAgentConversationsMock(projectId, includeArchived, options),
+}));
+
+vi.mock("./AgentTerminalDrawer", () => ({
+  AgentTerminalDrawer: ({
+    placement,
+    onPlacementChange,
+  }: {
+    placement: string;
+    onPlacementChange: (placement: "auto" | "chat" | "panel") => void;
+  }) => (
+    <div data-testid="agent-terminal-drawer" data-placement={placement}>
+      <button
+        type="button"
+        data-testid="agent-terminal-placement"
+        onClick={() => onPlacementChange("chat")}
+      >
+        {placement}
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("@/hooks/useChat", () => ({
@@ -394,6 +415,7 @@ function resetAgentSessionState(
     focusedProjectId: "project-1",
     selectedProjectId: null,
     selectedConversationId: null,
+    lastSelectedConversationByProjectId: {},
     expandedProjectIds: { "project-1": true },
     artifactByConversationId: {},
     runtimeByConversationId: {},
@@ -860,9 +882,15 @@ describe("AgentsView", () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
 
     resetAgentSessionState();
+    useAgentTerminalStore.setState({
+      openByConversationId: {},
+      heightByConversationId: {},
+      activeTerminalByConversationId: {},
+      placement: "auto",
+    });
   });
 
-  it("defaults to the starter composer even when a conversation was previously selected", async () => {
+  it("defaults to the starter composer when no conversation is selected", async () => {
     mockAgentViewData();
 
     renderAgentsView();
@@ -881,6 +909,51 @@ describe("AgentsView", () => {
     expect(screen.getByTestId("agents-start-mode-edit")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-new-project")).toBeInTheDocument();
     expect(screen.queryByTestId("integrated-chat-panel")).not.toBeInTheDocument();
+  });
+
+  it("restores a persisted selected conversation even when it is outside the first sidebar page", async () => {
+    const restoredConversation = conversation({
+      id: "conversation-restored",
+      title: "Older restored agent",
+      contextId: "project-1",
+    });
+    useProjectsMock.mockReturnValue({
+      data: [project],
+      isLoading: false,
+    });
+    useProjectAgentConversationsMock.mockReturnValue({
+      data: [],
+      conversations: [],
+      isLoading: false,
+      isSuccess: true,
+      hasNextPage: true,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+    useConversationMock.mockImplementation((conversationId: string | null) => ({
+      data:
+        conversationId === "conversation-restored"
+          ? {
+              conversation: restoredConversation,
+              messages: [],
+            }
+          : null,
+      isLoading: false,
+    }));
+    resetAgentSessionState({
+      selectedProjectId: null,
+      selectedConversationId: null,
+      lastSelectedConversationByProjectId: {
+        "project-1": "conversation-restored",
+      },
+    });
+
+    renderAgentsView();
+
+    expect(await screen.findByTestId("integrated-chat-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-session-conversation-restored")).toHaveTextContent(
+      "Older restored agent"
+    );
   });
 
   it("starts a new conversation directly from the starter composer and triggers the session namer", async () => {
@@ -1204,6 +1277,49 @@ describe("AgentsView", () => {
       })
     );
     expect(window.localStorage.getItem("ralphx-agents-artifact-width")).toBe("400");
+  });
+
+  it("docks the terminal under the artifact panel in auto mode when the panel is open", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
+    useAgentTerminalStore.setState({
+      openByConversationId: { "conversation-1": true },
+      heightByConversationId: {},
+      activeTerminalByConversationId: {},
+      placement: "auto",
+    });
+
+    renderAgentsView();
+    fireEvent.click(await screen.findByTestId("agents-publish-workspace"));
+
+    const drawer = await screen.findByTestId("agent-terminal-drawer");
+    expect(drawer).toHaveAttribute("data-placement", "auto");
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toContainElement(drawer);
+  });
+
+  it("persists terminal dock placement from the terminal control", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
+    useAgentTerminalStore.setState({
+      openByConversationId: { "conversation-1": true },
+      heightByConversationId: {},
+      activeTerminalByConversationId: {},
+      placement: "panel",
+    });
+
+    renderAgentsView();
+    fireEvent.click(await screen.findByTestId("agents-publish-workspace"));
+    fireEvent.click(await screen.findByTestId("agent-terminal-placement"));
+
+    expect(useAgentTerminalStore.getState().placement).toBe("chat");
   });
 
   it("deselects the selected agent when its row is clicked again", async () => {

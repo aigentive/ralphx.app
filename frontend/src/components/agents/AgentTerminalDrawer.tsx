@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/tooltip";
 import { formatBranchDisplay } from "@/lib/branch-utils";
 import { cn } from "@/lib/utils";
+import type { AgentTerminalPlacement } from "./agentTerminalStore";
 
 interface AgentTerminalDrawerProps {
   conversationId: string;
@@ -52,6 +53,8 @@ interface AgentTerminalDrawerProps {
   height: number;
   onHeightChange: (height: number) => void;
   onClose: () => void;
+  placement: AgentTerminalPlacement;
+  onPlacementChange: (placement: AgentTerminalPlacement) => void;
 }
 
 const TERMINAL_MIN_COLS = 80;
@@ -63,6 +66,8 @@ export function AgentTerminalDrawer({
   height,
   onHeightChange,
   onClose,
+  placement,
+  onPlacementChange,
 }: AgentTerminalDrawerProps) {
   const terminalId = DEFAULT_AGENT_TERMINAL_ID;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -443,6 +448,10 @@ export function AgentTerminalDrawer({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          <TerminalPlacementButton
+            placement={placement}
+            onPlacementChange={onPlacementChange}
+          />
           <TerminalIconButton
             label="Clear terminal"
             onClick={() => void handleClear()}
@@ -470,6 +479,43 @@ export function AgentTerminalDrawer({
         title={cwd}
       />
     </div>
+  );
+}
+
+const TERMINAL_PLACEMENT_LABELS: Record<AgentTerminalPlacement, string> = {
+  auto: "Auto",
+  chat: "Chat",
+  panel: "Panel",
+};
+
+function TerminalPlacementButton({
+  placement,
+  onPlacementChange,
+}: {
+  placement: AgentTerminalPlacement;
+  onPlacementChange: (placement: AgentTerminalPlacement) => void;
+}) {
+  const nextPlacement: AgentTerminalPlacement =
+    placement === "auto" ? "panel" : placement === "panel" ? "chat" : "auto";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-[10px]"
+          onClick={() => onPlacementChange(nextPlacement)}
+          aria-label={`Terminal dock: ${TERMINAL_PLACEMENT_LABELS[placement]}`}
+          data-testid="agent-terminal-placement"
+        >
+          {TERMINAL_PLACEMENT_LABELS[placement]}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        Move terminal docking
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

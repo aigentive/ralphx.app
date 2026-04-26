@@ -586,6 +586,9 @@ function AgentPublishPanel({
     : workspace.publicationPrUrl
       ? "Published PR"
       : "No PR yet";
+  const prUrlLabel = workspace.publicationPrUrl
+    ? formatPullRequestUrlLabel(workspace.publicationPrUrl)
+    : null;
   const freshness = freshnessQuery.data;
   const isBranchUpdateNeeded = Boolean(freshness?.isBaseAhead);
   const isUpdatingFromBase = updateFromBaseMutation.isPending;
@@ -618,7 +621,7 @@ function AgentPublishPanel({
                 Review Changes
               </div>
               <div className="mt-1 text-xs text-[var(--text-muted)]">
-                {base} → {branch}
+                Review this agent workspace before publishing its draft PR.
               </div>
             </div>
             <span
@@ -639,6 +642,18 @@ function AgentPublishPanel({
               icon={GitPullRequestArrow}
               label="Pull Request"
               value={prLabel}
+              description={prUrlLabel}
+              descriptionAction={
+                workspace.publicationPrUrl
+                  ? {
+                      label: `Open ${prUrlLabel}`,
+                      testId: "agents-open-pr-url",
+                      onClick: async () => {
+                        await openUrl(workspace.publicationPrUrl!);
+                      },
+                    }
+                  : undefined
+              }
               action={
                 workspace.publicationPrUrl
                   ? {
@@ -923,6 +938,15 @@ function formatPublishEventTime(createdAt: string): string {
   }).format(date);
 }
 
+function formatPullRequestUrlLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.host}${parsed.pathname}`;
+  } catch {
+    return url;
+  }
+}
+
 const PUBLISH_STEPS = [
   { id: "checking", label: "Check workspace" },
   { id: "committing", label: "Commit changes" },
@@ -1038,11 +1062,19 @@ function PublishFact({
   icon: Icon,
   label,
   value,
+  description,
+  descriptionAction,
   action,
 }: {
   icon: ElementType;
   label: string;
   value: string;
+  description?: string | null;
+  descriptionAction?: {
+    label: string;
+    testId: string;
+    onClick: () => void | Promise<void>;
+  } | undefined;
   action?: {
     label: string;
     testId: string;
@@ -1086,6 +1118,24 @@ function PublishFact({
             </Tooltip>
           )}
         </div>
+        {description && (
+          descriptionAction ? (
+            <button
+              type="button"
+              className="mt-1 block max-w-full truncate bg-transparent p-0 text-left text-[10px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+              onClick={() => void descriptionAction.onClick()}
+              aria-label={descriptionAction.label}
+              data-theme-button-skip="true"
+              data-testid={descriptionAction.testId}
+            >
+              {description}
+            </button>
+          ) : (
+            <div className="mt-1 truncate text-[10px] text-[var(--text-muted)]">
+              {description}
+            </div>
+          )
+        )}
       </div>
     </div>
   );

@@ -190,6 +190,27 @@ describe("AgentsArtifactPane", () => {
     expect(openUrlMock).toHaveBeenCalledWith("https://github.com/mock/project/pull/78");
   });
 
+  it("uses the review subtitle for purpose and shows the readable PR URL", async () => {
+    renderPane(
+      "publish",
+      workspace({
+        mode: "edit",
+        publicationPrNumber: 78,
+        publicationPrUrl: "https://github.com/mock/project/pull/78",
+      }),
+    );
+
+    expect(
+      screen.getByText("Review this agent workspace before publishing its draft PR.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Project default \(main\) →/)).not.toBeInTheDocument();
+    const prUrl = await screen.findByTestId("agents-open-pr-url");
+    expect(prUrl).toHaveTextContent("github.com/mock/project/pull/78");
+    fireEvent.click(prUrl);
+
+    expect(openUrlMock).toHaveBeenCalledWith("https://github.com/mock/project/pull/78");
+  });
+
   it("uses Update from base as the primary action when the base branch moved", async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     getWorkspaceFreshnessMock.mockResolvedValue({

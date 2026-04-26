@@ -2,10 +2,13 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
+export type AgentTerminalPlacement = "auto" | "chat" | "panel";
+
 interface AgentTerminalUiState {
   openByConversationId: Record<string, boolean>;
   heightByConversationId: Record<string, number>;
   activeTerminalByConversationId: Record<string, string>;
+  placement: AgentTerminalPlacement;
 }
 
 interface AgentTerminalUiActions {
@@ -13,6 +16,7 @@ interface AgentTerminalUiActions {
   toggleOpen: (conversationId: string) => void;
   setHeight: (conversationId: string, height: number) => void;
   setActiveTerminal: (conversationId: string, terminalId: string) => void;
+  setPlacement: (placement: AgentTerminalPlacement) => void;
 }
 
 export const AGENT_TERMINAL_DEFAULT_HEIGHT = 260;
@@ -27,6 +31,7 @@ export const useAgentTerminalStore = create<
       openByConversationId: {},
       heightByConversationId: {},
       activeTerminalByConversationId: {},
+      placement: "auto",
 
       setOpen: (conversationId, open) =>
         set((state) => {
@@ -51,6 +56,11 @@ export const useAgentTerminalStore = create<
         set((state) => {
           state.activeTerminalByConversationId[conversationId] = terminalId;
         }),
+
+      setPlacement: (placement) =>
+        set((state) => {
+          state.placement = placement;
+        }),
     })),
     {
       name: "ralphx-agent-terminal-ui",
@@ -58,6 +68,7 @@ export const useAgentTerminalStore = create<
         openByConversationId: state.openByConversationId,
         heightByConversationId: state.heightByConversationId,
         activeTerminalByConversationId: state.activeTerminalByConversationId,
+        placement: state.placement,
       }),
     }
   )

@@ -201,9 +201,11 @@ export function AgentsView({
   }, [clearSelection]);
   const terminalOpenByConversationId = useAgentTerminalStore((s) => s.openByConversationId);
   const terminalHeightByConversationId = useAgentTerminalStore((s) => s.heightByConversationId);
+  const terminalPlacement = useAgentTerminalStore((s) => s.placement);
   const setTerminalOpen = useAgentTerminalStore((s) => s.setOpen);
   const toggleTerminalOpen = useAgentTerminalStore((s) => s.toggleOpen);
   const setTerminalHeight = useAgentTerminalStore((s) => s.setHeight);
+  const setTerminalPlacement = useAgentTerminalStore((s) => s.setPlacement);
   const artifactWidthCss = artifactPanelWidth
     ? `${artifactPanelWidth}px`
     : AGENTS_ARTIFACT_DEFAULT_WIDTH;
@@ -456,6 +458,30 @@ export function AgentsView({
     activeConversation,
     activeWorkspace,
   );
+  const shouldRenderTerminal =
+    Boolean(selectedConversationId) &&
+    isTerminalOpen &&
+    Boolean(activeWorkspace) &&
+    !terminalUnavailableReason;
+  const terminalDockTarget =
+    artifactPaneOpen &&
+    (terminalPlacement === "panel" || terminalPlacement === "auto")
+      ? "panel"
+      : "chat";
+  const terminalDrawer =
+    shouldRenderTerminal && selectedConversationId && activeWorkspace ? (
+      <AgentTerminalDrawer
+        conversationId={selectedConversationId}
+        workspace={activeWorkspace}
+        height={activeTerminalHeight}
+        onHeightChange={(nextHeight) =>
+          setTerminalHeight(selectedConversationId, nextHeight)
+        }
+        onClose={() => setTerminalOpen(selectedConversationId, false)}
+        placement={terminalPlacement}
+        onPlacementChange={setTerminalPlacement}
+      />
+    ) : null;
 
   useEffect(() => {
     if (!projectId || syncedProjectIdRef.current === projectId) {
@@ -463,8 +489,7 @@ export function AgentsView({
     }
     syncedProjectIdRef.current = projectId;
     setFocusedProject(projectId);
-    clearAgentConversationSelection();
-  }, [clearAgentConversationSelection, projectId, setFocusedProject]);
+  }, [projectId, setFocusedProject]);
 
   useEffect(() => {
     if (
@@ -1107,6 +1132,7 @@ export function AgentsView({
     projects,
     focusedProjectId: focusedProjectId ?? defaultProjectId,
     selectedConversationId,
+    pinnedConversation: selectedConversationFallback,
     onFocusProject: handleSidebarFocusProject,
     onSelectConversation: handleSidebarSelectConversation,
     onCreateAgent: handleSidebarCreateAgent,
@@ -1342,17 +1368,7 @@ export function AgentsView({
                   emptyState={<div />}
                 />
               </div>
-              {isTerminalOpen && activeWorkspace && !terminalUnavailableReason && (
-                <AgentTerminalDrawer
-                  conversationId={selectedConversationId}
-                  workspace={activeWorkspace}
-                  height={activeTerminalHeight}
-                  onHeightChange={(nextHeight) =>
-                    setTerminalHeight(selectedConversationId, nextHeight)
-                  }
-                  onClose={() => setTerminalOpen(selectedConversationId, false)}
-                />
-              )}
+              {terminalDockTarget === "chat" && terminalDrawer}
             </div>
           ) : (
             <div className="flex-1 min-w-0 h-full">
@@ -1402,17 +1418,22 @@ export function AgentsView({
                 }}
                 data-testid="agents-artifact-resizable-pane"
               >
-                <AgentsArtifactPane
-                  conversation={activeConversation}
-                  workspace={activeWorkspace}
-                  activeTab={artifactState.activeTab}
-                  taskMode={artifactState.taskMode}
-                  onTabChange={handleSelectArtifact}
-                  onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
-                  onPublishWorkspace={handlePublishWorkspace}
-                  isPublishingWorkspace={publishingConversationId === selectedConversationId}
-                  onClose={() => setArtifactPaneVisibility(selectedConversationId, false)}
-                />
+                <div className="flex h-full min-h-0 flex-col">
+                  <div className="min-h-0 flex-1">
+                    <AgentsArtifactPane
+                      conversation={activeConversation}
+                      workspace={activeWorkspace}
+                      activeTab={artifactState.activeTab}
+                      taskMode={artifactState.taskMode}
+                      onTabChange={handleSelectArtifact}
+                      onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
+                      onPublishWorkspace={handlePublishWorkspace}
+                      isPublishingWorkspace={publishingConversationId === selectedConversationId}
+                      onClose={() => setArtifactPaneVisibility(selectedConversationId, false)}
+                    />
+                  </div>
+                  {terminalDockTarget === "panel" && terminalDrawer}
+                </div>
               </div>
             </>
           )}
