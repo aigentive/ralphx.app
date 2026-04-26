@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import type { AgentConversationWorkspace } from "@/api/chat";
 import { useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
-import type { AgentConversation } from "./agentConversations";
 import { useAgentArtifactController } from "./useAgentArtifactController";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
@@ -27,6 +25,7 @@ import { useAgentUserMessageAutoTitle } from "./useAgentUserMessageAutoTitle";
 import { AgentsConversationSideRegions } from "./AgentsConversationSideRegions";
 import { useAgentsSessionBindings } from "./useAgentsSessionBindings";
 import { useSyncedAgentProjectFocus } from "./useSyncedAgentProjectFocus";
+import { useAgentsOptimisticState } from "./useAgentsOptimisticState";
 
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
@@ -41,13 +40,14 @@ export function AgentsView({
 }: AgentsViewProps) {
   const queryClient = useQueryClient();
   const [showArchived, setShowArchived] = useState(false);
-  const [optimisticConversationsById, setOptimisticConversationsById] = useState<
-    Record<string, AgentConversation>
-  >({});
-  const [optimisticWorkspacesByConversationId, setOptimisticWorkspacesByConversationId] =
-    useState<Record<string, AgentConversationWorkspace>>({});
-  const [optimisticSelectedConversationId, setOptimisticSelectedConversationId] =
-    useState<string | null>(null);
+  const {
+    optimisticConversationsById,
+    optimisticSelectedConversationId,
+    optimisticWorkspacesByConversationId,
+    setOptimisticConversationsById,
+    setOptimisticSelectedConversationId,
+    setOptimisticWorkspacesByConversationId,
+  } = useAgentsOptimisticState();
   const {
     artifactWidthCss,
     handleArtifactResizeReset,
