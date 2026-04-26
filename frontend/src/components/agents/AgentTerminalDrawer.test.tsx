@@ -223,4 +223,72 @@ describe("AgentTerminalDrawer", () => {
       terminalId: "default",
     });
   });
+
+  it("defers moving the hydrated terminal DOM to a new dock until after paint", async () => {
+    const chatDockElement = document.createElement("div");
+    const panelDockElement = document.createElement("div");
+    document.body.appendChild(chatDockElement);
+    document.body.appendChild(panelDockElement);
+
+    const { rerender } = render(
+      <TooltipProvider>
+        <AgentTerminalDrawer
+          conversationId="conversation-1"
+          workspace={workspace()}
+          height={220}
+          onHeightChange={vi.fn()}
+          onClose={vi.fn()}
+          placement="auto"
+          onPlacementChange={vi.fn()}
+          dockElement={chatDockElement}
+        />
+      </TooltipProvider>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const drawer = screen.getByTestId("agent-terminal-drawer");
+    expect(chatDockElement).toContainElement(drawer);
+
+    await act(async () => {
+      rafCallbacks[0]?.(0);
+      await vi.runOnlyPendingTimersAsync();
+      await vi.dynamicImportSettled();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(terminalOpenMock).toHaveBeenCalledTimes(1);
+    terminalOpenMock.mockClear();
+
+    rerender(
+      <TooltipProvider>
+        <AgentTerminalDrawer
+          conversationId="conversation-1"
+          workspace={workspace()}
+          height={220}
+          onHeightChange={vi.fn()}
+          onClose={vi.fn()}
+          placement="auto"
+          onPlacementChange={vi.fn()}
+          dockElement={panelDockElement}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(chatDockElement).toContainElement(drawer);
+    expect(panelDockElement).not.toContainElement(drawer);
+    expect(terminalOpenMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      rafCallbacks[rafCallbacks.length - 1]?.(16);
+      await vi.runOnlyPendingTimersAsync();
+      await Promise.resolve();
+    });
+
+    expect(panelDockElement).toContainElement(drawer);
+    expect(terminalOpenMock).not.toHaveBeenCalled();
+  });
 });

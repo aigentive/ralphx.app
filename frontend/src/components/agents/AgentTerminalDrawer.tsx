@@ -65,6 +65,35 @@ interface AgentTerminalDrawerProps {
 const TERMINAL_MIN_COLS = 80;
 const TERMINAL_MIN_ROWS = 20;
 
+type DeferredFrameJob = { frame: number | null; timer: number | null };
+
+function cancelDeferredFrameJob(job: DeferredFrameJob | null) {
+  if (!job) {
+    return;
+  }
+  if (job.frame !== null) {
+    window.cancelAnimationFrame(job.frame);
+  }
+  if (job.timer !== null) {
+    window.clearTimeout(job.timer);
+  }
+}
+
+function scheduleDeferredFrameJob(callback: () => void): DeferredFrameJob {
+  const job: DeferredFrameJob = {
+    frame: null,
+    timer: null,
+  };
+  job.frame = window.requestAnimationFrame(() => {
+    job.frame = null;
+    job.timer = window.setTimeout(() => {
+      job.timer = null;
+      callback();
+    }, 0);
+  });
+  return job;
+}
+
 export function AgentTerminalDrawer({
   conversationId,
   workspace,
@@ -85,6 +114,7 @@ export function AgentTerminalDrawer({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XTermTerminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const dockMoveJobRef = useRef<DeferredFrameJob | null>(null);
   const hydrationCompleteRef = useRef(false);
   const bufferedEventsRef = useRef<AgentTerminalEvent[]>([]);
   const lastAppliedEventKeyRef = useRef<string | null>(null);
@@ -106,21 +136,6 @@ export function AgentTerminalDrawer({
   const displayCwd = useMemo(() => compactTerminalPath(cwd), [cwd]);
 
   const terminalTheme = useMemo(() => readTerminalTheme(), []);
-
-  useLayoutEffect(() => {
-    if (!dockElement) {
-      return;
-    }
-
-    dockElement.appendChild(portalRoot);
-    setHasDocked(true);
-
-    return () => {
-      if (portalRoot.parentElement === dockElement) {
-        dockElement.removeChild(portalRoot);
-      }
-    };
-  }, [dockElement, portalRoot]);
 
   const fitTerminal = useCallback(() => {
     const terminal = terminalRef.current;
@@ -169,6 +184,54 @@ export function AgentTerminalDrawer({
       }).catch(() => undefined);
     }, 80);
   }, [conversationId, fitTerminal, terminalId]);
+
+  const cancelDockMove = useCallback(() => {
+    cancelDeferredFrameJob(dockMoveJobRef.current);
+    dockMoveJobRef.current = null;
+  }, []);
+
+  useEffect(
+    () => () => {
+      cancelDockMove();
+      portalRoot.remove();
+    },
+    [cancelDockMove, portalRoot],
+  );
+
+  useLayoutEffect(() => {
+    if (!dockElement) {
+      return;
+    }
+
+    cancelDockMove();
+    const currentDock = portalRoot.parentElement;
+    if (currentDock === dockElement) {
+      if (!hasDocked) {
+        setHasDocked(true);
+      }
+      return;
+    }
+
+    if (!currentDock) {
+      dockElement.appendChild(portalRoot);
+      if (!hasDocked) {
+        setHasDocked(true);
+      }
+      return;
+    }
+
+    dockMoveJobRef.current = scheduleDeferredFrameJob(() => {
+      dockMoveJobRef.current = null;
+      if (portalRoot.parentElement !== dockElement) {
+        portalRoot.parentElement?.removeChild(portalRoot);
+        dockElement.appendChild(portalRoot);
+      }
+      if (!hasDocked) {
+        setHasDocked(true);
+      }
+      fitAndReportSize();
+    });
+  }, [cancelDockMove, dockElement, fitAndReportSize, hasDocked, portalRoot]);
 
   const applySnapshot = useCallback((snapshot: AgentTerminalSnapshot) => {
     setStatus(snapshot.status);
