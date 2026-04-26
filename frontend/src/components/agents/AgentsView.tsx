@@ -68,18 +68,10 @@ import { useAgentsWorkspaceModel } from "./useAgentsWorkspaceModel";
 import { useAgentsAttachedIdeation } from "./useAgentsAttachedIdeation";
 import { useAgentsAutoTitle } from "./useAgentsAutoTitle";
 import { useAgentsActiveComposerControls } from "./useAgentsActiveComposerControls";
+import { useAgentWorkspacePublisher } from "./useAgentWorkspacePublisher";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === "string" && error.trim()) {
-    return error;
-  }
-  return fallback;
-}
 
 interface AgentsViewProps {
   projectId: string;
@@ -92,7 +84,6 @@ export function AgentsView({
 }: AgentsViewProps) {
   const queryClient = useQueryClient();
   const [isStartingConversation, setIsStartingConversation] = useState(false);
-  const [publishingConversationId, setPublishingConversationId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [optimisticConversationsById, setOptimisticConversationsById] = useState<
     Record<string, AgentConversation>
@@ -556,71 +547,15 @@ export function AgentsView({
     ]
   );
 
-  const handlePublishWorkspace = useCallback(
-    async (conversationId: string) => {
-      const conversation = findConversationById(conversationId);
-      const workspace =
-        selectedConversationId === conversationId
-          ? activeWorkspace
-          : optimisticWorkspacesByConversationId[conversationId] ?? null;
-      setPublishingConversationId(conversationId);
-      try {
-        const result = await chatApi.publishAgentConversationWorkspace(conversationId);
-        const prLabel = result.prNumber ? `#${result.prNumber}` : result.prUrl;
-        toast.success(prLabel ? `Published ${prLabel}` : "Published branch");
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: ["agents", "conversation-workspace", conversationId],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
-          }),
-          conversation?.projectId
-            ? invalidateProjectConversations(conversation.projectId)
-            : Promise.resolve(),
-        ]);
-      } catch (err) {
-        const errorMessage = getErrorMessage(err, "Failed to publish branch");
-        let refreshedWorkspace: AgentConversationWorkspace | null = null;
-        try {
-          refreshedWorkspace = await chatApi.getAgentConversationWorkspace(conversationId);
-          void queryClient.invalidateQueries({
-            queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
-          });
-          if (refreshedWorkspace) {
-            queryClient.setQueryData(
-              ["agents", "conversation-workspace", conversationId],
-              refreshedWorkspace
-            );
-          }
-        } catch {
-          refreshedWorkspace = null;
-        }
-        const publishFailureNeedsAgent =
-          (refreshedWorkspace ?? workspace)?.publicationPushStatus === "needs_agent";
-
-        if (publishFailureNeedsAgent) {
-          toast.error("Publish failed. Sent the error to the agent to fix.");
-          if (conversation?.projectId) {
-            await invalidateProjectConversations(conversation.projectId);
-          }
-          invalidateConversationDataQueries(queryClient, conversationId);
-        } else {
-          toast.error(errorMessage);
-        }
-      } finally {
-        setPublishingConversationId(null);
-      }
-    },
-    [
+  const { handlePublishWorkspace, publishingConversationId } =
+    useAgentWorkspacePublisher({
       activeWorkspace,
       findConversationById,
       invalidateProjectConversations,
       optimisticWorkspacesByConversationId,
       queryClient,
       selectedConversationId,
-    ]
-  );
+    });
 
   const {
     activeProjectOptions,
