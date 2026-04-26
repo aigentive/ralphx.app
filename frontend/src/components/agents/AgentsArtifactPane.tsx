@@ -1,7 +1,6 @@
 import {
   CheckCircle2,
   Code,
-  Circle,
   ExternalLink,
   FileText,
   GitPullRequestArrow,
@@ -591,6 +590,14 @@ function AgentPublishPanel({
   const isBranchUpdateNeeded = Boolean(freshness?.isBaseAhead);
   const isUpdatingFromBase = updateFromBaseMutation.isPending;
   const effectivePublishing = isPublishingWorkspace || isUpdatingFromBase;
+  const pipelineStatus = isUpdatingFromBase
+    ? "refreshing"
+    : isPublishingWorkspace &&
+        !["checking", "committing", "refreshing", "refreshed", "pushing", "pushed"].includes(
+          workspace.publicationPushStatus ?? "",
+        )
+      ? "checking"
+      : workspace.publicationPushStatus;
   const baseActionLabel = workspace.baseRef || base;
   const publishDisabled =
     !onPublishWorkspace || effectivePublishing || workspace.status === "missing";
@@ -650,29 +657,12 @@ function AgentPublishPanel({
               value={workspace.mode === "edit" ? "Edit agent" : workspace.mode}
             />
           </div>
-          {isBranchUpdateNeeded && (
-            <div
-              className="mt-4 rounded-md border px-3 py-2 text-xs leading-relaxed"
-              style={{
-                background: "var(--bg-subtle)",
-                borderColor: "var(--status-warning)",
-                color: "var(--text-secondary)",
-              }}
-              data-testid="agents-base-stale"
-            >
-              Base branch {freshness?.baseRef ?? baseActionLabel} has new commits.
-              Update this workspace before publishing.
-            </div>
+          {effectivePublishing && (
+            <PublishPipelineSteps
+              status={pipelineStatus}
+              isPublishing={effectivePublishing}
+            />
           )}
-          <PublishPipelineSteps
-            status={workspace.publicationPushStatus}
-            isPublishing={effectivePublishing}
-          />
-          <PublishEventLog
-            events={publicationEvents}
-            isLoading={publicationEventsQuery.isLoading}
-            isPublishing={effectivePublishing}
-          />
         </section>
 
         <section
@@ -682,6 +672,19 @@ function AgentPublishPanel({
             borderColor: "var(--border-subtle)",
           }}
         >
+          {isBranchUpdateNeeded && (
+            <div
+              className="mb-3 rounded-md border px-3 py-2 text-xs leading-relaxed"
+              style={{
+                background: "var(--bg-subtle)",
+                borderColor: "var(--status-warning)",
+                color: "var(--text-secondary)",
+              }}
+              data-testid="agents-base-stale"
+            >
+              Base branch {freshness?.baseRef ?? baseActionLabel} has new commits.
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-sm font-semibold text-[var(--text-primary)]">
@@ -741,6 +744,11 @@ function AgentPublishPanel({
             </div>
           </div>
         </section>
+        <PublishEventLog
+          events={publicationEvents}
+          isLoading={publicationEventsQuery.isLoading}
+          isPublishing={effectivePublishing}
+        />
       </div>
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
         <DialogContent
@@ -791,9 +799,10 @@ function PublishEventLog({
   isLoading: boolean;
   isPublishing: boolean;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   if (isLoading && events.length === 0) {
     return (
-      <div className="mt-4 text-xs text-[var(--text-muted)]">
+      <div className="text-xs text-[var(--text-muted)]">
         Loading publish history...
       </div>
     );
@@ -822,72 +831,96 @@ function PublishEventLog({
   }
 
   return (
-    <div className="mt-4" data-testid="agents-publish-events">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-        Publish history
-      </div>
-      <div className="space-y-2">
-        {visibleEvents.map((event) => {
-          const eventState =
-            event.status === "failed" || event.status === "succeeded"
-              ? event.status
-              : event.id === activeStartedEventId
-                ? "active"
-                : "history";
-          return (
-            <div
-              key={event.id}
-              className="flex items-start gap-2 text-xs"
-              data-testid={`agents-publish-event-${event.step}`}
-            >
-              <span
-                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border"
-                data-state={eventState}
-                data-testid={`agents-publish-event-icon-${event.id}`}
-                style={{
-                  borderColor:
-                    eventState === "failed"
-                      ? "var(--status-danger)"
-                      : eventState === "succeeded"
-                        ? "var(--status-success)"
+    <div className="px-1" data-testid="agents-publish-events">
+      <button
+        type="button"
+        className="flex items-center gap-2 bg-transparent p-0 text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+        onClick={() => setIsExpanded((current) => !current)}
+        data-theme-button-skip="true"
+        data-testid="agents-publish-history-toggle"
+      >
+        <span>{isExpanded ? "Hide publish history" : "Show publish history"}</span>
+        <span className="text-[10px] text-[var(--text-muted)]">
+          {visibleEvents.length}
+        </span>
+      </button>
+      {isExpanded && (
+        <div
+          className="mt-3 space-y-2 border-l pl-3"
+          style={{ borderColor: "var(--overlay-weak)" }}
+        >
+          {visibleEvents.map((event) => {
+            const eventState =
+              event.status === "failed" || event.status === "succeeded"
+                ? event.status
+                : event.id === activeStartedEventId
+                  ? "active"
+                  : "history";
+            return (
+              <div
+                key={event.id}
+                className="flex items-start gap-2 text-xs"
+                data-testid={`agents-publish-event-${event.step}`}
+              >
+                <span
+                  className="mt-1 flex h-3 w-3 shrink-0 items-center justify-center rounded-full"
+                  data-state={eventState}
+                  data-testid={`agents-publish-event-icon-${event.id}`}
+                  style={{
+                    background:
+                      eventState === "failed"
+                        ? "var(--status-danger)"
                         : eventState === "active"
                           ? "var(--accent-primary)"
                           : "var(--overlay-weak)",
-                  color:
-                    eventState === "failed"
-                      ? "var(--status-danger)"
-                      : eventState === "succeeded"
-                        ? "var(--status-success)"
+                    color:
+                      eventState === "failed"
+                        ? "var(--status-danger)"
                         : eventState === "active"
                           ? "var(--accent-primary)"
                           : "var(--text-muted)",
-                }}
-              >
-                {eventState === "failed" ? (
-                  <X className="h-3 w-3" />
-                ) : eventState === "succeeded" ? (
-                  <CheckCircle2 className="h-3 w-3" />
-                ) : eventState === "active" ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Circle className="h-2 w-2 fill-current" />
-                )}
-              </span>
-              <div className="min-w-0">
-                <div className="font-medium text-[var(--text-primary)]">
-                  {event.summary}
-                </div>
-                <div className="mt-0.5 text-[11px] capitalize text-[var(--text-muted)]">
-                  {event.step.replace(/_/g, " ")}
-                  {event.classification ? ` / ${event.classification.replace(/_/g, " ")}` : ""}
+                  }}
+                >
+                  {eventState === "failed" ? (
+                    <X className="h-2.5 w-2.5 text-[var(--bg-base)]" />
+                  ) : eventState === "active" ? (
+                    <Loader2 className="h-2.5 w-2.5 animate-spin text-[var(--bg-base)]" />
+                  ) : (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--bg-base)]" />
+                  )}
+                </span>
+                <div className="min-w-0">
+                  <div className="font-medium text-[var(--text-secondary)]">
+                    {event.summary}
+                  </div>
+                  <div className="mt-0.5 text-[11px] capitalize text-[var(--text-muted)]">
+                    {event.step.replace(/_/g, " ")}
+                    {event.classification
+                      ? ` / ${event.classification.replace(/_/g, " ")}`
+                      : ""}
+                    {event.createdAt ? ` / ${formatPublishEventTime(event.createdAt)}` : ""}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
+}
+
+function formatPublishEventTime(createdAt: string): string {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return createdAt;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 const PUBLISH_STEPS = [

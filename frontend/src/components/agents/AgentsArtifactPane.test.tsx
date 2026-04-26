@@ -227,6 +227,9 @@ describe("AgentsArtifactPane", () => {
     expect(await screen.findByTestId("agents-base-stale")).toHaveTextContent(
       "feature/agent-screen"
     );
+    expect(screen.getByTestId("agents-base-stale")).not.toHaveTextContent(
+      "Update this workspace before publishing"
+    );
     fireEvent.click(screen.getByTestId("agents-update-from-base"));
 
     await waitFor(() =>
@@ -242,8 +245,13 @@ describe("AgentsArtifactPane", () => {
     expect(getWorkspaceChangesMock).toHaveBeenCalledWith("conversation-1");
   });
 
-  it("shows workspace publish pipeline status in the publish pane", () => {
-    renderPane("publish", workspace({ mode: "edit", publicationPushStatus: "failed" }));
+  it("shows workspace publish pipeline status only during active publishing", () => {
+    renderPane(
+      "publish",
+      workspace({ mode: "edit", publicationPushStatus: "pushing" }),
+      vi.fn(),
+      true,
+    );
 
     expect(screen.getByTestId("agents-publish-pipeline")).toBeInTheDocument();
     expect(screen.getByTestId("agents-publish-step-checking")).toHaveTextContent(
@@ -252,15 +260,12 @@ describe("AgentsArtifactPane", () => {
     expect(screen.getByTestId("agents-publish-step-refreshing")).toHaveTextContent(
       "Refresh branch"
     );
-    expect(screen.getByText(/Fixable errors are sent back to the workspace agent/i))
-      .toBeInTheDocument();
   });
 
-  it("shows agent repair state in the publish pipeline", () => {
+  it("hides the publish pipeline after agent repair terminal state", () => {
     renderPane("publish", workspace({ mode: "edit", publicationPushStatus: "needs_agent" }));
 
-    expect(screen.getByTestId("agents-publish-pipeline")).toBeInTheDocument();
-    expect(screen.getByText(/sent it back to the workspace agent/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("agents-publish-pipeline")).not.toBeInTheDocument();
   });
 
   it("renders durable publish history in the publish pane", async () => {
@@ -288,6 +293,8 @@ describe("AgentsArtifactPane", () => {
     renderPane("publish", workspace({ mode: "edit", publicationPushStatus: "needs_agent" }));
 
     expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
+    expect(screen.queryByText("Pre-commit hook failed")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("agents-publish-history-toggle"));
     expect(screen.getByText("Pre-commit hook failed")).toBeInTheDocument();
     expect(screen.getByText(/agent fixable/i)).toBeInTheDocument();
   });
@@ -335,6 +342,9 @@ describe("AgentsArtifactPane", () => {
     expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
     expect(screen.queryByText("Checking workspace changes")).not.toBeInTheDocument();
     expect(screen.queryByText("Pushing agent branch")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("agents-publish-history-toggle"));
+    expect(screen.queryByText("Checking workspace changes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pushing agent branch")).not.toBeInTheDocument();
     expect(screen.getByText("Draft pull request is ready")).toBeInTheDocument();
     expect(screen.getByTestId("agents-publish-event-icon-event-published"))
       .toHaveAttribute("data-state", "succeeded");
@@ -373,6 +383,8 @@ describe("AgentsArtifactPane", () => {
     );
 
     expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
+    expect(screen.queryByText("Checking workspace changes")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("agents-publish-history-toggle"));
     expect(screen.queryByText("Checking workspace changes")).not.toBeInTheDocument();
     expect(screen.getByText("Pushing agent branch")).toBeInTheDocument();
     expect(screen.getByTestId("agents-publish-event-icon-event-pushing"))

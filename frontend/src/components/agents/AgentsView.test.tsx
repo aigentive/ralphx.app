@@ -18,6 +18,7 @@ const {
   useConversationMock,
   startAgentConversationMock,
   getAgentConversationWorkspaceMock,
+  getAgentConversationWorkspaceFreshnessMock,
   listAgentConversationWorkspacesByProjectMock,
   listConversationsMock,
   publishAgentConversationWorkspaceMock,
@@ -40,6 +41,7 @@ const {
   useConversationMock: vi.fn(),
   startAgentConversationMock: vi.fn(),
   getAgentConversationWorkspaceMock: vi.fn(),
+  getAgentConversationWorkspaceFreshnessMock: vi.fn(),
   listAgentConversationWorkspacesByProjectMock: vi.fn(),
   listConversationsMock: vi.fn(),
   publishAgentConversationWorkspaceMock: vi.fn(),
@@ -102,6 +104,8 @@ vi.mock("@/api/chat", () => ({
     startAgentConversation: (...args: unknown[]) => startAgentConversationMock(...args),
     getAgentConversationWorkspace: (...args: unknown[]) =>
       getAgentConversationWorkspaceMock(...args),
+    getAgentConversationWorkspaceFreshness: (...args: unknown[]) =>
+      getAgentConversationWorkspaceFreshnessMock(...args),
     listAgentConversationWorkspacesByProject: (...args: unknown[]) =>
       listAgentConversationWorkspacesByProjectMock(...args),
     listConversations: (...args: unknown[]) => listConversationsMock(...args),
@@ -578,7 +582,32 @@ describe("AgentsChatHeader", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it("collapses the publish header label while the publish pane is open", () => {
+  it("labels the publish shortcut as a base update when the branch is stale", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({ id: "conversation-1", agentMode: "edit" })}
+        workspace={conversationWorkspace({
+          mode: "edit",
+          baseRef: "feature/agent-screen",
+        })}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        publishShortcutLabel="Update from feature/agent-screen"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onPublishWorkspace={vi.fn().mockResolvedValue(undefined)}
+        onOpenPublishPane={vi.fn()}
+        onToggleTerminal={vi.fn()}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("agents-publish-workspace")).toHaveTextContent(
+      "Update from feature/agent-screen"
+    );
+  });
+
+  it("hides the publish header shortcut while the publish pane is open", () => {
     renderWithProviders(
       <AgentsChatHeader
         conversation={conversation({ id: "conversation-1", agentMode: "edit" })}
@@ -594,9 +623,7 @@ describe("AgentsChatHeader", () => {
       />
     );
 
-    const publishButton = screen.getByTestId("agents-publish-workspace");
-    expect(publishButton).toBeInTheDocument();
-    expect(publishButton).not.toHaveTextContent("Commit & Publish");
+    expect(screen.queryByTestId("agents-publish-workspace")).not.toBeInTheDocument();
     expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
   });
 
@@ -691,6 +718,7 @@ describe("AgentsView", () => {
     useConversationMock.mockReset();
     startAgentConversationMock.mockReset();
     getAgentConversationWorkspaceMock.mockReset();
+    getAgentConversationWorkspaceFreshnessMock.mockReset();
     listAgentConversationWorkspacesByProjectMock.mockReset();
     listConversationsMock.mockReset();
     publishAgentConversationWorkspaceMock.mockReset();
@@ -717,6 +745,15 @@ describe("AgentsView", () => {
       queuedMessageId: null,
     });
     getAgentConversationWorkspaceMock.mockResolvedValue(null);
+    getAgentConversationWorkspaceFreshnessMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      baseRef: "main",
+      baseDisplayName: "Project default (main)",
+      targetRef: "origin/main",
+      capturedBaseCommit: "base-sha",
+      targetBaseCommit: "base-sha",
+      isBaseAhead: false,
+    });
     listAgentConversationWorkspacesByProjectMock.mockResolvedValue([]);
     listConversationsMock.mockResolvedValue([]);
     getPlanBranchesMock.mockResolvedValue([]);
@@ -1234,6 +1271,35 @@ describe("AgentsView", () => {
       expect(screen.getByTestId("agents-artifact-pane")).toBeInTheDocument()
     );
     expect(publishAgentConversationWorkspaceMock).not.toHaveBeenCalled();
+  });
+
+  it("shows Update from base in the header shortcut when the workspace base moved", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(
+      conversationWorkspace({
+        mode: "edit",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+      })
+    );
+    getAgentConversationWorkspaceFreshnessMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      baseRef: "feature/agent-screen",
+      baseDisplayName: "Current branch (feature/agent-screen)",
+      targetRef: "origin/feature/agent-screen",
+      capturedBaseCommit: "old-base",
+      targetBaseCommit: "new-base",
+      isBaseAhead: true,
+    });
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-publish-workspace")).toHaveTextContent(
+        "Update from feature/agent-screen"
+      )
+    );
   });
 
   it("relies on the backend to route fixable publish failures into the workspace agent conversation", async () => {

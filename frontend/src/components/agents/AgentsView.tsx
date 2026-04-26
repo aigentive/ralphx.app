@@ -430,6 +430,18 @@ export function AgentsView({
     activeConversation?.contextType === "project"
       ? resolveConversationAgentMode(activeConversation, activeWorkspace)
       : null;
+  const activeWorkspaceFreshnessQuery = useQuery({
+    queryKey: ["agents", "conversation-workspace-freshness", selectedConversationId],
+    queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(selectedConversationId!),
+    enabled:
+      !!selectedConversationId &&
+      activeWorkspace?.mode === "edit" &&
+      activeWorkspace.status !== "missing",
+    staleTime: 5_000,
+  });
+  const publishShortcutLabel = activeWorkspaceFreshnessQuery.data?.isBaseAhead
+    ? `Update from ${activeWorkspace?.baseRef ?? activeWorkspaceFreshnessQuery.data.baseRef}`
+    : "Commit & Publish";
   const activeConversationModeLocked =
     activeConversationMode === "ideation" || isWorkspaceModeLocked(activeWorkspace);
   const isTerminalOpen =
@@ -1318,6 +1330,7 @@ export function AgentsView({
                       onRenameConversation={handleRenameConversation}
                       onPublishWorkspace={handlePublishWorkspace}
                       onOpenPublishPane={handleOpenPublishPane}
+                      publishShortcutLabel={publishShortcutLabel}
                       isPublishingWorkspace={publishingConversationId === selectedConversationId}
                       onToggleTerminal={() => toggleTerminalOpen(selectedConversationId)}
                       onToggleArtifacts={() =>
@@ -1420,6 +1433,7 @@ interface AgentsChatHeaderProps {
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
   onPublishWorkspace?: (conversationId: string) => Promise<void>;
   onOpenPublishPane?: () => void;
+  publishShortcutLabel?: string;
   isPublishingWorkspace?: boolean;
   onToggleTerminal?: () => void;
   onToggleArtifacts: () => void;
@@ -1436,6 +1450,7 @@ export function AgentsChatHeader({
   onRenameConversation,
   onPublishWorkspace,
   onOpenPublishPane,
+  publishShortcutLabel = "Commit & Publish",
   isPublishingWorkspace = false,
   onToggleTerminal,
   onToggleArtifacts,
@@ -1445,6 +1460,12 @@ export function AgentsChatHeader({
   const conversationMode = conversation ? resolveConversationAgentMode(conversation, workspace) : null;
   const showIdeationArtifacts = conversationMode === "ideation";
   const publishPaneOpen = artifactOpen && activeArtifactTab === "publish";
+  const showPublishShortcut = Boolean(
+    conversation &&
+      workspace?.mode === "edit" &&
+      !workspace.linkedPlanBranchId &&
+      !publishPaneOpen,
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
 
@@ -1532,22 +1553,22 @@ export function AgentsChatHeader({
           </TooltipContent>
         </Tooltip>
 
-        {conversation && workspace?.mode === "edit" && !workspace.linkedPlanBranchId && (
+        {showPublishShortcut && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className={cn("h-8 text-xs", publishPaneOpen ? "w-8 p-0" : "gap-1.5 px-2.5")}
+                className="h-8 gap-1.5 px-2.5 text-xs"
                 onClick={onOpenPublishPane}
                 disabled={
                   !onPublishWorkspace ||
                   !onOpenPublishPane ||
                   isPublishingWorkspace ||
-                  workspace.status === "missing"
+                  workspace?.status === "missing"
                 }
-                aria-label="Commit and publish branch"
+                aria-label={`Open workspace publish panel: ${publishShortcutLabel}`}
                 data-testid="agents-publish-workspace"
               >
                 {isPublishingWorkspace ? (
@@ -1555,11 +1576,11 @@ export function AgentsChatHeader({
                 ) : (
                   <GitPullRequestArrow className="h-3.5 w-3.5" />
                 )}
-                {!publishPaneOpen && <span>Commit & Publish</span>}
+                <span>{publishShortcutLabel}</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              Commit changes, push the branch, and create or update its PR
+              Open the workspace publish panel
             </TooltipContent>
           </Tooltip>
         )}
