@@ -12,12 +12,8 @@ import { ideationKeys } from "@/hooks/useIdeation";
 import { useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
 import { useChatStore } from "@/stores/chatStore";
-import {
-  useAgentSessionStore,
-  type AgentArtifactTab,
-} from "@/stores/agentSessionStore";
+import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import type { AgentConversation } from "./agentConversations";
-import { getAgentArtifactStateSnapshot } from "./agentArtifactState";
 import { useAgentArtifactController } from "./useAgentArtifactController";
 import { AgentsArtifactPaneRegion } from "./AgentsArtifactPaneRegion";
 import { AgentsTerminalRegion } from "./AgentsTerminalRegion";
@@ -40,6 +36,7 @@ import { useAgentConversationActions } from "./useAgentConversationActions";
 import { AgentsShellLayout } from "./AgentsShellLayout";
 import { AgentsActiveConversationPanel } from "./AgentsActiveConversationPanel";
 import { AgentsStartConversationPanel } from "./AgentsStartConversationPanel";
+import { useAgentArtifactActions } from "./useAgentArtifactActions";
 
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
@@ -238,39 +235,17 @@ export function AgentsView({
     setOptimisticSelectedConversationId,
   });
 
-  const handleSelectArtifact = useCallback(
-    (tab: AgentArtifactTab) => {
-      if (!selectedConversationId) {
-        return;
-      }
-      const currentArtifactState = getAgentArtifactStateSnapshot(
-        selectedConversationId,
-        hasAutoOpenArtifacts,
-      );
-      if (currentArtifactState.isOpen && currentArtifactState.activeTab === tab) {
-        setArtifactPaneVisibility(selectedConversationId, false);
-        return;
-      }
-      openArtifactTab(selectedConversationId, tab);
-    },
-    [
-      hasAutoOpenArtifacts,
-      openArtifactTab,
-      selectedConversationId,
-      setArtifactPaneVisibility,
-    ]
-  );
-
-  const handleOpenPublishPane = useCallback(() => {
-    if (!selectedConversationId) {
-      return;
-    }
-    openArtifactTab(selectedConversationId, "publish");
-  }, [openArtifactTab, selectedConversationId]);
-
-  const handlePreloadArtifacts = useCallback(() => {
-    scheduleArtifactPanePreload();
-  }, [scheduleArtifactPanePreload]);
+  const {
+    handleOpenPublishPane,
+    handlePreloadArtifacts,
+    handleSelectArtifact,
+  } = useAgentArtifactActions({
+    hasAutoOpenArtifacts,
+    openArtifactTab,
+    scheduleArtifactPanePreload,
+    selectedConversationId,
+    setArtifactPaneVisibility,
+  });
 
   const handleAgentUserMessageSent = useCallback(
     ({ content, result }: { content: string; result: { conversationId: string } }) => {
