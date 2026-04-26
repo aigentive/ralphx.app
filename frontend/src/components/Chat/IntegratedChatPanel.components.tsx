@@ -5,6 +5,7 @@
 import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X, History, GitMerge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { withAlpha } from "@/lib/theme-colors";
+import { cn } from "@/lib/utils";
 import type { ChatContext } from "@/types/chat";
 
 // ============================================================================
@@ -128,6 +129,93 @@ export function HistoryEmptyState() {
       >
         This historical state does not have a conversation attached.
       </p>
+    </div>
+  );
+}
+
+export function ConversationTranscriptPlaceholders({
+  contentWidthClassName,
+  className,
+  testId = "chat-transcript-placeholders",
+  ariaHidden = false,
+}: {
+  contentWidthClassName?: string | undefined;
+  className?: string | undefined;
+  testId?: string | undefined;
+  ariaHidden?: boolean | undefined;
+}) {
+  const rows = [
+    { side: "left", width: "72%", lines: ["86%", "64%"] },
+    { side: "right", width: "58%", lines: ["100%"] },
+    { side: "left", width: "78%", lines: ["92%", "76%", "48%"] },
+    { side: "right", width: "46%", lines: ["100%"] },
+  ] as const;
+
+  return (
+    <div
+      className={cn("flex-1 overflow-hidden px-4 py-6", className)}
+      data-testid={testId}
+      aria-label={ariaHidden ? undefined : "Loading conversation"}
+      aria-hidden={ariaHidden || undefined}
+    >
+      <div
+        className={cn(
+          "mx-auto flex w-full flex-col gap-5",
+          contentWidthClassName,
+        )}
+      >
+        {rows.map((row, index) => {
+          const isUser = row.side === "right";
+          return (
+            <div
+              key={`${row.side}-${index}`}
+              className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}
+            >
+              <div
+                className={cn(
+                  "flex max-w-[82%] gap-2",
+                  isUser ? "flex-row-reverse" : "flex-row",
+                )}
+                style={{ width: row.width }}
+              >
+                {!isUser && (
+                  <div
+                    className="mt-1 h-7 w-7 shrink-0 rounded-md"
+                    style={{
+                      background: withAlpha("var(--accent-primary)", 12),
+                      border: "1px solid var(--overlay-faint)",
+                    }}
+                  />
+                )}
+                <div
+                  className="min-w-0 flex-1 rounded-lg px-3 py-2.5"
+                  style={{
+                    background: isUser
+                      ? withAlpha("var(--accent-primary)", 14)
+                      : "var(--bg-elevated)",
+                    border: "1px solid var(--overlay-faint)",
+                  }}
+                >
+                  <div className="flex flex-col gap-2">
+                    {row.lines.map((width, lineIndex) => (
+                      <div
+                        key={`${width}-${lineIndex}`}
+                        className="h-2.5 rounded-full"
+                        style={{
+                          width,
+                          background: isUser
+                            ? withAlpha("var(--accent-primary)", 24)
+                            : "var(--overlay-weak)",
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

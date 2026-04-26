@@ -81,6 +81,11 @@ import {
   AGENT_PROVIDER_OPTIONS,
   normalizeRuntimeSelection,
 } from "./agentOptions";
+import {
+  DEFAULT_AGENT_ARTIFACT_UI_STATE,
+  selectOptimisticArtifactState,
+  useAgentArtifactUiStore,
+} from "./agentArtifactUiStore";
 import { AgentComposerProjectLine, AgentComposerSurface } from "./AgentComposerSurface";
 import { preloadAgentsArtifactPane } from "./agentArtifactPanePreload";
 import {
@@ -128,11 +133,6 @@ const AGENTS_CHAT_MIN_WIDTH = 320;
 const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
-const DEFAULT_AGENT_ARTIFACT_UI_STATE: AgentArtifactState = {
-  isOpen: false,
-  activeTab: "plan",
-  taskMode: "graph",
-};
 const AGENT_CONVERSATION_MODE_OPTIONS: Array<{
   id: AgentConversationWorkspaceMode;
   label: string;
@@ -153,6 +153,68 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return error;
   }
   return fallback;
+}
+
+function resolveAgentArtifactState({
+  optimistic,
+  persisted,
+  hasStored,
+  hasAutoOpenArtifacts,
+}: {
+  optimistic: AgentArtifactState | null;
+  persisted: AgentArtifactState;
+  hasStored: boolean;
+  hasAutoOpenArtifacts: boolean;
+}): AgentArtifactState {
+  if (optimistic) {
+    return optimistic;
+  }
+  if (hasStored) {
+    return persisted;
+  }
+  return {
+    ...DEFAULT_AGENT_ARTIFACT_UI_STATE,
+    isOpen: hasAutoOpenArtifacts,
+  };
+}
+
+function getAgentArtifactStateSnapshot(
+  conversationId: string,
+  hasAutoOpenArtifacts: boolean,
+): AgentArtifactState {
+  const optimistic =
+    useAgentArtifactUiStore.getState().artifactByConversationId[conversationId] ?? null;
+  const persisted =
+    useAgentSessionStore.getState().artifactByConversationId[conversationId] ?? null;
+  return resolveAgentArtifactState({
+    optimistic,
+    persisted: persisted ?? DEFAULT_AGENT_ARTIFACT_UI_STATE,
+    hasStored: Boolean(persisted),
+    hasAutoOpenArtifacts,
+  });
+}
+
+function useResolvedAgentArtifactState(
+  conversationId: string | null,
+  hasAutoOpenArtifacts: boolean,
+) {
+  const optimisticArtifactState = useAgentArtifactUiStore(
+    selectOptimisticArtifactState(conversationId),
+  );
+  const persistedArtifactState = useAgentSessionStore(selectArtifactState(conversationId));
+  const hasStoredArtifactState = useAgentSessionStore(
+    selectHasStoredArtifactState(conversationId),
+  );
+  const artifactState = resolveAgentArtifactState({
+    optimistic: optimisticArtifactState,
+    persisted: persistedArtifactState,
+    hasStored: hasStoredArtifactState,
+    hasAutoOpenArtifacts,
+  });
+  return {
+    artifactState,
+    artifactPaneOpen: artifactState.isOpen,
+  };
 }
 
 function AgentTerminalLoadingShell({
@@ -241,8 +303,6 @@ export function AgentsView({
     return Number.isFinite(parsed) && parsed >= AGENTS_ARTIFACT_MIN_WIDTH ? parsed : null;
   });
   const [isArtifactResizing, setIsArtifactResizing] = useState(false);
-  const [optimisticArtifactByConversationId, setOptimisticArtifactByConversationId] =
-    useState<Record<string, AgentArtifactState>>({});
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const artifactResizeFrameRef = useRef<number | null>(null);
   const pendingArtifactWidthRef = useRef<number | null>(null);
@@ -250,7 +310,6 @@ export function AgentsView({
   const artifactPersistenceJobsRef = useRef<
     Map<string, { frame: number | null; timer: number | null; state: AgentArtifactState }>
   >(new Map());
-  const artifactPaneHydrationJobRef = useRef<DeferredFrameJob | null>(null);
   const artifactPanePreloadJobRef = useRef<DeferredFrameJob | null>(null);
   const autoTitleStateRef = useRef<
     Map<string, { messages: string[]; lastTitle: string | null }>
@@ -298,7 +357,6 @@ export function AgentsView({
     useState<HTMLDivElement | null>(null);
   const [terminalPanelDockElement, setTerminalPanelDockElement] =
     useState<HTMLDivElement | null>(null);
-  const [artifactPaneContentMounted, setArtifactPaneContentMounted] = useState(false);
   const artifactWidthCss = artifactPanelWidth
     ? `${artifactPanelWidth}px`
     : AGENTS_ARTIFACT_DEFAULT_WIDTH;
@@ -306,14 +364,6 @@ export function AgentsView({
   const defaultProjectId = focusedProjectId || selectedProjectId || projectId || projects[0]?.id || null;
   const activeProjectId = selectedProjectId || defaultProjectId;
   const focusedConversations = useProjectAgentConversations(activeProjectId, showArchived);
-  const persistedArtifactState = useAgentSessionStore(selectArtifactState(selectedConversationId));
-  const hasStoredArtifactState = useAgentSessionStore(
-    selectHasStoredArtifactState(selectedConversationId)
-  );
-  const optimisticArtifactState = selectedConversationId
-    ? optimisticArtifactByConversationId[selectedConversationId] ?? null
-    : null;
-  const artifactState = optimisticArtifactState ?? persistedArtifactState;
   const selectedConversationQuery = useConversation(selectedConversationId, {
     enabled: !!selectedConversationId,
   });
@@ -433,9 +483,6 @@ export function AgentsView({
         attachedIdeationSessionData.proposals.length > 0
     );
   }, [attachedIdeationSessionData]);
-  const artifactPaneOpen = optimisticArtifactState || hasStoredArtifactState
-    ? artifactState.isOpen
-    : hasAutoOpenArtifacts;
   useAgentConversationTitleEvents(activeProjectId);
   useProjectAgentBridgeEvents({
     conversation: activeConversation,
@@ -470,20 +517,6 @@ export function AgentsView({
     }
   }, [setArtifactState]);
 
-  const cancelArtifactPaneHydrationJob = useCallback(() => {
-    const job = artifactPaneHydrationJobRef.current;
-    if (!job) {
-      return;
-    }
-    if (job.frame !== null) {
-      window.cancelAnimationFrame(job.frame);
-    }
-    if (job.timer !== null) {
-      window.clearTimeout(job.timer);
-    }
-    artifactPaneHydrationJobRef.current = null;
-  }, []);
-
   const cancelArtifactPanePreloadJob = useCallback(() => {
     const job = artifactPanePreloadJobRef.current;
     if (!job) {
@@ -497,26 +530,6 @@ export function AgentsView({
     }
     artifactPanePreloadJobRef.current = null;
   }, []);
-
-  const scheduleArtifactPaneAfterPaint = useCallback(
-    (callback: () => void) => {
-      cancelArtifactPaneHydrationJob();
-      const job: DeferredFrameJob = {
-        frame: null,
-        timer: null,
-      };
-      job.frame = window.requestAnimationFrame(() => {
-        job.frame = null;
-        job.timer = window.setTimeout(() => {
-          job.timer = null;
-          artifactPaneHydrationJobRef.current = null;
-          callback();
-        }, 0);
-      });
-      artifactPaneHydrationJobRef.current = job;
-    },
-    [cancelArtifactPaneHydrationJob],
-  );
 
   const scheduleArtifactPanePreload = useCallback(() => {
     if (artifactPanePreloadJobRef.current) {
@@ -564,60 +577,21 @@ export function AgentsView({
   );
 
   useEffect(
-    () => () => cancelArtifactPaneHydrationJob(),
-    [cancelArtifactPaneHydrationJob],
-  );
-
-  useEffect(
     () => () => cancelArtifactPanePreloadJob(),
     [cancelArtifactPanePreloadJob],
   );
-
-  useEffect(() => {
-    cancelArtifactPaneHydrationJob();
-    if (!selectedConversationId || !activeConversation) {
-      if (artifactPaneContentMounted) {
-        scheduleArtifactPaneAfterPaint(() => setArtifactPaneContentMounted(false));
-      }
-      return;
-    }
-
-    if (artifactPaneOpen) {
-      if (!artifactPaneContentMounted) {
-        scheduleArtifactPaneAfterPaint(() => setArtifactPaneContentMounted(true));
-      }
-      return;
-    }
-
-    if (artifactPaneContentMounted) {
-      scheduleArtifactPaneAfterPaint(() => setArtifactPaneContentMounted(false));
-    }
-  }, [
-    activeConversation,
-    artifactPaneContentMounted,
-    artifactPaneOpen,
-    cancelArtifactPaneHydrationJob,
-    scheduleArtifactPaneAfterPaint,
-    selectedConversationId,
-  ]);
 
   const updateArtifactState = useCallback(
     (
       conversationId: string,
       updater: (current: AgentArtifactState) => AgentArtifactState,
     ) => {
-      const currentState =
-        optimisticArtifactByConversationId[conversationId] ??
-        useAgentSessionStore.getState().artifactByConversationId[conversationId] ??
-        DEFAULT_AGENT_ARTIFACT_UI_STATE;
+      const currentState = getAgentArtifactStateSnapshot(conversationId, hasAutoOpenArtifacts);
       const nextState = updater(currentState);
-      setOptimisticArtifactByConversationId((current) => ({
-        ...current,
-        [conversationId]: nextState,
-      }));
+      useAgentArtifactUiStore.getState().setArtifactState(conversationId, nextState);
       scheduleArtifactStatePersistence(conversationId, nextState);
     },
-    [optimisticArtifactByConversationId, scheduleArtifactStatePersistence],
+    [hasAutoOpenArtifacts, scheduleArtifactStatePersistence],
   );
 
   const setArtifactPaneVisibility = useCallback(
@@ -631,10 +605,14 @@ export function AgentsView({
   );
 
   const toggleArtifactPaneVisibility = useCallback(
-    (conversationId: string, isOpen: boolean) => {
-      setArtifactPaneVisibility(conversationId, !isOpen);
+    (conversationId: string) => {
+      const currentState = getAgentArtifactStateSnapshot(
+        conversationId,
+        hasAutoOpenArtifacts,
+      );
+      setArtifactPaneVisibility(conversationId, !currentState.isOpen);
     },
-    [setArtifactPaneVisibility],
+    [hasAutoOpenArtifacts, setArtifactPaneVisibility],
   );
 
   const openArtifactTab = useCallback(
@@ -807,6 +785,24 @@ export function AgentsView({
     selectedConversationId
       ? terminalOpenByConversationId[selectedConversationId] ?? false
       : false;
+  const optimisticArtifactForTerminalDock = useAgentArtifactUiStore((state) =>
+    selectedConversationId && isTerminalOpen
+      ? state.artifactByConversationId[selectedConversationId] ?? null
+      : null,
+  );
+  const persistedArtifactForTerminalDock = useAgentSessionStore((state) =>
+    selectedConversationId && isTerminalOpen
+      ? state.artifactByConversationId[selectedConversationId] ?? null
+      : null,
+  );
+  const artifactPaneOpenForTerminalDock = isTerminalOpen
+    ? resolveAgentArtifactState({
+        optimistic: optimisticArtifactForTerminalDock,
+        persisted: persistedArtifactForTerminalDock ?? DEFAULT_AGENT_ARTIFACT_UI_STATE,
+        hasStored: Boolean(persistedArtifactForTerminalDock),
+        hasAutoOpenArtifacts,
+      }).isOpen
+    : false;
   const activeTerminalHeight =
     selectedConversationId
       ? terminalHeightByConversationId[selectedConversationId] ?? AGENT_TERMINAL_DEFAULT_HEIGHT
@@ -821,7 +817,7 @@ export function AgentsView({
     Boolean(activeWorkspace) &&
     !terminalUnavailableReason;
   const terminalDockTarget =
-    artifactPaneOpen &&
+    artifactPaneOpenForTerminalDock &&
     (terminalPlacement === "panel" || terminalPlacement === "auto")
       ? "panel"
       : "chat";
@@ -832,11 +828,20 @@ export function AgentsView({
   const handleTerminalPlacementChange = useCallback(
     (nextPlacement: AgentTerminalPlacement) => {
       setTerminalPlacement(nextPlacement);
-      if (nextPlacement === "panel" && selectedConversationId && !artifactPaneOpen) {
+      if (
+        nextPlacement === "panel" &&
+        selectedConversationId &&
+        !artifactPaneOpenForTerminalDock
+      ) {
         openArtifactTab(selectedConversationId, "publish");
       }
     },
-    [artifactPaneOpen, openArtifactTab, selectedConversationId, setTerminalPlacement],
+    [
+      artifactPaneOpenForTerminalDock,
+      openArtifactTab,
+      selectedConversationId,
+      setTerminalPlacement,
+    ],
   );
   const handlePreloadTerminal = useCallback(() => {
     preloadAgentTerminalExperience();
@@ -921,7 +926,7 @@ export function AgentsView({
 
       if (event.key === "\\") {
         event.preventDefault();
-        toggleArtifactPaneVisibility(selectedConversationId, artifactPaneOpen);
+        toggleArtifactPaneVisibility(selectedConversationId);
         return;
       }
 
@@ -941,7 +946,6 @@ export function AgentsView({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
-    artifactPaneOpen,
     openArtifactTab,
     selectedConversationId,
     toggleArtifactPaneVisibility,
@@ -1211,15 +1215,18 @@ export function AgentsView({
       if (!selectedConversationId) {
         return;
       }
-      if (artifactPaneOpen && artifactState.activeTab === tab) {
+      const currentArtifactState = getAgentArtifactStateSnapshot(
+        selectedConversationId,
+        hasAutoOpenArtifacts,
+      );
+      if (currentArtifactState.isOpen && currentArtifactState.activeTab === tab) {
         setArtifactPaneVisibility(selectedConversationId, false);
         return;
       }
       openArtifactTab(selectedConversationId, tab);
     },
     [
-      artifactState.activeTab,
-      artifactPaneOpen,
+      hasAutoOpenArtifacts,
       openArtifactTab,
       selectedConversationId,
       setArtifactPaneVisibility,
@@ -1740,11 +1747,10 @@ export function AgentsView({
                     ? { additionalQuestionSessionIds: [attachedIdeationSessionId] }
                     : {})}
                   headerContent={
-                    <AgentsChatHeader
+                    <AgentsChatHeaderController
                       conversation={activeConversation}
                       workspace={activeWorkspace}
-                      artifactOpen={artifactPaneOpen}
-                      activeArtifactTab={artifactState.activeTab}
+                      hasAutoOpenArtifacts={hasAutoOpenArtifacts}
                       terminalOpen={isTerminalOpen}
                       terminalUnavailableReason={terminalUnavailableReason}
                       onRenameConversation={handleRenameConversation}
@@ -1755,9 +1761,7 @@ export function AgentsView({
                       isPublishingWorkspace={publishingConversationId === selectedConversationId}
                       onToggleTerminal={handleToggleTerminal}
                       onPreloadTerminal={handlePreloadTerminal}
-                      onToggleArtifacts={() =>
-                        toggleArtifactPaneVisibility(selectedConversationId, artifactPaneOpen)
-                      }
+                      onToggleArtifacts={toggleArtifactPaneVisibility}
                       onSelectArtifact={handleSelectArtifact}
                     />
                   }
@@ -1800,82 +1804,238 @@ export function AgentsView({
             </div>
           )}
 
-          {selectedConversationId &&
-            activeConversation &&
-            (artifactPaneOpen || artifactPaneContentMounted) && (
-              <>
-                {artifactPaneOpen ? (
-                  <div className="max-lg:hidden">
-                    <ResizeHandle
-                      isResizing={isArtifactResizing}
-                      onMouseDown={handleArtifactResizeStart}
-                      onDoubleClick={handleArtifactResizeReset}
-                      testId="agents-artifact-resize-handle"
-                    />
-                  </div>
-                ) : null}
-                <div
-                  className={cn(
-                    "h-full shrink-0 overflow-hidden",
-                    artifactPaneOpen &&
-                      "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-20 max-lg:!w-[min(100%,420px)] max-lg:!min-w-0 max-lg:!max-w-none",
-                  )}
-                  style={{
-                    width: artifactPaneOpen ? artifactWidthCss : "0px",
-                    minWidth: artifactPaneOpen ? AGENTS_ARTIFACT_MIN_WIDTH : 0,
-                    maxWidth: artifactPaneOpen
-                      ? `calc(100% - ${AGENTS_CHAT_MIN_WIDTH}px)`
-                      : 0,
-                    opacity: artifactPaneOpen ? 1 : 0,
-                    pointerEvents: artifactPaneOpen ? "auto" : "none",
-                    transition: isArtifactResizing
-                      ? "none"
-                      : "width 150ms ease-out, opacity 100ms ease-out",
-                  }}
-                  data-testid="agents-artifact-resizable-pane"
-                >
-                  <div className="flex h-full min-h-0 flex-col">
-                    <div className="min-h-0 flex-1">
-                      {artifactPaneContentMounted ? (
-                        <Suspense fallback={<AgentArtifactPaneLoadingShell />}>
-                          <LazyAgentsArtifactPane
-                            conversation={activeConversation}
-                            workspace={activeWorkspace}
-                            activeTab={artifactState.activeTab}
-                            taskMode={artifactState.taskMode}
-                            onTabChange={handleSelectArtifact}
-                            onTaskModeChange={(mode) =>
-                              setArtifactTaskMode(selectedConversationId, mode)
-                            }
-                            onPublishWorkspace={handlePublishWorkspace}
-                            isPublishingWorkspace={
-                              publishingConversationId === selectedConversationId
-                            }
-                            onClose={() =>
-                              setArtifactPaneVisibility(selectedConversationId, false)
-                            }
-                          />
-                        </Suspense>
-                      ) : (
-                        <AgentArtifactPaneLoadingShell />
-                      )}
-                    </div>
-                    {shouldRenderTerminal && terminalDockTarget === "panel" ? (
-                      <div
-                        ref={setTerminalPanelDockElement}
-                        className="shrink-0"
-                        data-testid="agent-terminal-host-panel"
-                      />
-                    ) : null}
-                  </div>
-                </div>
-              </>
-            )}
+          {selectedConversationId && activeConversation ? (
+            <AgentsArtifactPaneRegion
+              conversationId={selectedConversationId}
+              conversation={activeConversation}
+              workspace={activeWorkspace}
+              hasAutoOpenArtifacts={hasAutoOpenArtifacts}
+              artifactWidthCss={artifactWidthCss}
+              isArtifactResizing={isArtifactResizing}
+              onResizeStart={handleArtifactResizeStart}
+              onResizeReset={handleArtifactResizeReset}
+              onTabChange={handleSelectArtifact}
+              onTaskModeChange={(mode) =>
+                setArtifactTaskMode(selectedConversationId, mode)
+              }
+              onPublishWorkspace={handlePublishWorkspace}
+              isPublishingWorkspace={publishingConversationId === selectedConversationId}
+              onClose={() => setArtifactPaneVisibility(selectedConversationId, false)}
+              shouldRenderTerminal={shouldRenderTerminal}
+              terminalDockTarget={terminalDockTarget}
+              setTerminalPanelDockElement={setTerminalPanelDockElement}
+            />
+          ) : null}
           {terminalDrawer}
         </div>
 
       </section>
     </TooltipProvider>
+  );
+}
+
+interface AgentsArtifactPaneRegionProps {
+  conversationId: string;
+  conversation: AgentConversation;
+  workspace: AgentConversationWorkspace | null;
+  hasAutoOpenArtifacts: boolean;
+  artifactWidthCss: string;
+  isArtifactResizing: boolean;
+  onResizeStart: (event: ReactMouseEvent) => void;
+  onResizeReset: (event: ReactMouseEvent) => void;
+  onTabChange: (tab: AgentArtifactTab) => void;
+  onTaskModeChange: (mode: AgentTaskArtifactMode) => void;
+  onPublishWorkspace: (conversationId: string) => Promise<void>;
+  isPublishingWorkspace: boolean;
+  onClose: () => void;
+  shouldRenderTerminal: boolean;
+  terminalDockTarget: "chat" | "panel";
+  setTerminalPanelDockElement: (element: HTMLDivElement | null) => void;
+}
+
+function AgentsArtifactPaneRegion({
+  conversationId,
+  conversation,
+  workspace,
+  hasAutoOpenArtifacts,
+  artifactWidthCss,
+  isArtifactResizing,
+  onResizeStart,
+  onResizeReset,
+  onTabChange,
+  onTaskModeChange,
+  onPublishWorkspace,
+  isPublishingWorkspace,
+  onClose,
+  shouldRenderTerminal,
+  terminalDockTarget,
+  setTerminalPanelDockElement,
+}: AgentsArtifactPaneRegionProps) {
+  const { artifactState, artifactPaneOpen } = useResolvedAgentArtifactState(
+    conversationId,
+    hasAutoOpenArtifacts,
+  );
+  const [contentMounted, setContentMounted] = useState(false);
+  const hydrationJobRef = useRef<DeferredFrameJob | null>(null);
+
+  const cancelHydrationJob = useCallback(() => {
+    const job = hydrationJobRef.current;
+    if (!job) {
+      return;
+    }
+    if (job.frame !== null) {
+      window.cancelAnimationFrame(job.frame);
+    }
+    if (job.timer !== null) {
+      window.clearTimeout(job.timer);
+    }
+    hydrationJobRef.current = null;
+  }, []);
+
+  const scheduleAfterPaint = useCallback(
+    (callback: () => void) => {
+      cancelHydrationJob();
+      const job: DeferredFrameJob = {
+        frame: null,
+        timer: null,
+      };
+      job.frame = window.requestAnimationFrame(() => {
+        job.frame = null;
+        job.timer = window.setTimeout(() => {
+          job.timer = null;
+          hydrationJobRef.current = null;
+          callback();
+        }, 0);
+      });
+      hydrationJobRef.current = job;
+    },
+    [cancelHydrationJob],
+  );
+
+  useEffect(
+    () => () => cancelHydrationJob(),
+    [cancelHydrationJob],
+  );
+
+  useEffect(() => {
+    cancelHydrationJob();
+    if (artifactPaneOpen) {
+      if (!contentMounted) {
+        scheduleAfterPaint(() => setContentMounted(true));
+      }
+      return;
+    }
+
+    if (contentMounted) {
+      scheduleAfterPaint(() => setContentMounted(false));
+    }
+  }, [
+    artifactPaneOpen,
+    cancelHydrationJob,
+    contentMounted,
+    scheduleAfterPaint,
+  ]);
+
+  if (!artifactPaneOpen && !contentMounted) {
+    return null;
+  }
+
+  return (
+    <>
+      {artifactPaneOpen ? (
+        <div className="max-lg:hidden">
+          <ResizeHandle
+            isResizing={isArtifactResizing}
+            onMouseDown={onResizeStart}
+            onDoubleClick={onResizeReset}
+            testId="agents-artifact-resize-handle"
+          />
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          "h-full shrink-0 overflow-hidden",
+          artifactPaneOpen &&
+            "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-20 max-lg:!w-[min(100%,420px)] max-lg:!min-w-0 max-lg:!max-w-none",
+        )}
+        style={{
+          width: artifactPaneOpen ? artifactWidthCss : "0px",
+          minWidth: artifactPaneOpen ? AGENTS_ARTIFACT_MIN_WIDTH : 0,
+          maxWidth: artifactPaneOpen
+            ? `calc(100% - ${AGENTS_CHAT_MIN_WIDTH}px)`
+            : 0,
+          opacity: artifactPaneOpen ? 1 : 0,
+          pointerEvents: artifactPaneOpen ? "auto" : "none",
+          transition: isArtifactResizing
+            ? "none"
+            : "width 150ms ease-out, opacity 100ms ease-out",
+        }}
+        data-testid="agents-artifact-resizable-pane"
+      >
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="min-h-0 flex-1">
+            {contentMounted ? (
+              <Suspense fallback={<AgentArtifactPaneLoadingShell />}>
+                <LazyAgentsArtifactPane
+                  conversation={conversation}
+                  workspace={workspace}
+                  activeTab={artifactState.activeTab}
+                  taskMode={artifactState.taskMode}
+                  onTabChange={onTabChange}
+                  onTaskModeChange={onTaskModeChange}
+                  onPublishWorkspace={onPublishWorkspace}
+                  isPublishingWorkspace={isPublishingWorkspace}
+                  onClose={onClose}
+                />
+              </Suspense>
+            ) : (
+              <AgentArtifactPaneLoadingShell />
+            )}
+          </div>
+          {shouldRenderTerminal && terminalDockTarget === "panel" ? (
+            <div
+              ref={setTerminalPanelDockElement}
+              className="shrink-0"
+              data-testid="agent-terminal-host-panel"
+            />
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+}
+
+interface AgentsChatHeaderControllerProps
+  extends Omit<AgentsChatHeaderProps, "artifactOpen" | "activeArtifactTab" | "onToggleArtifacts"> {
+  hasAutoOpenArtifacts: boolean;
+  onToggleArtifacts: (conversationId: string) => void;
+}
+
+function AgentsChatHeaderController({
+  conversation,
+  hasAutoOpenArtifacts,
+  onToggleArtifacts,
+  ...props
+}: AgentsChatHeaderControllerProps) {
+  const { artifactState, artifactPaneOpen } = useResolvedAgentArtifactState(
+    conversation?.id ?? null,
+    hasAutoOpenArtifacts,
+  );
+  const handleToggleArtifacts = useCallback(() => {
+    if (!conversation) {
+      return;
+    }
+    onToggleArtifacts(conversation.id);
+  }, [conversation, onToggleArtifacts]);
+
+  return (
+    <AgentsChatHeader
+      {...props}
+      conversation={conversation}
+      artifactOpen={artifactPaneOpen}
+      activeArtifactTab={artifactState.activeTab}
+      onToggleArtifacts={handleToggleArtifacts}
+    />
   );
 }
 

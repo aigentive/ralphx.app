@@ -9,6 +9,7 @@ import type { AgentConversationWorkspace } from "@/api/chat";
 import { ideationApi } from "@/api/ideation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAgentSessionStore, type AgentRuntimeSelection } from "@/stores/agentSessionStore";
+import { useAgentArtifactUiStore } from "./agentArtifactUiStore";
 import { useAgentTerminalStore } from "./agentTerminalStore";
 import type { AgentConversation } from "./agentConversations";
 import { AgentsChatHeader, AgentsView } from "./AgentsView";
@@ -36,6 +37,7 @@ const {
   getWorkspaceDiffMock,
   toastErrorMock,
   toastSuccessMock,
+  integratedChatPanelRenderMock,
   preloadAgentsArtifactPaneMock,
   preloadAgentTerminalExperienceMock,
   artifactPaneModuleLoadedMock,
@@ -65,6 +67,7 @@ const {
   getWorkspaceDiffMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
+  integratedChatPanelRenderMock: vi.fn(),
   preloadAgentsArtifactPaneMock: vi.fn(),
   preloadAgentTerminalExperienceMock: vi.fn(),
   artifactPaneModuleLoadedMock: vi.fn(),
@@ -235,29 +238,32 @@ vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
     headerContent?: ReactNode;
     contentWidthClassName?: string;
     renderComposer?: (props: Record<string, unknown>) => ReactNode;
-  }) => (
-    <div
-      data-testid="integrated-chat-panel"
-      data-content-width-class={contentWidthClassName ?? ""}
-    >
-      {headerContent}
-      {renderComposer?.({
-        onSend: vi.fn(),
-        onStop: vi.fn(),
-        agentStatus: "idle",
-        isSending: false,
-        isReadOnly: false,
-        autoFocus: false,
-        hasQueuedMessages: false,
-        onEditLastQueued: vi.fn(),
-        attachments: [],
-        enableAttachments: false,
-        onFilesSelected: vi.fn(),
-        onRemoveAttachment: vi.fn(),
-        attachmentsUploading: false,
-      })}
-    </div>
-  ),
+  }) => {
+    integratedChatPanelRenderMock();
+    return (
+      <div
+        data-testid="integrated-chat-panel"
+        data-content-width-class={contentWidthClassName ?? ""}
+      >
+        {headerContent}
+        {renderComposer?.({
+          onSend: vi.fn(),
+          onStop: vi.fn(),
+          agentStatus: "idle",
+          isSending: false,
+          isReadOnly: false,
+          autoFocus: false,
+          hasQueuedMessages: false,
+          onEditLastQueued: vi.fn(),
+          attachments: [],
+          enableAttachments: false,
+          onFilesSelected: vi.fn(),
+          onRemoveAttachment: vi.fn(),
+          attachmentsUploading: false,
+        })}
+      </div>
+    );
+  },
 }));
 
 vi.mock("./AgentsArtifactPane", () => {
@@ -843,6 +849,7 @@ describe("AgentsView", () => {
     getWorkspaceDiffMock.mockReset();
     toastErrorMock.mockReset();
     toastSuccessMock.mockReset();
+    integratedChatPanelRenderMock.mockReset();
     preloadAgentsArtifactPaneMock.mockReset();
     artifactPaneModuleLoadedMock.mockReset();
     preloadAgentTerminalExperienceMock.mockReset();
@@ -974,6 +981,9 @@ describe("AgentsView", () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
 
     resetAgentSessionState();
+    useAgentArtifactUiStore.setState({
+      artifactByConversationId: {},
+    });
     useAgentTerminalStore.setState({
       openByConversationId: {},
       heightByConversationId: {},
@@ -1032,6 +1042,49 @@ describe("AgentsView", () => {
 
     await waitFor(() => expect(preloadAgentsArtifactPaneMock).toHaveBeenCalledTimes(1));
     await screen.findByTestId("agents-artifact-pane");
+  });
+
+  it("does not re-render the chat panel when toggling the artifact pane", async () => {
+    mockAgentViewData(
+      conversation({
+        contextType: "ideation",
+        contextId: "session-1",
+        ideationSessionId: "session-1",
+        agentMode: "ideation",
+      })
+    );
+    mockSessionWithData();
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
+
+    renderAgentsView();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    integratedChatPanelRenderMock.mockClear();
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-artifact-pane-loading")).toBeInTheDocument();
+    expect(integratedChatPanelRenderMock).not.toHaveBeenCalled();
+
+    await screen.findByTestId("agents-artifact-pane");
+    integratedChatPanelRenderMock.mockClear();
+
+    fireEvent.click(screen.getByLabelText("Close panel"));
+
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toHaveStyle({
+      width: "0px",
+      minWidth: "0px",
+      maxWidth: "0px",
+      opacity: "0",
+      pointerEvents: "none",
+    });
+    expect(integratedChatPanelRenderMock).not.toHaveBeenCalled();
   });
 
   it("warms the artifact pane on publish shortcut intent", async () => {

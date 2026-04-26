@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render as rtlRender, screen } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AT_BOTTOM_THRESHOLD, TEXT_LENGTH_BUCKET_SIZE, ChatMessageList, type ChatMessageData } from "./ChatMessageList";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -148,6 +148,26 @@ describe("ChatMessageList - Scroll Behavior", () => {
       );
 
       expect(emptyFooterSpacer).toBeUndefined();
+    });
+
+    it("keeps a visual placeholder cover until the initial transcript paint settles", async () => {
+      const onInitialPaintReady = vi.fn();
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          initialPaintCoverKey="conv-1"
+          onInitialPaintReady={onInitialPaintReady}
+        />
+      );
+
+      expect(screen.getByTestId("chat-transcript-settling-placeholders")).toBeInTheDocument();
+      expect(screen.getByText("Message 10")).toBeInTheDocument();
+
+      await waitFor(() =>
+        expect(screen.queryByTestId("chat-transcript-settling-placeholders")).not.toBeInTheDocument()
+      );
+      expect(onInitialPaintReady).toHaveBeenCalledWith("conv-1");
     });
   });
 

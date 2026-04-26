@@ -9,13 +9,14 @@
  */
 
 import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from "react";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso, type ListRange, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { HookEventMessage } from "./HookEventMessage";
 import { AutoVerificationCard } from "./AutoVerificationCard";
 import { VerificationResultCard } from "./VerificationResultCard";
 import { AUTO_VERIFICATION_KEY, VERIFICATION_RESULT_KEY } from "@/types/ideation";
 import {
+  ConversationTranscriptPlaceholders,
   TypingIndicator,
   FailedRunBanner,
 } from "./IntegratedChatPanel.components";
@@ -212,6 +213,8 @@ interface ChatMessageListProps {
   hasOlderMessages?: boolean;
   isFetchingOlderMessages?: boolean;
   onLoadOlderMessages?: (() => void | Promise<void>) | undefined;
+  initialPaintCoverKey?: string | null | undefined;
+  onInitialPaintReady?: ((key: string) => void) | undefined;
 }
 
 // ============================================================================
@@ -243,6 +246,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       hasOlderMessages = false,
       isFetchingOlderMessages = false,
       onLoadOlderMessages,
+      initialPaintCoverKey = null,
+      onInitialPaintReady,
     },
     ref
   ) {
@@ -275,6 +280,56 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const footerPrevHeightRef = useRef<number>(-1); // -1 = uninitialized sentinel
     const footerMountedRef = useRef(false); // H2 fix: skip initial mount observation
     const hasFooterStreamingContentRef = useRef(false);
+    const initialPaintReadyFrameRef = useRef<number | null>(null);
+    const initialPaintReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [pendingInitialPaintCoverKey, setPendingInitialPaintCoverKey] =
+      useState<string | null>(() => (initialPaintCoverKey && messages.length > 0 ? initialPaintCoverKey : null));
+    const shouldShowInitialPaintCover =
+      pendingInitialPaintCoverKey !== null && messages.length > 0;
+
+    const cancelInitialPaintReadyJob = useCallback(() => {
+      if (initialPaintReadyFrameRef.current !== null) {
+        cancelAnimationFrame(initialPaintReadyFrameRef.current);
+        initialPaintReadyFrameRef.current = null;
+      }
+      if (initialPaintReadyTimerRef.current !== null) {
+        clearTimeout(initialPaintReadyTimerRef.current);
+        initialPaintReadyTimerRef.current = null;
+      }
+    }, []);
+
+    useEffect(
+      () => () => cancelInitialPaintReadyJob(),
+      [cancelInitialPaintReadyJob],
+    );
+
+    useEffect(() => {
+      cancelInitialPaintReadyJob();
+      setPendingInitialPaintCoverKey(
+        initialPaintCoverKey && messages.length > 0 ? initialPaintCoverKey : null,
+      );
+    }, [cancelInitialPaintReadyJob, initialPaintCoverKey, messages.length]);
+
+    const markInitialPaintReady = useCallback(() => {
+      if (!pendingInitialPaintCoverKey) {
+        return;
+      }
+      if (initialPaintReadyFrameRef.current !== null || initialPaintReadyTimerRef.current !== null) {
+        return;
+      }
+
+      const complete = () => {
+        const readyKey = pendingInitialPaintCoverKey;
+        initialPaintReadyTimerRef.current = null;
+        setPendingInitialPaintCoverKey(null);
+        onInitialPaintReady?.(readyKey);
+      };
+
+      initialPaintReadyFrameRef.current = requestAnimationFrame(() => {
+        initialPaintReadyFrameRef.current = null;
+        initialPaintReadyTimerRef.current = setTimeout(complete, 0);
+      });
+    }, [onInitialPaintReady, pendingInitialPaintCoverKey]);
 
     useEffect(() => {
       conversationLastUserMessageIdRef.current = lastUserMessageId;
@@ -769,6 +824,22 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           }
         : null;
 
+    const handleRangeChanged = useCallback(
+      (range: ListRange) => {
+        if (timeline.length > 0 && range.endIndex >= range.startIndex) {
+          markInitialPaintReady();
+        }
+      },
+      [markInitialPaintReady, timeline.length],
+    );
+
+    useEffect(() => {
+      if (!isTestEnv || !shouldShowInitialPaintCover || timeline.length === 0) {
+        return;
+      }
+      markInitialPaintReady();
+    }, [isTestEnv, markInitialPaintReady, shouldShowInitialPaintCover, timeline.length]);
+
     // Initial load scroll — fires when conversation changes and timeline populates.
     // Uses one-shot ResizeObserver on the scroller element to detect when virtual
     // content has actually rendered, rather than a fixed-duration setTimeout guess.
@@ -1049,6 +1120,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     if (isTestEnv) {
       return (
         <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
+          {shouldShowInitialPaintCover && (
+            <ConversationTranscriptPlaceholders
+              contentWidthClassName={contentWidthClassName}
+              className="absolute inset-0 z-10 bg-[var(--bg-primary)]"
+              testId="chat-transcript-settling-placeholders"
+              ariaHidden
+            />
+          )}
           {isFilteredTabEmpty && (
             <div className="flex-1 flex items-center justify-center h-full" data-testid="teammate-tab-empty">
               <span className="text-sm" style={{ color: "var(--text-muted)" }}>
@@ -1172,6 +1251,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     return (
       <ToolCallStoreKeyContext.Provider value={contextKey ?? null}>
       <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
+        {shouldShowInitialPaintCover && (
+          <ConversationTranscriptPlaceholders
+            contentWidthClassName={contentWidthClassName}
+            className="absolute inset-0 z-10 bg-[var(--bg-primary)]"
+            testId="chat-transcript-settling-placeholders"
+            ariaHidden
+          />
+        )}
         {isFilteredTabEmpty && (
           <div className="absolute inset-0 flex items-center justify-center" data-testid="teammate-tab-empty">
             <span className="text-sm" style={{ color: "var(--text-muted)" }}>
@@ -1192,6 +1279,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           followOutput={handleFollowOutput}
           atBottomStateChange={handleAtBottomStateChange}
           atBottomThreshold={AT_BOTTOM_THRESHOLD}
+          rangeChanged={handleRangeChanged}
           {...(startReachedHandler
             ? { startReached: startReachedHandler }
             : {})}

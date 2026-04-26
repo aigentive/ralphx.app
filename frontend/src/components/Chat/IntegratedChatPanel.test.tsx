@@ -684,6 +684,36 @@ describe("IntegratedChatPanel", () => {
       expect(screen.getByTestId("custom-composer")).toHaveTextContent("attachments-enabled");
       expect(screen.queryByTestId("chat-input")).not.toBeInTheDocument();
     });
+
+    it("first paints visual conversation placeholders before hydrating existing messages", async () => {
+      mockChatPanelContext.activeConversationId = "conv-1";
+      useChatMockState.conversations = [{ id: "conv-1" }];
+      useChatMockState.conversation = { contextType: "task", contextId: "task-1" };
+      useChatMockState.messages = [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "Existing conversation content",
+          createdAt: "2026-04-23T09:00:00Z",
+          toolCalls: null,
+          contentBlocks: null,
+        },
+      ];
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      expect(screen.getByTestId("chat-transcript-placeholders")).toBeInTheDocument();
+      expect(screen.queryByText("Existing conversation content")).not.toBeInTheDocument();
+
+      await waitFor(() =>
+        expect(screen.getByText("Existing conversation content")).toBeInTheDocument()
+      );
+      expect(screen.queryByTestId("chat-transcript-placeholders")).not.toBeInTheDocument();
+    });
   });
 
   describe("File attachments", () => {
@@ -963,7 +993,7 @@ describe("IntegratedChatPanel", () => {
       useChatMockState.conversations = [{ id: "conv-1" }];
     });
 
-    it("sorts messages by timestamp even when isAgentRunning is true", () => {
+    it("sorts messages by timestamp even when isAgentRunning is true", async () => {
       // msg-b has LATER timestamp but appears first in array (simulates out-of-order DB response)
       useChatMockState.messages = [
         { id: "msg-b", role: "user", content: "Second message", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
@@ -982,13 +1012,15 @@ describe("IntegratedChatPanel", () => {
       );
 
       // "First message" (earlier timestamp) must appear before "Second message" in DOM
-      const html = container.innerHTML;
-      expect(html.indexOf("First message")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("Second message")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("First message")).toBeLessThan(html.indexOf("Second message"));
+      await waitFor(() => {
+        const html = container.innerHTML;
+        expect(html.indexOf("First message")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("Second message")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("First message")).toBeLessThan(html.indexOf("Second message"));
+      });
     });
 
-    it("sorts messages by timestamp when isSending is true", () => {
+    it("sorts messages by timestamp when isSending is true", async () => {
       useChatMockState.messages = [
         { id: "msg-b", role: "user", content: "Second message", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
         { id: "msg-a", role: "user", content: "First message", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
@@ -1004,13 +1036,15 @@ describe("IntegratedChatPanel", () => {
         </TestWrapper>
       );
 
-      const html = container.innerHTML;
-      expect(html.indexOf("First message")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("Second message")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("First message")).toBeLessThan(html.indexOf("Second message"));
+      await waitFor(() => {
+        const html = container.innerHTML;
+        expect(html.indexOf("First message")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("Second message")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("First message")).toBeLessThan(html.indexOf("Second message"));
+      });
     });
 
-    it("uses id as stable tiebreaker when two messages share the same timestamp", () => {
+    it("uses id as stable tiebreaker when two messages share the same timestamp", async () => {
       const sameTime = new Date(2026, 0, 1, 12, 0).toISOString();
       // "msg-z" sorts after "msg-a" lexically — it should appear SECOND in sorted output
       useChatMockState.messages = [
@@ -1025,10 +1059,12 @@ describe("IntegratedChatPanel", () => {
       );
 
       // "msg-a" < "msg-z" lexically → "Aaa response" should appear first
-      const html = container.innerHTML;
-      expect(html.indexOf("Aaa response")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("Zzz response")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("Aaa response")).toBeLessThan(html.indexOf("Zzz response"));
+      await waitFor(() => {
+        const html = container.innerHTML;
+        expect(html.indexOf("Aaa response")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("Zzz response")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("Aaa response")).toBeLessThan(html.indexOf("Zzz response"));
+      });
     });
   });
 });
@@ -1284,7 +1320,7 @@ describe("PreviousRunBanner visibility in IntegratedChatPanel", () => {
   });
 
   describe("ideation history hydration", () => {
-    it("renders ideation messages from the paged history window even when the full conversation query is skipped", () => {
+    it("renders ideation messages from the paged history window even when the full conversation query is skipped", async () => {
       const sessionId = "ideation-session-1";
       const conversationId = "ideation-conv-1";
 
@@ -1325,7 +1361,7 @@ describe("PreviousRunBanner visibility in IntegratedChatPanel", () => {
         </TestWrapper>
       );
 
-      expect(screen.getByText("latest ideation message")).toBeInTheDocument();
+      expect(await screen.findByText("latest ideation message")).toBeInTheDocument();
       expect(screen.queryByText("Start the conversation")).not.toBeInTheDocument();
     });
   });
