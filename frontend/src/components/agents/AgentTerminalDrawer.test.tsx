@@ -224,7 +224,7 @@ describe("AgentTerminalDrawer", () => {
     });
   });
 
-  it("defers moving the hydrated terminal DOM to a new dock until after paint", async () => {
+  it("moves the hydrated terminal DOM to a new dock immediately without reopening xterm", async () => {
     const chatDockElement = document.createElement("div");
     const panelDockElement = document.createElement("div");
     document.body.appendChild(chatDockElement);
@@ -278,9 +278,10 @@ describe("AgentTerminalDrawer", () => {
       </TooltipProvider>,
     );
 
-    expect(chatDockElement).toContainElement(drawer);
-    expect(panelDockElement).not.toContainElement(drawer);
+    expect(chatDockElement).not.toContainElement(drawer);
+    expect(panelDockElement).toContainElement(drawer);
     expect(terminalOpenMock).not.toHaveBeenCalled();
+    expect(resizeAgentTerminalMock).not.toHaveBeenCalled();
 
     await act(async () => {
       rafCallbacks[rafCallbacks.length - 1]?.(16);

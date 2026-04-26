@@ -220,15 +220,14 @@ export function AgentTerminalDrawer({
       return;
     }
 
+    portalRoot.parentElement?.removeChild(portalRoot);
+    dockElement.appendChild(portalRoot);
+    if (!hasDocked) {
+      setHasDocked(true);
+    }
+
     dockMoveJobRef.current = scheduleDeferredFrameJob(() => {
       dockMoveJobRef.current = null;
-      if (portalRoot.parentElement !== dockElement) {
-        portalRoot.parentElement?.removeChild(portalRoot);
-        dockElement.appendChild(portalRoot);
-      }
-      if (!hasDocked) {
-        setHasDocked(true);
-      }
       fitAndReportSize();
     });
   }, [cancelDockMove, dockElement, fitAndReportSize, hasDocked, portalRoot]);

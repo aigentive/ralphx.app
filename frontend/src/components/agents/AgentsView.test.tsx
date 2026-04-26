@@ -1603,7 +1603,7 @@ describe("AgentsView", () => {
     expect(rectSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the artifact panel immediately while an auto terminal is open", async () => {
+  it("opens the artifact panel and moves an open auto terminal in the same click", async () => {
     mockAgentViewData(conversation({ agentMode: "edit" }));
     getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
     resetAgentSessionState({
@@ -1631,12 +1631,15 @@ describe("AgentsView", () => {
       opacity: "1",
       pointerEvents: "auto",
     });
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toContainElement(
+      screen.getByTestId("agent-terminal-drawer")
+    );
     expect(integratedChatPanelRenderMock).not.toHaveBeenCalled();
     expect(terminalDrawerMountMock).toHaveBeenCalledTimes(1);
     expect(terminalDrawerUnmountMock).not.toHaveBeenCalled();
   });
 
-  it("closes the artifact panel immediately while an auto terminal is open", async () => {
+  it("closes the artifact panel and moves an open auto terminal in the same click", async () => {
     mockAgentViewData(conversation({ agentMode: "edit" }));
     getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
     resetAgentSessionState({
@@ -1675,6 +1678,9 @@ describe("AgentsView", () => {
       opacity: "0",
       pointerEvents: "none",
     });
+    expect(screen.getByTestId("agent-terminal-host-chat")).toContainElement(
+      screen.getByTestId("agent-terminal-drawer")
+    );
     expect(integratedChatPanelRenderMock).not.toHaveBeenCalled();
     expect(terminalDrawerMountMock).toHaveBeenCalledTimes(1);
     expect(terminalDrawerUnmountMock).not.toHaveBeenCalled();
