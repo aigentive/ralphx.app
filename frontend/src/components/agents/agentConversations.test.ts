@@ -1,14 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { IdeationSessionResponse } from "@/api/ideation";
 import type { ChatConversation } from "@/types/chat-conversation";
 import {
   formatAgentConversationCreatedAt,
+  formatAgentConversationCreatedAtTitle,
   getAgentConversationStoreKey,
   sortAgentConversations,
   toIdeationAgentConversation,
   toProjectAgentConversation,
 } from "./agentConversations";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const conversation = (
   overrides: Partial<ChatConversation> = {}
@@ -136,12 +141,21 @@ describe("agent conversations", () => {
     expect(result).toBe("session:session-42");
   });
 
-  it("formats sidebar timestamps as time then date", () => {
-    const result = formatAgentConversationCreatedAt("2026-04-22T10:30:00Z");
+  it("formats recent sidebar timestamps as human-diff labels", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
 
-    expect(result).toContain(" * ");
-    expect(result).toMatch(/AM|PM/i);
-    expect(result).toMatch(/Apr/);
-    expect(result).toMatch(/22/);
+    expect(formatAgentConversationCreatedAt(new Date(2026, 3, 25, 14, 33, 0))).toBe("2 hours ago");
+  });
+
+  it("formats old sidebar timestamps as time then date", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
+
+    expect(formatAgentConversationCreatedAt(new Date(2026, 3, 17, 16, 33, 0))).toBe("4:33 PM * Apr 17");
+  });
+
+  it("provides a full sidebar timestamp title", () => {
+    expect(formatAgentConversationCreatedAtTitle(new Date(2026, 3, 17, 16, 33, 0))).toBe("Apr 17, 2026, 4:33 PM");
   });
 });

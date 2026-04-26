@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import userEvent from "@testing-library/user-event";
 
@@ -170,6 +170,10 @@ describe("AgentsSidebar", () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("orders sessions by created time and shows created time instead of provider", () => {
     const older = conversation({
       id: "older",
@@ -205,6 +209,29 @@ describe("AgentsSidebar", () => {
       firstRow.getByText(formatAgentConversationCreatedAt(newer.createdAt))
     ).toBeInTheDocument();
     expect(firstRow.queryByText("codex")).not.toBeInTheDocument();
+  });
+
+  it("shows human-diff conversation time with a full timestamp title", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
+    const activeConversation = conversation({
+      createdAt: new Date(2026, 3, 25, 14, 33, 0).toISOString(),
+    });
+    conversationsByProject.set("project-1", {
+      data: [activeConversation],
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar();
+
+    const row = within(screen.getByTestId("agents-session-conversation-1"));
+    expect(row.getByText("2 hours ago")).toHaveAttribute(
+      "title",
+      "Apr 25, 2026, 2:33 PM",
+    );
   });
 
   it("shows load more per project and calls the paginated fetch when pressed", () => {

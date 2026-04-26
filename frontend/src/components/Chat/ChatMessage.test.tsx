@@ -3,11 +3,15 @@
  * Tests for individual chat message display with role-based styling
  */
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ChatMessage } from "./ChatMessage";
 import type { ChatMessage as ChatMessageType } from "@/types/ideation";
 import { makeIdeationChatMessage } from "./__tests__/chatRenderFixtures";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // ============================================================================
 // Test Data
@@ -238,29 +242,48 @@ describe("ChatMessage", () => {
   });
 
   describe("Timestamp Display", () => {
-    it("formats timestamp correctly", () => {
-      render(<ChatMessage message={userMessage} />);
+    it("formats timestamp as human-diff text", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
+      const message = makeIdeationChatMessage({
+        ...userMessage,
+        createdAt: new Date(2026, 3, 25, 14, 33, 0).toISOString(),
+      });
+
+      render(<ChatMessage message={message} />);
 
       const timestamp = screen.getByTestId("chat-message-timestamp");
       expect(timestamp).toBeInTheDocument();
-      // Should be formatted as HH:MM
-      expect(timestamp.textContent).toMatch(/\d{1,2}:\d{2}/);
+      expect(timestamp).toHaveTextContent("2 hours ago");
     });
 
-    it("shows compact timestamp by default", () => {
-      render(<ChatMessage message={userMessage} />);
+    it("uses the native title for the full timestamp", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
+      const message = makeIdeationChatMessage({
+        ...userMessage,
+        createdAt: new Date(2026, 3, 25, 16, 32, 0).toISOString(),
+      });
+
+      render(<ChatMessage message={message} />);
 
       const timestamp = screen.getByTestId("chat-message-timestamp");
-      // Should just show time, not full date
-      expect(timestamp.textContent).not.toContain("2026");
+      expect(timestamp).toHaveTextContent("1 minute ago");
+      expect(timestamp).toHaveAttribute("title", "Apr 25, 2026, 4:32 PM");
     });
 
-    it("shows full timestamp when showFullTimestamp prop is true", () => {
-      render(<ChatMessage message={userMessage} showFullTimestamp />);
+    it("uses the time and date label for timestamps outside the 7-day window", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
+      const message = makeIdeationChatMessage({
+        ...userMessage,
+        createdAt: new Date(2026, 3, 17, 16, 33, 0).toISOString(),
+      });
+
+      render(<ChatMessage message={message} showFullTimestamp />);
 
       const timestamp = screen.getByTestId("chat-message-timestamp");
-      // Should show date too
-      expect(timestamp.textContent).toMatch(/Jan|24/);
+      expect(timestamp).toHaveTextContent("4:33 PM * Apr 17");
     });
   });
 

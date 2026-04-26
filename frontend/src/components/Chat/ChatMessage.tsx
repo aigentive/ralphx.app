@@ -18,6 +18,7 @@ import { withAlpha } from "@/lib/theme-colors";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 import { shouldHideCompletedProjectOrchestrationToolCall } from "./tool-widgets/ProjectOrchestrationWidget.utils";
 import { MarkdownLink } from "./MessageItem.markdown";
+import { formatHumanTimestamp } from "@/lib/formatters";
 
 // ============================================================================
 // Types
@@ -26,7 +27,7 @@ import { MarkdownLink } from "./MessageItem.markdown";
 interface ChatMessageProps {
   /** The message to display */
   message: ChatMessageType;
-  /** Show full timestamp with date instead of just time */
+  /** @deprecated Chat timestamps now use the shared human timestamp format. */
   showFullTimestamp?: boolean;
   /** Compact mode with reduced spacing and no role indicator */
   compact?: boolean;
@@ -66,24 +67,6 @@ function getRoleLabel(role: MessageRole): string {
 function getAccessibleName(role: MessageRole): string {
   const roleLabel = getRoleLabel(role);
   return `Message from ${roleLabel}`;
-}
-
-function formatTimestamp(dateString: string, full: boolean): string {
-  const date = new Date(dateString);
-
-  if (full) {
-    return date.toLocaleString([], {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 // ============================================================================
@@ -230,7 +213,6 @@ function TextBubble({
 
 export function ChatMessage({
   message,
-  showFullTimestamp = false,
   compact = false,
 }: ChatMessageProps) {
   const isUser = message.role === "user";
@@ -238,8 +220,8 @@ export function ChatMessage({
   const spacingClass = compact ? "mb-1" : "mb-3";
 
   const timestamp = useMemo(
-    () => formatTimestamp(message.createdAt, showFullTimestamp),
-    [message.createdAt, showFullTimestamp]
+    () => formatHumanTimestamp(message.createdAt),
+    [message.createdAt]
   );
 
   const accessibleName = useMemo(
@@ -351,10 +333,11 @@ export function ChatMessage({
       <time
         data-testid="chat-message-timestamp"
         dateTime={message.createdAt}
+        title={timestamp.title || undefined}
         className="text-[10px] mt-1 px-1 text-text-primary/40"
         role="time"
       >
-        {timestamp}
+        {timestamp.label}
       </time>
     </article>
   );

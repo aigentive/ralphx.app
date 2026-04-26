@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 import { shouldHideCompletedProjectOrchestrationToolCall } from "./tool-widgets/ProjectOrchestrationWidget.utils";
 import { TextBubble } from "./TextBubble";
-import { formatTimestamp } from "./MessageItem.utils";
+import { formatTimestamp, formatTimestampTitle } from "./MessageItem.utils";
 import { isTaskToolCall } from "./DiffToolCallView.utils";
 import { MessageAttachments, type MessageAttachment } from "./MessageAttachments";
 import { Button } from "@/components/ui/button";
@@ -326,7 +326,9 @@ export const MessageItem = React.memo(function MessageItem({
           )}
           data-testid="message-meta"
         >
-          <span>{formatTimestamp(createdAt)}</span>
+          <span title={formatTimestampTitle(createdAt) || undefined}>
+            {formatTimestamp(createdAt)}
+          </span>
           {showInlineCopy && (
             <Tooltip>
               <TooltipTrigger asChild>

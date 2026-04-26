@@ -1,5 +1,9 @@
 import type { IdeationSessionResponse } from "@/api/ideation";
 import { buildAgentEventStoreKey } from "@/lib/agent-store-key";
+import {
+  formatHumanTimestampLabel,
+  formatHumanTimestampTitle,
+} from "@/lib/formatters";
 import type { ChatConversation } from "@/types/chat-conversation";
 
 export type AgentIdeationSession = Pick<
@@ -62,30 +66,13 @@ export function getAgentConversationStoreKey(
 export function formatAgentConversationCreatedAt(
   input: string | number | Date
 ): string {
-  try {
-    const date = input instanceof Date ? input : new Date(input);
-    if (Number.isNaN(date.getTime())) {
-      return "-";
-    }
+  return formatHumanTimestampLabel(input);
+}
 
-    const timeLabel = date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-    const dateOptions: Intl.DateTimeFormatOptions = {
-      month: "short",
-      day: "numeric",
-    };
-
-    if (date.getFullYear() !== new Date().getFullYear()) {
-      dateOptions.year = "numeric";
-    }
-
-    return `${timeLabel} * ${date.toLocaleDateString("en-US", dateOptions)}`;
-  } catch {
-    return "-";
-  }
+export function formatAgentConversationCreatedAtTitle(
+  input: string | number | Date
+): string {
+  return formatHumanTimestampTitle(input);
 }
 
 function newestTimestamp(

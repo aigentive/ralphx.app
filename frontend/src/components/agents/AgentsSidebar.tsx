@@ -61,6 +61,7 @@ import { withAlpha } from "@/lib/theme-colors";
 import type { Project } from "@/types/project";
 import {
   formatAgentConversationCreatedAt,
+  formatAgentConversationCreatedAtTitle,
   getAgentConversationStoreKey,
   type AgentConversation,
 } from "./agentConversations";
@@ -756,6 +757,7 @@ function ProjectSessionGroup({
                   const isActiveRuntime = activeConversationId === conversation.id;
                   const title = conversation.title || "Untitled agent";
                   const createdLabel = formatAgentConversationCreatedAt(conversation.createdAt);
+                  const createdTitle = formatAgentConversationCreatedAtTitle(conversation.createdAt);
                   const statusLabel = conversation.archivedAt
                     ? `Archived * ${createdLabel}`
                     : createdLabel;
@@ -800,6 +802,7 @@ function ProjectSessionGroup({
                               </span>
                               <span
                                 className="shrink-0 text-[10px]"
+                                title={createdTitle || undefined}
                                 style={{ color: "var(--text-muted)" }}
                               >
                                 {statusLabel}

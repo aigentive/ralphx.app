@@ -4,7 +4,7 @@
  * Tests attachment rendering integration with MessageAttachments component
  */
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
@@ -21,6 +21,10 @@ import {
 function renderMessageItem(ui: ReactElement) {
   return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>);
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("MessageItem - Attachment Integration", () => {
   const baseProps = makeMessageItemProps({
@@ -215,6 +219,21 @@ describe("MessageItem - copy affordance", () => {
     await user.hover(screen.getByTestId("message-copy-button"));
 
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Copy message");
+  });
+});
+
+describe("MessageItem - timestamp display", () => {
+  it("renders human-diff timestamp text with the absolute timestamp as a native title", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
+    const createdAt = new Date(2026, 3, 25, 14, 33, 0).toISOString();
+
+    renderMessageItem(
+      <MessageItem {...makeMessageItemProps({ createdAt, content: "Hello world" })} />
+    );
+
+    const timestamp = screen.getByText("2 hours ago");
+    expect(timestamp).toHaveAttribute("title", "Apr 25, 2026, 2:33 PM");
   });
 });
 
