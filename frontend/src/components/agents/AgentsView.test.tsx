@@ -36,7 +36,9 @@ const {
   getWorkspaceDiffMock,
   toastErrorMock,
   toastSuccessMock,
+  preloadAgentsArtifactPaneMock,
   preloadAgentTerminalExperienceMock,
+  artifactPaneModuleLoadedMock,
   terminalDrawerModuleLoadedMock,
   terminalDrawerMountMock,
   terminalDrawerUnmountMock,
@@ -63,7 +65,9 @@ const {
   getWorkspaceDiffMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
+  preloadAgentsArtifactPaneMock: vi.fn(),
   preloadAgentTerminalExperienceMock: vi.fn(),
+  artifactPaneModuleLoadedMock: vi.fn(),
   terminalDrawerModuleLoadedMock: vi.fn(),
   terminalDrawerMountMock: vi.fn(),
   terminalDrawerUnmountMock: vi.fn(),
@@ -136,6 +140,13 @@ vi.mock("./AgentTerminalDrawer", async () => {
     },
   };
 });
+
+vi.mock("./agentArtifactPanePreload", () => ({
+  preloadAgentsArtifactPane: () => {
+    preloadAgentsArtifactPaneMock();
+    return import("./AgentsArtifactPane");
+  },
+}));
 
 vi.mock("./agentTerminalPreload", () => ({
   preloadAgentTerminalDrawer: () => import("./AgentTerminalDrawer"),
@@ -249,8 +260,10 @@ vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
   ),
 }));
 
-vi.mock("./AgentsArtifactPane", () => ({
-  AgentsArtifactPane: ({
+vi.mock("./AgentsArtifactPane", () => {
+  artifactPaneModuleLoadedMock();
+  return {
+    AgentsArtifactPane: ({
     conversation,
     activeTab,
     onClose,
@@ -278,7 +291,8 @@ vi.mock("./AgentsArtifactPane", () => ({
       ) : null}
     </div>
   ),
-}));
+  };
+});
 
 vi.mock("./useProjectAgentBridgeEvents", () => ({
   useProjectAgentBridgeEvents: () => undefined,
@@ -829,7 +843,10 @@ describe("AgentsView", () => {
     getWorkspaceDiffMock.mockReset();
     toastErrorMock.mockReset();
     toastSuccessMock.mockReset();
+    preloadAgentsArtifactPaneMock.mockReset();
+    artifactPaneModuleLoadedMock.mockReset();
     preloadAgentTerminalExperienceMock.mockReset();
+    terminalDrawerModuleLoadedMock.mockReset();
     terminalDrawerMountMock.mockReset();
     terminalDrawerUnmountMock.mockReset();
 
@@ -981,6 +998,56 @@ describe("AgentsView", () => {
       expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
     );
     expect(terminalDrawerModuleLoadedMock).not.toHaveBeenCalled();
+  });
+
+  it("paints the artifact panel frame before hydrating the heavy pane", async () => {
+    mockAgentViewData(
+      conversation({
+        contextType: "ideation",
+        contextId: "session-1",
+        ideationSessionId: "session-1",
+        agentMode: "ideation",
+      })
+    );
+    mockSessionWithData();
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
+
+    renderAgentsView();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    expect(preloadAgentsArtifactPaneMock).not.toHaveBeenCalled();
+    expect(artifactPaneModuleLoadedMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-artifact-pane-loading")).toBeInTheDocument();
+    expect(preloadAgentsArtifactPaneMock).not.toHaveBeenCalled();
+    expect(artifactPaneModuleLoadedMock).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(preloadAgentsArtifactPaneMock).toHaveBeenCalledTimes(1));
+    await screen.findByTestId("agents-artifact-pane");
+  });
+
+  it("warms the artifact pane on publish shortcut intent", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
+
+    renderAgentsView();
+
+    fireEvent.pointerEnter(await screen.findByTestId("agents-publish-workspace"));
+
+    expect(preloadAgentsArtifactPaneMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(preloadAgentsArtifactPaneMock).toHaveBeenCalledTimes(1));
   });
 
   it("defaults to the starter composer when no conversation is selected", async () => {
@@ -1805,8 +1872,17 @@ describe("AgentsView", () => {
 
     fireEvent.click(screen.getByLabelText("Close panel"));
 
-    expect(screen.queryByTestId("agents-artifact-resizable-pane")).not.toBeInTheDocument();
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toHaveStyle({
+      width: "0px",
+      minWidth: "0px",
+      maxWidth: "0px",
+      opacity: "0",
+      pointerEvents: "none",
+    });
     expect(setItemSpy).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.queryByTestId("agents-artifact-resizable-pane")).not.toBeInTheDocument()
+    );
 
     setItemSpy.mockRestore();
   });
@@ -1834,8 +1910,17 @@ describe("AgentsView", () => {
 
     fireEvent.click(screen.getByTestId("agents-artifact-pane-close"));
 
-    expect(screen.queryByTestId("agents-artifact-resizable-pane")).not.toBeInTheDocument();
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toHaveStyle({
+      width: "0px",
+      minWidth: "0px",
+      maxWidth: "0px",
+      opacity: "0",
+      pointerEvents: "none",
+    });
     expect(setItemSpy).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.queryByTestId("agents-artifact-resizable-pane")).not.toBeInTheDocument()
+    );
 
     setItemSpy.mockRestore();
   });
