@@ -10,7 +10,6 @@ import { toast } from "sonner";
 
 import { chatApi } from "@/api/chat";
 import type {
-  AgentConversationBaseSelection,
   AgentConversationWorkspace,
   AgentConversationWorkspaceMode,
 } from "@/api/chat";
@@ -19,7 +18,7 @@ import { ideationApi } from "@/api/ideation";
 import { projectsApi } from "@/api/projects";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { chatKeys, invalidateConversationDataQueries } from "@/hooks/useChat";
+import { chatKeys } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
@@ -28,12 +27,10 @@ import { useChatStore } from "@/stores/chatStore";
 import {
   useAgentSessionStore,
   type AgentArtifactTab,
-  type AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
 import { AgentsSidebar } from "./AgentsSidebar";
 import {
   getAgentConversationStoreKey,
-  toProjectAgentConversation,
   type AgentConversation,
 } from "./agentConversations";
 import {
@@ -61,7 +58,6 @@ import {
 import { archivedConversationCountKey } from "./useArchivedConversationCounts";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
-import { uploadDraftAttachment } from "./chatAttachmentUpload";
 import { useAgentArtifactResize } from "./useAgentArtifactResize";
 import { useAgentsSelectionModel } from "./useAgentsSelectionModel";
 import { useAgentsWorkspaceModel } from "./useAgentsWorkspaceModel";
@@ -69,6 +65,7 @@ import { useAgentsAttachedIdeation } from "./useAgentsAttachedIdeation";
 import { useAgentsAutoTitle } from "./useAgentsAutoTitle";
 import { useAgentsActiveComposerControls } from "./useAgentsActiveComposerControls";
 import { useAgentWorkspacePublisher } from "./useAgentWorkspacePublisher";
+import { useStartAgentConversation } from "./useStartAgentConversation";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
@@ -282,95 +279,18 @@ export function AgentsView({
     invalidateProjectConversations,
   });
 
-  const handleStartAgentConversation = useCallback(
-    async ({
-      projectId: targetProjectId,
-      content,
-      runtime,
-      mode,
-      base,
-      files,
-    }: {
-      projectId: string;
-      content: string;
-      runtime: AgentRuntimeSelection;
-      mode: AgentConversationWorkspaceMode;
-      base: AgentConversationBaseSelection | null;
-      files: File[];
-    }) => {
-      const normalizedRuntime = normalizeRuntimeSelection(runtime);
-      let conversationIdOverride: string | null = null;
-
-      if (files.length > 0) {
-        const createdConversation = await chatApi.createConversation("project", targetProjectId);
-        conversationIdOverride = createdConversation.id;
-        await Promise.all(
-          files.map((file) => uploadDraftAttachment(createdConversation.id, file))
-        );
-      }
-
-      const result = await chatApi.startAgentConversation({
-        projectId: targetProjectId,
-        content,
-        ...(conversationIdOverride ? { conversationId: conversationIdOverride } : {}),
-        providerHarness: normalizedRuntime.provider,
-        modelId: normalizedRuntime.modelId,
-        mode,
-        ...(base ? { base } : {}),
-      });
-      const resolvedConversationId = result.conversation.id;
-      const optimisticConversation = toProjectAgentConversation(result.conversation);
-
-      setOptimisticConversationsById((current) => ({
-        ...current,
-        [resolvedConversationId]: optimisticConversation,
-      }));
-      const optimisticWorkspace = result.workspace;
-      if (optimisticWorkspace) {
-        setOptimisticWorkspacesByConversationId((current) => ({
-          ...current,
-          [resolvedConversationId]: optimisticWorkspace,
-        }));
-      }
-      queryClient.setQueryData(chatKeys.conversation(resolvedConversationId), {
-        conversation: result.conversation,
-        messages: [],
-      });
-      queryClient.setQueryData(
-        ["agents", "conversation-workspace", resolvedConversationId],
-        optimisticWorkspace ?? null,
-      );
-      setOptimisticSelectedConversationId(resolvedConversationId);
-      setFocusedProject(targetProjectId);
-      setRuntimeForConversation(resolvedConversationId, targetProjectId, normalizedRuntime);
-      selectConversation(targetProjectId, resolvedConversationId);
-      setActiveConversation(
-        getAgentConversationStoreKey({
-          id: resolvedConversationId,
-          contextType: "project",
-          contextId: targetProjectId,
-        }),
-        resolvedConversationId
-      );
-      invalidateConversationDataQueries(queryClient, resolvedConversationId);
-      await invalidateProjectConversations(targetProjectId);
-      handleAutoManagedTitle({
-        content,
-        conversationId: resolvedConversationId,
-        targetProjectId,
-        shouldSpawnSessionNamer: true,
-      });
-    },
-    [
-      handleAutoManagedTitle,
-      invalidateProjectConversations,
-      queryClient,
-      selectConversation,
-      setActiveConversation,
-      setFocusedProject,
-      setRuntimeForConversation,
-    ]
-  );
+  const handleStartAgentConversation = useStartAgentConversation({
+    handleAutoManagedTitle,
+    invalidateProjectConversations,
+    queryClient,
+    selectConversation,
+    setActiveConversation,
+    setFocusedProject,
+    setOptimisticConversationsById,
+    setOptimisticSelectedConversationId,
+    setOptimisticWorkspacesByConversationId,
+    setRuntimeForConversation,
+  });
 
   const handleSidebarFocusProject = useCallback(
     (targetProjectId: string) => {
