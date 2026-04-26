@@ -7,7 +7,6 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
 import { Menu } from "lucide-react";
 import { toast } from "sonner";
 
@@ -54,7 +53,6 @@ import {
 import { useAgentArtifactUiStore } from "./agentArtifactUiStore";
 import {
   getAgentArtifactStateSnapshot,
-  useResolvedAgentArtifactState,
 } from "./agentArtifactState";
 import { AgentComposerProjectLine, AgentComposerSurface } from "./AgentComposerSurface";
 import { AgentConversationBaseLine } from "./AgentConversationBaseLine";
@@ -63,10 +61,7 @@ import {
   AGENTS_CHAT_MIN_WIDTH,
   AgentsArtifactPaneRegion,
 } from "./AgentsArtifactPaneRegion";
-import {
-  AgentsChatHeader,
-  type AgentsChatHeaderProps,
-} from "./AgentsChatHeader";
+import { AgentsChatHeaderController } from "./AgentsChatHeaderController";
 import { preloadAgentsArtifactPane } from "./agentArtifactPanePreload";
 import {
   AGENT_CONVERSATION_MODE_OPTIONS,
@@ -77,14 +72,8 @@ import {
   getAgentTerminalUnavailableReason,
   runtimeFromConversation,
 } from "./agentConversationRuntime";
-import {
-  cancelDeferredFrameJob,
-  scheduleDeferredFrameJob,
-  type DeferredFrameJob,
-} from "./agentDeferredFrame";
-import { preloadAgentTerminalExperience } from "./agentTerminalPreload";
+import type { DeferredFrameJob } from "./agentDeferredFrame";
 import { AgentsStartComposer } from "./AgentsStartComposer";
-import { useAgentTerminalStore } from "./agentTerminalStore";
 import {
   AgentsTerminalDockHost,
   AgentsTerminalRegion,
@@ -98,6 +87,7 @@ import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
 import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
+import { uploadDraftAttachment } from "./chatAttachmentUpload";
 
 const AGENTS_ARTIFACT_WIDTH_STORAGE_KEY = "ralphx-agents-artifact-width";
 const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
@@ -1578,110 +1568,4 @@ export function AgentsView({
       </section>
     </TooltipProvider>
   );
-}
-
-interface AgentsChatHeaderControllerProps
-  extends Omit<
-    AgentsChatHeaderProps,
-    | "artifactOpen"
-    | "activeArtifactTab"
-    | "onToggleArtifacts"
-    | "terminalOpen"
-    | "onToggleTerminal"
-    | "onPreloadTerminal"
-  > {
-  hasAutoOpenArtifacts: boolean;
-  onToggleArtifacts: (conversationId: string) => void;
-}
-
-function AgentsChatHeaderController({
-  conversation,
-  hasAutoOpenArtifacts,
-  terminalUnavailableReason = null,
-  onToggleArtifacts,
-  ...props
-}: AgentsChatHeaderControllerProps) {
-  const { artifactState, artifactPaneOpen } = useResolvedAgentArtifactState(
-    conversation?.id ?? null,
-    hasAutoOpenArtifacts,
-  );
-  const terminalOpen = useAgentTerminalStore((state) =>
-    conversation?.id ? state.openByConversationId[conversation.id] ?? false : false,
-  );
-  const toggleTerminalOpen = useAgentTerminalStore((state) => state.toggleOpen);
-  const terminalPreloadJobRef = useRef<DeferredFrameJob | null>(null);
-
-  const cancelTerminalPreloadJob = useCallback(() => {
-    cancelDeferredFrameJob(terminalPreloadJobRef.current);
-    terminalPreloadJobRef.current = null;
-  }, []);
-
-  useEffect(() => () => cancelTerminalPreloadJob(), [cancelTerminalPreloadJob]);
-
-  const handlePreloadTerminal = useCallback(() => {
-    cancelTerminalPreloadJob();
-    preloadAgentTerminalExperience();
-  }, [cancelTerminalPreloadJob]);
-
-  const scheduleTerminalPreload = useCallback(() => {
-    cancelTerminalPreloadJob();
-    terminalPreloadJobRef.current = scheduleDeferredFrameJob(() => {
-      terminalPreloadJobRef.current = null;
-      preloadAgentTerminalExperience();
-    });
-  }, [cancelTerminalPreloadJob]);
-
-  const handleToggleTerminal = useCallback(() => {
-    if (!conversation || terminalUnavailableReason) {
-      return;
-    }
-    const nextOpen = !terminalOpen;
-    toggleTerminalOpen(conversation.id);
-    if (nextOpen) {
-      scheduleTerminalPreload();
-    } else {
-      cancelTerminalPreloadJob();
-    }
-  }, [
-    cancelTerminalPreloadJob,
-    conversation,
-    scheduleTerminalPreload,
-    terminalOpen,
-    terminalUnavailableReason,
-    toggleTerminalOpen,
-  ]);
-  const handleToggleArtifacts = useCallback(() => {
-    if (!conversation) {
-      return;
-    }
-    onToggleArtifacts(conversation.id);
-  }, [conversation, onToggleArtifacts]);
-
-  return (
-    <AgentsChatHeader
-      {...props}
-      conversation={conversation}
-      artifactOpen={artifactPaneOpen}
-      activeArtifactTab={artifactState.activeTab}
-      terminalOpen={terminalOpen}
-      terminalUnavailableReason={terminalUnavailableReason}
-      onToggleTerminal={handleToggleTerminal}
-      onPreloadTerminal={handlePreloadTerminal}
-      onToggleArtifacts={handleToggleArtifacts}
-    />
-  );
-}
-
-async function uploadDraftAttachment(conversationId: string, file: File): Promise<{ id: string }> {
-  const arrayBuffer = await file.arrayBuffer();
-  const fileData = Array.from(new Uint8Array(arrayBuffer));
-
-  return invoke<{ id: string }>("upload_chat_attachment", {
-    input: {
-      conversationId,
-      fileName: file.name,
-      fileData,
-      mimeType: file.type || undefined,
-    },
-  });
 }

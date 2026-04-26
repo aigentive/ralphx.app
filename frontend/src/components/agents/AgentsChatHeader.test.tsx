@@ -1,62 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { AgentConversationWorkspace } from "@/api/chat";
-import { TooltipProvider } from "@/components/ui/tooltip";
-
-import type { AgentConversation } from "./agentConversations";
 import { AgentsChatHeader } from "./AgentsChatHeader";
-
-const conversation = (
-  overrides: Partial<AgentConversation> = {}
-): AgentConversation => ({
-  id: "conversation-1",
-  contextType: "project",
-  contextId: "project-1",
-  claudeSessionId: null,
-  providerSessionId: "thread-1",
-  providerHarness: "codex",
-  upstreamProvider: null,
-  providerProfile: null,
-  title: "Untitled agent",
-  messageCount: 1,
-  lastMessageAt: "2026-04-23T09:00:00Z",
-  createdAt: "2026-04-23T09:00:00Z",
-  updatedAt: "2026-04-23T09:00:00Z",
-  archivedAt: null,
-  projectId: "project-1",
-  ideationSessionId: null,
-  ...overrides,
-});
-
-const conversationWorkspace = (
-  overrides: Partial<AgentConversationWorkspace> = {}
-): AgentConversationWorkspace => ({
-  conversationId: "conversation-1",
-  projectId: "project-1",
-  mode: "edit",
-  baseRefKind: "project_default",
-  baseRef: "main",
-  baseDisplayName: "Project default (main)",
-  baseCommit: null,
-  branchName: "ralphx/ralphx/agent-abcdef12",
-  worktreePath: "/tmp/ralphx/conversation-1",
-  linkedIdeationSessionId: null,
-  linkedPlanBranchId: null,
-  publicationPrNumber: null,
-  publicationPrUrl: null,
-  publicationPrStatus: null,
-  publicationPushStatus: null,
-  status: "active",
-  createdAt: "2026-04-23T09:00:00Z",
-  updatedAt: "2026-04-23T09:00:00Z",
-  ...overrides,
-});
-
-function renderWithProviders(ui: ReactNode) {
-  return render(<TooltipProvider>{ui}</TooltipProvider>);
-}
+import {
+  conversationFixture as conversation,
+  conversationWorkspaceFixture as conversationWorkspace,
+  renderWithAgentProviders as renderWithProviders,
+} from "./agentsTestFixtures";
 
 describe("AgentsChatHeader", () => {
   it("opts the title button out of the high-contrast default button border", () => {
@@ -369,4 +319,3 @@ describe("AgentsChatHeader", () => {
     expect(screen.getByTestId("agents-terminal-toggle")).toBeDisabled();
   });
 });
-

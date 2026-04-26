@@ -1,18 +1,23 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient } from "@tanstack/react-query";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
-import type { AgentConversationWorkspace } from "@/api/chat";
 import { ideationApi } from "@/api/ideation";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { useAgentSessionStore, type AgentRuntimeSelection } from "@/stores/agentSessionStore";
+import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import { useAgentArtifactUiStore } from "./agentArtifactUiStore";
 import { useAgentTerminalStore } from "./agentTerminalStore";
 import type { AgentConversation } from "./agentConversations";
 import { AgentsView } from "./AgentsView";
+import {
+  agentProjectFixture as project,
+  agentRuntimeFixture as runtime,
+  conversationFixture as conversation,
+  conversationWorkspaceFixture as conversationWorkspace,
+  renderWithAgentProviders as renderWithProviders,
+} from "./agentsTestFixtures";
 
 const {
   useProjectsMock,
@@ -307,91 +312,6 @@ vi.mock("./useProjectAgentBridgeEvents", () => ({
 vi.mock("./useAgentConversationTitleEvents", () => ({
   useAgentConversationTitleEvents: () => undefined,
 }));
-
-const runtime: AgentRuntimeSelection = {
-  provider: "codex",
-  modelId: "gpt-5.4",
-};
-
-const project = {
-  id: "project-1",
-  name: "ralphx",
-  workingDirectory: "/tmp/ralphx",
-  gitMode: "worktree" as const,
-  baseBranch: null,
-  worktreeParentDirectory: null,
-  useFeatureBranches: true,
-  mergeValidationMode: "block" as const,
-  detectedAnalysis: null,
-  customAnalysis: null,
-  analyzedAt: null,
-  githubPrEnabled: false,
-  createdAt: "2026-04-23T09:00:00Z",
-  updatedAt: "2026-04-23T09:00:00Z",
-};
-
-const conversation = (
-  overrides: Partial<AgentConversation> = {}
-): AgentConversation => ({
-  id: "conversation-1",
-  contextType: "project",
-  contextId: "project-1",
-  claudeSessionId: null,
-  providerSessionId: "thread-1",
-  providerHarness: "codex",
-  upstreamProvider: null,
-  providerProfile: null,
-  title: "Untitled agent",
-  messageCount: 1,
-  lastMessageAt: "2026-04-23T09:00:00Z",
-  createdAt: "2026-04-23T09:00:00Z",
-  updatedAt: "2026-04-23T09:00:00Z",
-  archivedAt: null,
-  projectId: "project-1",
-  ideationSessionId: null,
-  ...overrides,
-});
-
-const conversationWorkspace = (
-  overrides: Partial<AgentConversationWorkspace> = {}
-): AgentConversationWorkspace => ({
-  conversationId: "conversation-1",
-  projectId: "project-1",
-  mode: "edit",
-  baseRefKind: "project_default",
-  baseRef: "main",
-  baseDisplayName: "Project default (main)",
-  baseCommit: null,
-  branchName: "ralphx/ralphx/agent-abcdef12",
-  worktreePath: "/tmp/ralphx/conversation-1",
-  linkedIdeationSessionId: null,
-  linkedPlanBranchId: null,
-  publicationPrNumber: null,
-  publicationPrUrl: null,
-  publicationPrStatus: null,
-  publicationPushStatus: null,
-  status: "active",
-  createdAt: "2026-04-23T09:00:00Z",
-  updatedAt: "2026-04-23T09:00:00Z",
-  ...overrides,
-});
-
-function renderWithProviders(ui: ReactNode) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-    },
-  });
-
-  return {
-    ...render(
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>{ui}</TooltipProvider>
-    </QueryClientProvider>
-    ),
-    queryClient,
-  };
-}
 
 function mockSidebarBreakpoint({ isLarge, isMedium }: { isLarge: boolean; isMedium: boolean }) {
   Object.defineProperty(window, "matchMedia", {
