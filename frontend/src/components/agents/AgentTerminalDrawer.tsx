@@ -8,11 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { FitAddon } from "@xterm/addon-fit";
-import {
+import type { FitAddon } from "@xterm/addon-fit";
+import type {
   Terminal as XTermTerminal,
-  type IDisposable,
-  type ITheme,
+  IDisposable,
+  ITheme,
 } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import {
@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/tooltip";
 import { formatBranchDisplay } from "@/lib/branch-utils";
 import { cn } from "@/lib/utils";
+import { compactTerminalPath } from "./agentTerminalPaths";
 import type { AgentTerminalPlacement } from "./agentTerminalStore";
 
 interface AgentTerminalDrawerProps {
@@ -85,11 +86,13 @@ export function AgentTerminalDrawer({
   const [isFocused, setIsFocused] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(true);
 
   const branchLabel = useMemo(
     () => formatBranchDisplay(branchName).short,
     [branchName],
   );
+  const displayCwd = useMemo(() => compactTerminalPath(cwd), [cwd]);
 
   const terminalTheme = useMemo(() => readTerminalTheme(), []);
 
@@ -224,28 +227,13 @@ export function AgentTerminalDrawer({
 
     hydrationCompleteRef.current = false;
     bufferedEventsRef.current = [];
-
-    const terminal = new XTermTerminal({
-      allowProposedApi: false,
-      convertEol: true,
-      cursorBlink: true,
-      cursorStyle: "block",
-      fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
-      fontSize: 12,
-      lineHeight: 1.18,
-      scrollback: 5_000,
-      theme: terminalTheme,
-    });
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(host);
-    terminalRef.current = terminal;
-    fitAddonRef.current = fitAddon;
+    setIsHydrating(true);
 
     let disposed = false;
+    let terminal: XTermTerminal | null = null;
     let dataDisposable: IDisposable | null = null;
     let resizeFrame: number | null = null;
+    let initFrame: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let unlisten: (() => void) | null = null;
     let listenerPromise: Promise<void> | null = null;
@@ -268,6 +256,33 @@ export function AgentTerminalDrawer({
     };
 
     const start = async () => {
+      const [{ Terminal }, { FitAddon }] = await Promise.all([
+        import("@xterm/xterm"),
+        import("@xterm/addon-fit"),
+      ]);
+      if (disposed) {
+        return;
+      }
+
+      terminal = new Terminal({
+        allowProposedApi: false,
+        convertEol: true,
+        cursorBlink: true,
+        cursorStyle: "block",
+        fontFamily:
+          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
+        fontSize: 12,
+        lineHeight: 1.18,
+        scrollback: 5_000,
+        theme: terminalTheme,
+      });
+      const fitAddon = new FitAddon();
+      terminal.loadAddon(fitAddon);
+      terminal.open(host);
+      terminalRef.current = terminal;
+      fitAddonRef.current = fitAddon;
+      setIsHydrating(false);
+
       listenerPromise = listen<unknown>(AGENT_TERMINAL_EVENT, (event) => {
         const parsed = AgentTerminalEventSchema.safeParse(event.payload);
         if (parsed.success) {
@@ -333,18 +348,24 @@ export function AgentTerminalDrawer({
       terminal.focus();
     };
 
-    void start().catch((error) => {
-      if (disposed) {
-        return;
-      }
-      setStatus("error");
-      const message = error instanceof Error ? error.message : "Failed to open terminal";
-      terminal.write(`\r\n[terminal error] ${message}\r\n`);
+    initFrame = window.requestAnimationFrame(() => {
+      void start().catch((error) => {
+        if (disposed) {
+          return;
+        }
+        setIsHydrating(false);
+        setStatus("error");
+        const message = error instanceof Error ? error.message : "Failed to open terminal";
+        terminalRef.current?.write(`\r\n[terminal error] ${message}\r\n`);
+      });
     });
 
     return () => {
       disposed = true;
       hydrationCompleteRef.current = false;
+      if (initFrame !== null) {
+        window.cancelAnimationFrame(initFrame);
+      }
       if (resizeFrame !== null) {
         window.cancelAnimationFrame(resizeFrame);
       }
@@ -356,7 +377,7 @@ export function AgentTerminalDrawer({
       dataDisposable?.dispose();
       releaseListener();
       void listenerPromise?.then(releaseListener);
-      terminal.dispose();
+      terminal?.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
@@ -371,7 +392,18 @@ export function AgentTerminalDrawer({
     terminalTheme,
   ]);
 
+  const hasTerminalInstance = useCallback(() => {
+    if (!terminalRef.current) {
+      setStatus("error");
+      return false;
+    }
+    return true;
+  }, []);
+
   const handleClear = useCallback(async () => {
+    if (!hasTerminalInstance()) {
+      return;
+    }
     setIsClearing(true);
     try {
       const snapshot = await clearAgentTerminal({
@@ -386,15 +418,24 @@ export function AgentTerminalDrawer({
     } finally {
       setIsClearing(false);
     }
-  }, [applySnapshot, conversationId, showControlError, terminalId]);
+  }, [
+    applySnapshot,
+    conversationId,
+    hasTerminalInstance,
+    showControlError,
+    terminalId,
+  ]);
 
   const handleRestart = useCallback(async () => {
     const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
     setIsRestarting(true);
     try {
-      terminal?.reset();
-      const cols = Math.max(terminal?.cols || 0, TERMINAL_MIN_COLS);
-      const rows = Math.max(terminal?.rows || 0, TERMINAL_MIN_ROWS);
+      terminal.reset();
+      const cols = Math.max(terminal.cols || 0, TERMINAL_MIN_COLS);
+      const rows = Math.max(terminal.rows || 0, TERMINAL_MIN_ROWS);
       const snapshot = await restartAgentTerminal({
         conversationId,
         terminalId,
@@ -475,7 +516,7 @@ export function AgentTerminalDrawer({
           </span>
           <span className="h-1 w-1 rounded-full" style={{ background: "var(--text-muted)" }} />
           <span className="shrink-0 capitalize" style={{ color: "var(--text-secondary)" }}>
-            {status}
+            {isHydrating ? "Opening" : status}
           </span>
           <span className="min-w-0 truncate font-mono" style={{ color: "var(--text-muted)" }}>
             {branchLabel}
@@ -484,7 +525,7 @@ export function AgentTerminalDrawer({
             className="hidden min-w-0 truncate font-mono md:inline"
             style={{ color: "var(--text-muted)" }}
           >
-            {cwd}
+            {displayCwd}
           </span>
         </div>
 
@@ -496,14 +537,14 @@ export function AgentTerminalDrawer({
           <TerminalIconButton
             label="Clear terminal"
             onClick={() => void handleClear()}
-            disabled={isClearing}
+            disabled={isClearing || isHydrating}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </TerminalIconButton>
           <TerminalIconButton
             label="Start fresh terminal session"
             onClick={() => void handleRestart()}
-            disabled={isRestarting}
+            disabled={isRestarting || isHydrating}
           >
             <RefreshCw className={cn("h-3.5 w-3.5", isRestarting && "animate-spin")} />
           </TerminalIconButton>
@@ -513,11 +554,21 @@ export function AgentTerminalDrawer({
         </div>
       </div>
 
-      <div
-        ref={containerRef}
-        className="h-[calc(100%-2.25rem)] w-full px-3 py-2"
-        aria-label={`Terminal for ${branchLabel}`}
-      />
+      <div className="relative h-[calc(100%-2.25rem)] w-full">
+        {isHydrating && (
+          <div
+            className="absolute inset-0 flex items-start px-3 py-2 font-mono text-xs"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Starting terminal...
+          </div>
+        )}
+        <div
+          ref={containerRef}
+          className="h-full w-full px-3 py-2"
+          aria-label={`Terminal for ${branchLabel}`}
+        />
+      </div>
     </div>
   );
 }
