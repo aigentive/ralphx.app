@@ -20,7 +20,7 @@ import { ideationApi } from "@/api/ideation";
 import { projectsApi } from "@/api/projects";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { chatKeys, invalidateConversationDataQueries, useConversation } from "@/hooks/useChat";
+import { chatKeys, invalidateConversationDataQueries } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
@@ -69,7 +69,6 @@ import {
 } from "./AgentsTerminalRegion";
 import {
   agentConversationKeys,
-  useProjectAgentConversations,
 } from "./useProjectAgentConversations";
 import { archivedConversationCountKey } from "./useArchivedConversationCounts";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
@@ -78,6 +77,7 @@ import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
 import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
 import { uploadDraftAttachment } from "./chatAttachmentUpload";
 import { useAgentArtifactResize } from "./useAgentArtifactResize";
+import { useAgentsSelectionModel } from "./useAgentsSelectionModel";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
@@ -142,7 +142,6 @@ export function AgentsView({
   const focusedProjectId = useAgentSessionStore((s) => s.focusedProjectId);
   const selectedProjectId = useAgentSessionStore((s) => s.selectedProjectId);
   const storedSelectedConversationId = useAgentSessionStore((s) => s.selectedConversationId);
-  const selectedConversationId = storedSelectedConversationId ?? optimisticSelectedConversationId;
   const runtimeByConversationId = useAgentSessionStore((s) => s.runtimeByConversationId);
   const lastRuntimeByProjectId = useAgentSessionStore((s) => s.lastRuntimeByProjectId);
   const setFocusedProject = useAgentSessionStore((s) => s.setFocusedProject);
@@ -157,66 +156,25 @@ export function AgentsView({
     useState<HTMLDivElement | null>(null);
   const [terminalPanelDockElement, setTerminalPanelDockElement] =
     useState<HTMLDivElement | null>(null);
-  const defaultProjectId = focusedProjectId || selectedProjectId || projectId || projects[0]?.id || null;
-  const activeProjectId = selectedProjectId || defaultProjectId;
-  const focusedConversations = useProjectAgentConversations(activeProjectId, showArchived);
-  const selectedConversationQuery = useConversation(selectedConversationId, {
-    enabled: !!selectedConversationId,
-  });
-  const selectedConversationData = selectedConversationQuery.data;
-  const selectedConversationFallback = useMemo(() => {
-    const conversation = selectedConversationData?.conversation;
-    const isArchivedConversation = Boolean(conversation?.archivedAt);
-    if (conversation) {
-      if (
-        conversation.id !== selectedConversationId ||
-        conversation.contextType !== "project" ||
-        conversation.contextId !== activeProjectId ||
-        (showArchived ? !isArchivedConversation : isArchivedConversation)
-      ) {
-        return null;
-      }
-
-      return toProjectAgentConversation(conversation);
-    }
-
-    const optimisticConversation = selectedConversationId
-      ? optimisticConversationsById[selectedConversationId]
-      : null;
-    if (
-      !optimisticConversation ||
-      optimisticConversation.contextType !== "project" ||
-      optimisticConversation.contextId !== activeProjectId ||
-      (showArchived
-        ? !optimisticConversation.archivedAt
-        : Boolean(optimisticConversation.archivedAt))
-    ) {
-      return null;
-    }
-
-    return optimisticConversation;
-  }, [
+  const {
+    activeConversation,
     activeProjectId,
-    optimisticConversationsById,
-    selectedConversationData,
-    selectedConversationId,
-    showArchived,
-  ]);
-
-  const activeConversation = useMemo(() => {
-    if (!selectedConversationId) {
-      return null;
-    }
-    return (
-      focusedConversations.data?.find(
-        (conversation) => conversation.id === selectedConversationId
-      ) ?? selectedConversationFallback
-    );
-  }, [
-    focusedConversations.data,
+    defaultProjectId,
+    focusedConversations,
     selectedConversationFallback,
     selectedConversationId,
-  ]);
+    selectedConversationMessages,
+  } = useAgentsSelectionModel({
+    clearAgentConversationSelection,
+    focusedProjectId,
+    optimisticConversationsById,
+    optimisticSelectedConversationId,
+    projectId,
+    projects,
+    selectedProjectId,
+    showArchived,
+    storedSelectedConversationId,
+  });
   const conversationWorkspaceQuery = useQuery({
     queryKey: ["agents", "conversation-workspace", selectedConversationId],
     queryFn: () => chatApi.getAgentConversationWorkspace(selectedConversationId!),
@@ -239,13 +197,6 @@ export function AgentsView({
     (activeConversation?.contextType === "project" &&
       (activeConversationMode === "ideation" ||
         Boolean(activeWorkspace?.linkedIdeationSessionId || activeWorkspace?.linkedPlanBranchId)));
-  const selectedConversationMessages = useMemo(
-    () =>
-      selectedConversationData && selectedConversationData.conversation?.id === selectedConversationId
-        ? selectedConversationData.messages
-        : [],
-    [selectedConversationData, selectedConversationId],
-  );
   const attachedIdeationSessionId = useMemo(
     () =>
       shouldHydrateAttachedIdeation
@@ -334,31 +285,6 @@ export function AgentsView({
     syncedProjectIdRef.current = projectId;
     setFocusedProject(projectId);
   }, [projectId, setFocusedProject]);
-
-  useEffect(() => {
-    if (
-      !selectedConversationId ||
-      !activeProjectId ||
-      focusedConversations.isLoading ||
-      selectedConversationQuery.isLoading
-    ) {
-      return;
-    }
-    const selectedStillExists = focusedConversations.data?.some(
-      (conversation) => conversation.id === selectedConversationId
-    );
-    if (selectedStillExists === false && !selectedConversationFallback) {
-      clearAgentConversationSelection();
-    }
-  }, [
-    activeProjectId,
-    clearAgentConversationSelection,
-    focusedConversations.data,
-    focusedConversations.isLoading,
-    selectedConversationFallback,
-    selectedConversationQuery.isLoading,
-    selectedConversationId,
-  ]);
 
   const handleSelectConversation = useCallback(
     (conversationProjectId: string, conversation: AgentConversation) => {
