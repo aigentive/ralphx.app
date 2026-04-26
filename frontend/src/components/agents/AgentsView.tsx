@@ -32,6 +32,7 @@ import { AgentsActiveConversationPanel } from "./AgentsActiveConversationPanel";
 import { AgentsStartConversationPanel } from "./AgentsStartConversationPanel";
 import { useAgentArtifactActions } from "./useAgentArtifactActions";
 import { useAgentConversationInvalidation } from "./useAgentConversationInvalidation";
+import { useAgentUserMessageAutoTitle } from "./useAgentUserMessageAutoTitle";
 
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
@@ -225,26 +226,12 @@ export function AgentsView({
     setArtifactPaneVisibility,
   });
 
-  const handleAgentUserMessageSent = useCallback(
-    ({ content, result }: { content: string; result: { conversationId: string } }) => {
-      const conversationId = result.conversationId || selectedConversationId;
-      if (!conversationId || !activeProjectId) {
-        return;
-      }
-      handleAutoManagedTitle({
-        content,
-        conversationId,
-        targetProjectId: activeProjectId,
-        shouldSpawnSessionNamer: findConversationById(conversationId)?.contextType === "project",
-      });
-    },
-    [
-      activeProjectId,
-      findConversationById,
-      handleAutoManagedTitle,
-      selectedConversationId,
-    ]
-  );
+  const handleAgentUserMessageSent = useAgentUserMessageAutoTitle({
+    activeProjectId,
+    findConversationById,
+    handleAutoManagedTitle,
+    selectedConversationId,
+  });
 
   const { handlePublishWorkspace, publishingConversationId } =
     useAgentWorkspacePublisher({
