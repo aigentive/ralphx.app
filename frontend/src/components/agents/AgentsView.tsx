@@ -5,7 +5,6 @@ import {
   useState,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 
 import type { AgentConversationWorkspace } from "@/api/chat";
 import { chatKeys } from "@/hooks/useChat";
@@ -18,13 +17,9 @@ import {
   type AgentArtifactTab,
 } from "@/stores/agentSessionStore";
 import type { AgentConversation } from "./agentConversations";
-import {
-  normalizeRuntimeSelection,
-} from "./agentOptions";
 import { getAgentArtifactStateSnapshot } from "./agentArtifactState";
 import { useAgentArtifactController } from "./useAgentArtifactController";
 import { AgentsArtifactPaneRegion } from "./AgentsArtifactPaneRegion";
-import { AgentsStartComposer } from "./AgentsStartComposer";
 import { AgentsTerminalRegion } from "./AgentsTerminalRegion";
 import {
   agentConversationKeys,
@@ -44,6 +39,7 @@ import { useAgentConversationLookup } from "./useAgentConversationLookup";
 import { useAgentConversationActions } from "./useAgentConversationActions";
 import { AgentsShellLayout } from "./AgentsShellLayout";
 import { AgentsActiveConversationPanel } from "./AgentsActiveConversationPanel";
+import { AgentsStartConversationPanel } from "./AgentsStartConversationPanel";
 
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
@@ -57,7 +53,6 @@ export function AgentsView({
   onCreateProject,
 }: AgentsViewProps) {
   const queryClient = useQueryClient();
-  const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [optimisticConversationsById, setOptimisticConversationsById] = useState<
     Record<string, AgentConversation>
@@ -386,31 +381,14 @@ export function AgentsView({
               terminalUnavailableReason={terminalUnavailableReason}
             />
           ) : (
-            <div className="flex-1 min-w-0 h-full">
-              <AgentsStartComposer
-                projects={projects}
-                defaultProjectId={defaultProjectId}
-                defaultRuntime={normalizeRuntimeSelection(defaultRuntime)}
-                isLoadingProjects={isLoadingProjects}
-                isSubmitting={isStartingConversation}
-                onCreateProject={onCreateProject}
-                onSubmit={async (input) => {
-                  try {
-                    setIsStartingConversation(true);
-                    await handleStartAgentConversation(input);
-                  } catch (err) {
-                    toast.error(
-                      err instanceof Error
-                        ? err.message
-                        : "Failed to start agent conversation",
-                    );
-                    throw err;
-                  } finally {
-                    setIsStartingConversation(false);
-                  }
-                }}
-              />
-            </div>
+            <AgentsStartConversationPanel
+              projects={projects}
+              defaultProjectId={defaultProjectId}
+              defaultRuntime={defaultRuntime}
+              isLoadingProjects={isLoadingProjects}
+              onCreateProject={onCreateProject}
+              onStartAgentConversation={handleStartAgentConversation}
+            />
           )}
 
           {selectedConversationId && activeConversation ? (
