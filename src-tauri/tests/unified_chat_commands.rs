@@ -1,9 +1,15 @@
+use ralphx_lib::application::{AppState, MockChatService, SendResult};
 use ralphx_lib::commands::unified_chat_commands::{
-    parse_context_type, AgentRunStatusResponse, QueuedMessageResponse, SendAgentMessageResponse,
+    mark_agent_workspace_publish_failure, parse_context_type,
+    send_agent_workspace_publish_repair_message, AgentRunStatusResponse, QueuedMessageResponse,
+    SendAgentMessageResponse,
 };
-use ralphx_lib::application::SendResult;
-use ralphx_lib::domain::entities::ChatContextType;
+use ralphx_lib::domain::entities::{
+    AgentConversationWorkspace, AgentConversationWorkspaceMode, ChatContextType,
+    ChatConversationId, IdeationAnalysisBaseRefKind, ProjectId,
+};
 use ralphx_lib::domain::services::QueuedMessage;
+use ralphx_lib::infrastructure::agents::claude::agent_names::AGENT_GENERAL_WORKER;
 
 #[test]
 fn test_parse_context_type() {
@@ -112,6 +118,92 @@ fn test_response_serialization() {
     assert!(json.contains("agent_run_id"));
     assert!(json.contains("is_new_conversation"));
     assert!(json.contains("queued_as_pending"));
+}
+
+fn test_agent_workspace() -> AgentConversationWorkspace {
+    AgentConversationWorkspace::new(
+        ChatConversationId::from_string("00000000-0000-0000-0000-000000000123".to_string()),
+        ProjectId::from_string("project-1".to_string()),
+        AgentConversationWorkspaceMode::Edit,
+        IdeationAnalysisBaseRefKind::CurrentBranch,
+        "feature/agent-screen".to_string(),
+        Some("Current branch (feature/agent-screen)".to_string()),
+        Some("base-sha".to_string()),
+        "ralphx/ralphx/agent-1234".to_string(),
+        "/tmp/agent-1234".to_string(),
+    )
+}
+
+#[tokio::test]
+async fn workspace_publish_repair_message_wakes_same_agent_conversation() {
+    let service = MockChatService::new();
+    let workspace = test_agent_workspace();
+
+    send_agent_workspace_publish_repair_message(
+        &service,
+        &workspace,
+        "Failed to commit: typecheck failed",
+    )
+    .await
+    .expect("repair handoff should be sent through chat service");
+
+    let messages = service.get_sent_messages().await;
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].contains("Commit & Publish failed"));
+    assert!(messages[0].contains("Failed to commit: typecheck failed"));
+    assert!(messages[0].contains("Workspace branch: ralphx/ralphx/agent-1234"));
+    assert!(messages[0].contains("Base: Current branch (feature/agent-screen)"));
+
+    let options = service.get_sent_options().await;
+    assert_eq!(options.len(), 1);
+    assert_eq!(
+        options[0].conversation_id_override,
+        Some(workspace.conversation_id)
+    );
+    assert_eq!(
+        options[0].agent_name_override.as_deref(),
+        Some(AGENT_GENERAL_WORKER)
+    );
+}
+
+#[tokio::test]
+async fn workspace_publish_fixable_failure_is_routed_by_backend() {
+    let state = AppState::new_test();
+    let service = MockChatService::new();
+    let workspace = test_agent_workspace();
+
+    mark_agent_workspace_publish_failure(
+        &state,
+        &workspace,
+        "Failed to commit workspace changes: typecheck failed",
+        None,
+        &service,
+    )
+    .await;
+
+    assert_eq!(service.call_count(), 1);
+    let messages = service.get_sent_messages().await;
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].contains("typecheck failed"));
+}
+
+#[tokio::test]
+async fn workspace_publish_operational_failure_is_not_routed_to_agent() {
+    let state = AppState::new_test();
+    let service = MockChatService::new();
+    let workspace = test_agent_workspace();
+
+    mark_agent_workspace_publish_failure(
+        &state,
+        &workspace,
+        "GitHub integration is not available",
+        None,
+        &service,
+    )
+    .await;
+
+    assert_eq!(service.call_count(), 0);
+    assert!(service.get_sent_messages().await.is_empty());
 }
 
 // ── AgentRunStatusResponse model field tests ──────────────────────────────────

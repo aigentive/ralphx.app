@@ -1236,7 +1236,7 @@ describe("AgentsView", () => {
     expect(publishAgentConversationWorkspaceMock).not.toHaveBeenCalled();
   });
 
-  it("sends fixable publish failures back into the workspace agent conversation", async () => {
+  it("relies on the backend to route fixable publish failures into the workspace agent conversation", async () => {
     mockAgentViewData(conversation({ agentMode: "edit" }));
     getAgentConversationWorkspaceMock
       .mockResolvedValueOnce(conversationWorkspace({ mode: "edit" }))
@@ -1255,23 +1255,8 @@ describe("AgentsView", () => {
     await screen.findByTestId("agents-publish-confirm");
     fireEvent.click(screen.getByTestId("agents-publish-confirm"));
 
-    await waitFor(() =>
-      expect(sendAgentMessageMock).toHaveBeenCalledWith(
-        "project",
-        "project-1",
-        expect.stringContaining("Failed to commit: typecheck failed"),
-        undefined,
-        undefined,
-        expect.objectContaining({
-          conversationId: "conversation-1",
-          providerHarness: "codex",
-          modelId: "gpt-5.4",
-        })
-      )
-    );
-    expect(sendAgentMessageMock.mock.calls[0][2]).toContain(
-      "Please fix the workspace so publishing can be retried."
-    );
+    await waitFor(() => expect(getAgentConversationWorkspaceMock).toHaveBeenCalledTimes(2));
+    expect(sendAgentMessageMock).not.toHaveBeenCalled();
     expect(toastErrorMock).toHaveBeenCalledWith(
       "Publish failed. Sent the error to the agent to fix."
     );

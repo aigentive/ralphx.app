@@ -129,25 +129,6 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function buildWorkspacePublishRepairMessage({
-  errorMessage,
-  workspace,
-}: {
-  errorMessage: string;
-  workspace: AgentConversationWorkspace;
-}): string {
-  const base = workspace.baseDisplayName ?? workspace.baseRef;
-  return [
-    "Commit & Publish failed for this edit workspace.",
-    "",
-    "Please fix the workspace so publishing can be retried.",
-    "",
-    `Error: ${errorMessage}`,
-    `Workspace branch: ${workspace.branchName}`,
-    `Base: ${base}`,
-  ].join("\n");
-}
-
 interface AgentsViewProps {
   projectId: string;
   onCreateProject: () => void;
@@ -1003,33 +984,12 @@ export function AgentsView({
         const publishFailureNeedsAgent =
           (refreshedWorkspace ?? workspace)?.publicationPushStatus === "needs_agent";
 
-        if (
-          conversation?.contextType === "project" &&
-          workspace?.mode === "edit" &&
-          publishFailureNeedsAgent
-        ) {
-          try {
-            await chatApi.sendAgentMessage(
-              "project",
-              conversation.contextId,
-              buildWorkspacePublishRepairMessage({
-                errorMessage,
-                workspace: refreshedWorkspace ?? workspace,
-              }),
-              undefined,
-              undefined,
-              {
-                conversationId,
-                providerHarness: normalizedActiveRuntime.provider,
-                modelId: normalizedActiveRuntime.modelId,
-              }
-            );
-            toast.error("Publish failed. Sent the error to the agent to fix.");
-            invalidateConversationDataQueries(queryClient, conversationId);
+        if (publishFailureNeedsAgent) {
+          toast.error("Publish failed. Sent the error to the agent to fix.");
+          if (conversation?.projectId) {
             await invalidateProjectConversations(conversation.projectId);
-          } catch {
-            toast.error(errorMessage);
           }
+          invalidateConversationDataQueries(queryClient, conversationId);
         } else {
           toast.error(errorMessage);
         }
@@ -1041,8 +1001,6 @@ export function AgentsView({
       activeWorkspace,
       findConversationById,
       invalidateProjectConversations,
-      normalizedActiveRuntime.modelId,
-      normalizedActiveRuntime.provider,
       optimisticWorkspacesByConversationId,
       queryClient,
       selectedConversationId,

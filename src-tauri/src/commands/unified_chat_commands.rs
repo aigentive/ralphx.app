@@ -32,7 +32,8 @@ use crate::application::publish_resilience::{
     PublishBranchFreshnessOutcome, PublishFailureClass,
 };
 use crate::application::{
-    AgentMessageCreatedPayload, AppChatService, AppState, ChatService, SendResult,
+    AgentMessageCreatedPayload, AppChatService, AppState, ChatService, ChatServiceError,
+    SendResult,
 };
 use crate::commands::ExecutionState;
 use crate::domain::agents::AgentHarnessKind;
@@ -1667,6 +1668,9 @@ pub async fn list_agent_conversation_workspace_publication_events(
 pub async fn publish_agent_conversation_workspace(
     conversation_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    team_service: State<'_, std::sync::Arc<crate::application::TeamService>>,
+    app: tauri::AppHandle,
 ) -> Result<PublishAgentConversationWorkspaceResponse, String> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
     let mut workspace = state
@@ -1709,6 +1713,13 @@ pub async fn publish_agent_conversation_workspace(
         ));
     }
 
+    let repair_service = create_chat_service(
+        &state,
+        app,
+        &execution_state,
+        Some(team_service.inner().clone()),
+    );
+
     let project = state
         .project_repo
         .get_by_id(&workspace.project_id)
@@ -1739,7 +1750,14 @@ pub async fn publish_agent_conversation_workspace(
         Some(github) => github,
         None => {
             let error = "GitHub integration is not available".to_string();
-            mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+            mark_agent_workspace_publish_failure(
+                &state,
+                &workspace,
+                &error,
+                None,
+                &repair_service,
+            )
+            .await;
             return Err(error);
         }
     };
@@ -1752,7 +1770,14 @@ pub async fn publish_agent_conversation_workspace(
         Ok(has_changes) => has_changes,
         Err(error) => {
             let error = error.to_string();
-            mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+            mark_agent_workspace_publish_failure(
+                &state,
+                &workspace,
+                &error,
+                None,
+                &repair_service,
+            )
+            .await;
             return Err(error);
         }
     };
@@ -1766,7 +1791,14 @@ pub async fn publish_agent_conversation_workspace(
             Ok(commit_sha) => commit_sha,
             Err(error) => {
                 let error = error.to_string();
-                mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+                mark_agent_workspace_publish_failure(
+                    &state,
+                    &workspace,
+                    &error,
+                    None,
+                &repair_service,
+            )
+            .await;
                 return Err(error);
             }
         }
@@ -1777,7 +1809,14 @@ pub async fn publish_agent_conversation_workspace(
     if let Err(error) =
         review_base_for_publish(workspace.base_commit.as_deref(), &workspace.base_ref)
     {
-        mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+        mark_agent_workspace_publish_failure(
+            &state,
+            &workspace,
+            &error,
+            None,
+                &repair_service,
+            )
+            .await;
         return Err(error);
     }
 
@@ -1800,11 +1839,25 @@ pub async fn publish_agent_conversation_workspace(
         PublishBranchFreshnessOutcome::AlreadyFresh { base_commit, .. }
         | PublishBranchFreshnessOutcome::Updated { base_commit, .. } => base_commit,
         PublishBranchFreshnessOutcome::NeedsAgent { message, .. } => {
-            mark_agent_workspace_publish_failure(&state, &workspace, &message, None).await;
+            mark_agent_workspace_publish_failure(
+                &state,
+                &workspace,
+                &message,
+                None,
+                &repair_service,
+            )
+            .await;
             return Err(message);
         }
         PublishBranchFreshnessOutcome::OperationalError { message } => {
-            mark_agent_workspace_publish_failure(&state, &workspace, &message, None).await;
+            mark_agent_workspace_publish_failure(
+                &state,
+                &workspace,
+                &message,
+                None,
+                &repair_service,
+            )
+            .await;
             return Err(message);
         }
     };
@@ -1822,7 +1875,14 @@ pub async fn publish_agent_conversation_workspace(
         match review_base_for_publish(workspace.base_commit.as_deref(), &workspace.base_ref) {
             Ok(review_base) => review_base,
             Err(error) => {
-                mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+                mark_agent_workspace_publish_failure(
+                    &state,
+                    &workspace,
+                    &error,
+                    None,
+                &repair_service,
+            )
+            .await;
                 return Err(error);
             }
         };
@@ -1841,7 +1901,14 @@ pub async fn publish_agent_conversation_workspace(
         Ok(count) => count,
         Err(error) => {
             let error = error.to_string();
-            mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+            mark_agent_workspace_publish_failure(
+                &state,
+                &workspace,
+                &error,
+                None,
+                &repair_service,
+            )
+            .await;
             return Err(error);
         }
     };
@@ -1856,7 +1923,14 @@ pub async fn publish_agent_conversation_workspace(
 
     if let Err(error) = push_publish_branch(github, &worktree_path, &workspace.branch_name).await {
         let error = error.to_string();
-        mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+        mark_agent_workspace_publish_failure(
+            &state,
+            &workspace,
+            &error,
+            None,
+                &repair_service,
+            )
+            .await;
         return Err(error);
     }
 
@@ -1872,7 +1946,14 @@ pub async fn publish_agent_conversation_workspace(
         Ok(result) => result,
         Err(error) => {
             let error = error.to_string();
-            mark_agent_workspace_publish_failure(&state, &workspace, &error, Some("failed")).await;
+            mark_agent_workspace_publish_failure(
+                &state,
+                &workspace,
+                &error,
+                Some("failed"),
+                &repair_service,
+            )
+            .await;
             return Err(error);
         }
     };
@@ -1942,14 +2023,63 @@ async fn mark_agent_workspace_publish_status(
     .await
 }
 
-async fn mark_agent_workspace_publish_failure(
+#[doc(hidden)]
+pub fn build_agent_workspace_publish_repair_message(
+    error: &str,
+    workspace: &AgentConversationWorkspace,
+) -> String {
+    let base = workspace
+        .base_display_name
+        .as_deref()
+        .unwrap_or(workspace.base_ref.as_str());
+    [
+        "Commit & Publish failed for this edit workspace.".to_string(),
+        String::new(),
+        "Please fix the workspace so publishing can be retried.".to_string(),
+        String::new(),
+        format!("Error: {error}"),
+        format!("Workspace branch: {}", workspace.branch_name),
+        format!("Base: {base}"),
+    ]
+    .join("\n")
+}
+
+#[doc(hidden)]
+pub async fn send_agent_workspace_publish_repair_message<S>(
+    service: &S,
+    workspace: &AgentConversationWorkspace,
+    error: &str,
+) -> Result<SendResult, ChatServiceError>
+where
+    S: ChatService + ?Sized,
+{
+    service
+        .send_message(
+            ChatContextType::Project,
+            workspace.project_id.as_str(),
+            &build_agent_workspace_publish_repair_message(error, workspace),
+            SendMessageOptions {
+                conversation_id_override: Some(workspace.conversation_id),
+                agent_name_override: Some(agent_name_for_workspace_mode(workspace.mode).to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+}
+
+#[doc(hidden)]
+pub async fn mark_agent_workspace_publish_failure<S>(
     state: &AppState,
     workspace: &AgentConversationWorkspace,
     error: &str,
     pr_status_override: Option<&str>,
-) {
+    repair_service: &S,
+) where
+    S: ChatService + ?Sized,
+{
     let push_status = publish_push_status_for_failure(error);
-    let classification = match classify_publish_failure(error) {
+    let failure_class = classify_publish_failure(error);
+    let classification = match failure_class {
         PublishFailureClass::AgentFixable => "agent_fixable",
         PublishFailureClass::Operational => "operational",
     };
@@ -1972,6 +2102,40 @@ async fn mark_agent_workspace_publish_failure(
         Some(classification.to_string()),
     )
     .await;
+
+    if !matches!(failure_class, PublishFailureClass::AgentFixable) {
+        return;
+    }
+
+    match send_agent_workspace_publish_repair_message(repair_service, workspace, error).await {
+        Ok(_) => {
+            let _ = append_agent_workspace_publication_event(
+                state,
+                &workspace.conversation_id,
+                "repair_sent",
+                "succeeded",
+                "Sent publish failure to workspace agent",
+                Some("agent_fixable".to_string()),
+            )
+            .await;
+        }
+        Err(repair_error) => {
+            tracing::warn!(
+                conversation_id = %workspace.conversation_id,
+                error = %repair_error,
+                "Failed to send agent workspace publish repair message"
+            );
+            let _ = append_agent_workspace_publication_event(
+                state,
+                &workspace.conversation_id,
+                "repair_sent",
+                "failed",
+                &format!("Failed to send publish failure to workspace agent: {repair_error}"),
+                Some("operational".to_string()),
+            )
+            .await;
+        }
+    }
 }
 
 async fn append_agent_workspace_publication_event(
