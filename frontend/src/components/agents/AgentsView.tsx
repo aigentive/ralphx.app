@@ -15,8 +15,7 @@ import { useStartAgentConversation } from "./useStartAgentConversation";
 import { useAgentConversationLookup } from "./useAgentConversationLookup";
 import { useAgentConversationActions } from "./useAgentConversationActions";
 import { AgentsShellLayout } from "./AgentsShellLayout";
-import { AgentsActiveConversationPanel } from "./AgentsActiveConversationPanel";
-import { AgentsStartConversationPanel } from "./AgentsStartConversationPanel";
+import { AgentsConversationMainRegion } from "./AgentsConversationMainRegion";
 import { useAgentArtifactActions } from "./useAgentArtifactActions";
 import { useAgentConversationInvalidation } from "./useAgentConversationInvalidation";
 import { useAgentUserMessageAutoTitle } from "./useAgentUserMessageAutoTitle";
@@ -275,43 +274,38 @@ export function AgentsView({
       splitContainerRef={splitContainerRef}
       suppressSidebarTransition={suppressSidebarTransition}
     >
-          {activeProjectId && selectedConversationId && activeConversation ? (
-            <AgentsActiveConversationPanel
-              activeConversation={activeConversation}
-              activeConversationMode={activeConversationMode}
-              activeConversationModeLocked={activeConversationModeLocked}
-              activeProjectId={activeProjectId}
-              activeProjectOptions={activeProjectOptions}
-              activeWorkspace={activeWorkspace}
-              attachedIdeationSessionId={attachedIdeationSessionId}
-              hasAutoOpenArtifacts={hasAutoOpenArtifacts}
-              normalizedActiveRuntime={normalizedActiveRuntime}
-              onActiveConversationModeChange={handleActiveConversationModeChange}
-              onActiveModelChange={handleActiveModelChange}
-              onAgentUserMessageSent={handleAgentUserMessageSent}
-              onOpenPublishPane={handleOpenPublishPane}
-              onPreloadArtifacts={handlePreloadArtifacts}
-              onPublishWorkspace={handlePublishWorkspace}
-              onRenameConversation={handleRenameConversation}
-              onSelectArtifact={handleSelectArtifact}
-              onToggleArtifacts={toggleArtifactPaneVisibility}
-              publishShortcutLabel={publishShortcutLabel}
-              publishingConversationId={publishingConversationId}
-              selectedConversationId={selectedConversationId}
-              setTerminalChatDockElement={setTerminalChatDockElement}
-              switchingConversationModeId={switchingConversationModeId}
-              terminalUnavailableReason={terminalUnavailableReason}
-            />
-          ) : (
-            <AgentsStartConversationPanel
-              projects={projects}
-              defaultProjectId={defaultProjectId}
-              defaultRuntime={defaultRuntime}
-              isLoadingProjects={isLoadingProjects}
-              onCreateProject={onCreateProject}
-              onStartAgentConversation={handleStartAgentConversation}
-            />
-          )}
+          <AgentsConversationMainRegion
+            activeConversation={activeConversation}
+            activeConversationMode={activeConversationMode}
+            activeConversationModeLocked={activeConversationModeLocked}
+            activeProjectId={activeProjectId}
+            activeProjectOptions={activeProjectOptions}
+            activeWorkspace={activeWorkspace}
+            attachedIdeationSessionId={attachedIdeationSessionId}
+            defaultProjectId={defaultProjectId}
+            defaultRuntime={defaultRuntime}
+            hasAutoOpenArtifacts={hasAutoOpenArtifacts}
+            isLoadingProjects={isLoadingProjects}
+            normalizedActiveRuntime={normalizedActiveRuntime}
+            onActiveConversationModeChange={handleActiveConversationModeChange}
+            onActiveModelChange={handleActiveModelChange}
+            onAgentUserMessageSent={handleAgentUserMessageSent}
+            onCreateProject={onCreateProject}
+            onOpenPublishPane={handleOpenPublishPane}
+            onPreloadArtifacts={handlePreloadArtifacts}
+            onPublishWorkspace={handlePublishWorkspace}
+            onRenameConversation={handleRenameConversation}
+            onSelectArtifact={handleSelectArtifact}
+            onStartAgentConversation={handleStartAgentConversation}
+            onToggleArtifacts={toggleArtifactPaneVisibility}
+            projects={projects}
+            publishShortcutLabel={publishShortcutLabel}
+            publishingConversationId={publishingConversationId}
+            selectedConversationId={selectedConversationId}
+            setTerminalChatDockElement={setTerminalChatDockElement}
+            switchingConversationModeId={switchingConversationModeId}
+            terminalUnavailableReason={terminalUnavailableReason}
+          />
 
           <AgentsConversationSideRegions
             activeConversation={activeConversation}
