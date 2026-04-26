@@ -69,6 +69,42 @@ function getAccessibleName(role: MessageRole): string {
   return `Message from ${roleLabel}`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeToolCall(raw: unknown, index: number): ToolCall | null {
+  if (!isRecord(raw)) return null;
+
+  const name = typeof raw.name === "string" ? raw.name : "";
+  if (!name) return null;
+
+  const toolCall: ToolCall = {
+    id: typeof raw.id === "string" && raw.id ? raw.id : `tool-${index}`,
+    name,
+    // Older persisted rows used `input`; current widgets read `arguments`.
+    arguments: raw.arguments ?? raw.input ?? {},
+  };
+
+  if ("result" in raw) {
+    toolCall.result = raw.result;
+  }
+  if (typeof raw.error === "string") {
+    toolCall.error = raw.error;
+  }
+  if (typeof raw.parentToolUseId === "string") {
+    toolCall.parentToolUseId = raw.parentToolUseId;
+  }
+  if (isRecord(raw.diffContext) && typeof raw.diffContext.filePath === "string") {
+    toolCall.diffContext = raw.diffContext as NonNullable<ToolCall["diffContext"]>;
+  }
+  if (isRecord(raw.stats)) {
+    toolCall.stats = raw.stats as NonNullable<ToolCall["stats"]>;
+  }
+
+  return toolCall;
+}
+
 // ============================================================================
 // Markdown Components
 // ============================================================================
@@ -245,7 +281,11 @@ export function ChatMessage({
     if (!message.toolCalls) return [];
     try {
       const parsed = JSON.parse(message.toolCalls);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed)
+        ? parsed
+            .map((toolCall, index) => normalizeToolCall(toolCall, index))
+            .filter((toolCall): toolCall is ToolCall => toolCall !== null)
+        : [];
     } catch {
       return [];
     }

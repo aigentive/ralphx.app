@@ -170,6 +170,9 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__report_incomplete": MergeWidget,
   "mcp__ralphx__get_merge_target": MergeWidget,
   // Proposal CRUD tools → ProposalWidget
+  "create_task_proposal": ProposalWidget,
+  "update_task_proposal": ProposalWidget,
+  "delete_task_proposal": ProposalWidget,
   "mcp__ralphx__create_task_proposal": ProposalWidget,
   "mcp__ralphx__update_task_proposal": ProposalWidget,
   "mcp__ralphx__delete_task_proposal": ProposalWidget,

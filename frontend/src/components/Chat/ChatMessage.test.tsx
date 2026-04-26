@@ -398,12 +398,12 @@ describe("ChatMessage", () => {
       expect(screen.getByTestId("chat-message-tool-calls")).toBeInTheDocument();
     });
 
-    it("renders multiple tool call indicators", () => {
-      const { container } = render(<ChatMessage message={messageWithToolCalls} />);
+    it("renders multiple tool call indicators", async () => {
+      render(<ChatMessage message={messageWithToolCalls} />);
 
       const toolCallIndicators = screen.getAllByTestId("tool-call-indicator");
       expect(toolCallIndicators).toHaveLength(1);
-      expect(container.querySelector('[data-testid="proposal-widget-created"]')).toBeInTheDocument();
+      expect(await screen.findByTestId("proposal-widget-created")).toBeInTheDocument();
     });
 
     it("renders tool calls as part of message content", () => {
@@ -416,12 +416,12 @@ describe("ChatMessage", () => {
       expect(article).toContainElement(toolCallsSection);
     });
 
-    it("handles failed tool calls", () => {
+    it("handles failed tool calls", async () => {
       render(<ChatMessage message={messageWithFailedToolCall} />);
 
       expect(screen.getByTestId("chat-message-tool-calls")).toBeInTheDocument();
-      expect(screen.getByText("error")).toBeInTheDocument();
-      expect(screen.getByText("File not found")).toBeInTheDocument();
+      expect(await screen.findByText("error")).toBeInTheDocument();
+      expect(await screen.findByText("File not found")).toBeInTheDocument();
     });
 
     it("handles invalid JSON in toolCalls gracefully", () => {

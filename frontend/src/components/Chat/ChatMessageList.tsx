@@ -33,7 +33,6 @@ import { shouldUseWebkitSafeScrollBehavior } from "@/lib/platform-quirks";
 import { logger } from "@/lib/logger";
 import { useMessageAttachments } from "@/hooks/useMessageAttachments";
 import { ChevronDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type { MessageAttachment } from "./MessageAttachments";
 import { useTeamStore, selectTeammateByName, selectTeamMessages, EMPTY_TEAM_MESSAGES } from "@/stores/teamStore";
 import { ToolCallStoreKeyContext } from "./tool-widgets/ToolCallStoreKeyContext";
@@ -91,6 +90,64 @@ function ContentShell({
       {children}
     </div>
   );
+}
+
+function ScrollToBottomControl({
+  visible,
+  onClick,
+  onWheel,
+}: {
+  visible: boolean;
+  onClick: () => void;
+  onWheel: React.WheelEventHandler<HTMLButtonElement>;
+}) {
+  return (
+    <div
+      data-testid="chat-scroll-to-bottom-control"
+      aria-hidden={!visible}
+      className={cn(
+        "absolute bottom-4 left-0 right-0 z-10 flex justify-center pointer-events-none",
+        visible ? "opacity-100" : "opacity-0",
+      )}
+      style={{
+        contain: "layout paint style",
+      }}
+    >
+      <button
+        type="button"
+        data-testid="chat-scroll-to-bottom-button"
+        onClick={onClick}
+        onWheel={onWheel}
+        disabled={!visible}
+        tabIndex={visible ? 0 : -1}
+        className={cn(
+          "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium",
+          "bg-[color-mix(in_srgb,var(--bg-surface)_72%,var(--bg-base))]",
+          "border-[color-mix(in_srgb,var(--border-subtle)_45%,var(--text-muted))]",
+          "text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--bg-surface)_58%,var(--bg-base))]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]",
+          visible ? "pointer-events-auto cursor-pointer" : "pointer-events-none cursor-default",
+        )}
+      >
+        <span>Scroll to bottom</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function scrollElementByDelta(element: HTMLElement, deltaX: number, deltaY: number) {
+  if (typeof element.scrollBy === "function") {
+    element.scrollBy({
+      left: deltaX,
+      top: deltaY,
+      behavior: "auto",
+    });
+    return;
+  }
+
+  element.scrollLeft += deltaX;
+  element.scrollTop += deltaY;
 }
 
 /** Stable empty arrays — avoids new refs on each render when props are omitted */
@@ -956,6 +1013,22 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       scrollToTrueBottom(preferredScrollBehavior);
       scheduleBottomPin("manual scroll-to-bottom", preferredScrollBehavior);
     }, [preferredScrollBehavior, scheduleBottomPin, scrollToTrueBottom]);
+    const handleScrollToBottomWheel = useCallback(
+      (event: React.WheelEvent<HTMLButtonElement>) => {
+        if (!shouldShowScrollToBottom) {
+          return;
+        }
+        const el = scrollerElRef.current ?? (isTestEnv ? transcriptRootRef.current : null);
+        if (!el) {
+          return;
+        }
+
+        event.preventDefault();
+        scrollElementByDelta(el, event.deltaX, event.deltaY);
+        handleScrollReconcile();
+      },
+      [handleScrollReconcile, isTestEnv, shouldShowScrollToBottom],
+    );
 
     const handleRangeChanged = useCallback(
       (range: ListRange) => {
@@ -1387,20 +1460,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               </ContentShell>
             </div>
           )}
-          {/* Scroll-to-bottom button — same position as production branch */}
-          {shouldShowScrollToBottom && (
-            <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleScrollToBottomClick}
-                className="bg-background/95 backdrop-blur shadow-md hover:bg-accent pointer-events-auto"
-              >
-                <ChevronDown className="h-4 w-4 mr-1" />
-                Scroll to bottom
-              </Button>
-            </div>
-          )}
+          <ScrollToBottomControl
+            visible={shouldShowScrollToBottom}
+            onClick={handleScrollToBottomClick}
+            onWheel={handleScrollToBottomWheel}
+          />
         </div>
       );
     }
@@ -1463,21 +1527,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             </span>
           </div>
         )}
-        {/* Scroll-to-bottom button — OUTSIDE Virtuoso to avoid Footer feedback loop.
-            isAtBottom/scrollToBottom/timeline.length are NOT in virtuosoComponents deps. */}
-        {shouldShowScrollToBottom && (
-          <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleScrollToBottomClick}
-              className="bg-background/95 backdrop-blur shadow-md hover:bg-accent pointer-events-auto"
-            >
-              <ChevronDown className="h-4 w-4 mr-1" />
-              Scroll to bottom
-            </Button>
-          </div>
-        )}
+        {/* Kept outside Virtuoso and always mounted so visibility changes do not rebuild the transcript. */}
+        <ScrollToBottomControl
+          visible={shouldShowScrollToBottom}
+          onClick={handleScrollToBottomClick}
+          onWheel={handleScrollToBottomWheel}
+        />
       </div>
       </ToolCallStoreKeyContext.Provider>
     );

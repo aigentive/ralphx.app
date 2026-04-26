@@ -433,8 +433,8 @@ describe("ChatMessageList - Scroll Behavior", () => {
 
       render(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
 
-      // Button should not be visible
-      expect(screen.queryByText(/Scroll to bottom/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-scroll-to-bottom-control")).toHaveAttribute("aria-hidden", "true");
+      expect(screen.getByTestId("chat-scroll-to-bottom-button")).toBeDisabled();
     });
 
     it("shows scroll-to-bottom button with <=5 messages when scrolled up", () => {
@@ -574,8 +574,8 @@ describe("ChatMessageList - Scroll Behavior", () => {
         />
       );
 
-      // Button should not show in history mode
-      expect(screen.queryByText(/Scroll to bottom/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-scroll-to-bottom-control")).toHaveAttribute("aria-hidden", "true");
+      expect(screen.getByTestId("chat-scroll-to-bottom-button")).toBeDisabled();
     });
   });
 
@@ -742,7 +742,69 @@ describe("ChatMessageList - Scroll Behavior", () => {
 
       render(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
 
-      expect(screen.queryByText(/Scroll to bottom/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-scroll-to-bottom-control")).toHaveAttribute("aria-hidden", "true");
+      expect(screen.getByTestId("chat-scroll-to-bottom-button")).toBeDisabled();
+    });
+
+    it("keeps a stable lightweight scroll button shell mounted while hidden", () => {
+      mockIsAtBottom = true;
+
+      const { rerender } = render(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
+      const hiddenControl = screen.getByTestId("chat-scroll-to-bottom-control");
+      expect(hiddenControl).toHaveAttribute("aria-hidden", "true");
+
+      mockIsAtBottom = false;
+      rerender(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
+
+      expect(screen.getByTestId("chat-scroll-to-bottom-control")).toBe(hiddenControl);
+      expect(hiddenControl).toHaveAttribute("aria-hidden", "false");
+    });
+
+    it("does not use backdrop blur on the scroll button", () => {
+      mockIsAtBottom = false;
+
+      render(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
+
+      const button = screen.getByTestId("chat-scroll-to-bottom-button");
+      expect(button.className).not.toContain("backdrop-blur");
+      expect(button.className).not.toContain("shadow-md");
+    });
+
+    it("uses a compact button with a trailing caret", () => {
+      mockIsAtBottom = false;
+
+      render(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
+
+      const button = screen.getByTestId("chat-scroll-to-bottom-button");
+      expect(button.className).toContain("h-8");
+      expect(button.className).toContain("text-xs");
+      expect(button.className).toContain("px-3");
+      expect(button.className).toContain("cursor-pointer");
+      expect(button.className).toContain("hover:bg-");
+      expect(button.lastElementChild?.tagName.toLowerCase()).toBe("svg");
+    });
+
+    it("keeps wheel scrolling active when the pointer is over the button", () => {
+      mockIsAtBottom = false;
+
+      render(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
+
+      const root = screen.getByTestId("integrated-chat-messages");
+      Object.defineProperty(root, "scrollTop", {
+        value: 0,
+        writable: true,
+        configurable: true,
+      });
+
+      const button = screen.getByTestId("chat-scroll-to-bottom-button");
+      const wheelEvent = new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        deltaY: 96,
+      });
+      button.dispatchEvent(wheelEvent);
+
+      expect(root.scrollTop).toBe(96);
     });
 
     it("should show scroll button with <=5 messages when scrolled up", () => {
