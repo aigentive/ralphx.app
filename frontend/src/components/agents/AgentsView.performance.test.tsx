@@ -17,6 +17,7 @@ import {
 
 const {
   artifactPaneModuleLoadedMock,
+  getAgentConversationWorkspaceFreshnessMock,
   getAgentConversationWorkspaceMock,
   integratedChatPanelRenderMock,
   preloadAgentTerminalExperienceMock,
@@ -120,6 +121,16 @@ describe("AgentsView performance", () => {
     });
     expect(preloadAgentTerminalExperienceMock).not.toHaveBeenCalled();
     expect(terminalDrawerModuleLoadedMock).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(getAgentConversationWorkspaceFreshnessMock).toHaveBeenCalledWith(
+        "conversation-1"
+      )
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-publish-workspace")).toHaveTextContent(
+        "Commit & Publish"
+      )
+    );
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     integratedChatPanelRenderMock.mockClear();
 
