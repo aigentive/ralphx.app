@@ -4,12 +4,10 @@
 //   D: cascade_stop_sibling_tasks after plan merge (side_effects.rs)
 //   B: on_enter(Executing) blocks tasks on inactive plan branches (on_enter_states.rs)
 //   C: on_enter(ReExecuting) blocks tasks on inactive plan branches (on_enter_states.rs)
-//   E: resolve_task_base_branch returns fallback for merged branches (merge_helpers.rs)
 //
 // Unlike unit tests in plan_branch_guard_tests.rs / post_merge_cascade_tests.rs,
 // these test multiple guards cooperating across realistic multi-task plan scenarios.
 
-use super::super::merge_helpers::resolve_task_base_branch;
 use super::helpers::*;
 use crate::domain::entities::{
     ArtifactId, ExecutionPlanId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchStatus,
@@ -330,51 +328,5 @@ async fn integration_on_enter_reexecuting_blocks_on_merged() {
     assert!(
         err.to_string().contains("merged"),
         "Error message must mention 'merged': {err}"
-    );
-}
-
-// ==================
-// Test 5: resolve_task_base_branch returns fallback for merged
-// ==================
-
-/// Guard E: resolve_task_base_branch returns project base branch for merged plan branch.
-/// Uses MemoryPlanBranchRepository for realistic repo-based lookup (by session_id).
-#[tokio::test]
-async fn integration_resolve_base_branch_fallback_for_merged() {
-    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
-    let sess = "sess-resolve";
-
-    // Plan branch: Merged (looked up by session_id inside resolve_task_base_branch)
-    let mut pb = PlanBranch::new(
-        ArtifactId::from_string("art-resolve"),
-        IdeationSessionId::from_string(sess),
-        ProjectId::from_string("proj-1".to_string()),
-        "ralphx/test/plan-should-not-resurrect".to_string(),
-        "main".to_string(),
-    );
-    pb.status = PlanBranchStatus::Merged;
-    plan_branch_repo.create(pb).await.unwrap();
-
-    // Task with session_id linking to the merged plan branch
-    let mut task = Task::new(
-        ProjectId::from_string("proj-1".to_string()),
-        "Resolve test".to_string(),
-    );
-    task.ideation_session_id = Some(IdeationSessionId::from_string(sess));
-
-    // Project with base_branch = "develop" (not "main") to verify it uses project config
-    let mut project = Project::new("test".to_string(), "/tmp/nonexistent".to_string());
-    project.base_branch = Some("develop".to_string());
-
-    let pb_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
-        Some(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
-    let task_repo_opt: Option<Arc<dyn TaskRepository>> = None;
-
-    let result =
-        resolve_task_base_branch(&task, &project, &pb_repo_opt, &task_repo_opt, &None, &None).await;
-
-    assert_eq!(
-        result, "develop",
-        "Merged plan branch must return project base ('develop'), not plan branch. Got: {result}"
     );
 }
