@@ -1,7 +1,5 @@
 import {
-  lazy,
   memo,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -24,7 +22,6 @@ import { executionApi } from "@/api/execution";
 import { ideationApi } from "@/api/ideation";
 import { projectsApi } from "@/api/projects";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
-import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import { BranchBasePicker } from "@/components/shared/BranchBasePicker";
 import type { BranchBaseOption } from "@/components/shared/branchBaseOptions";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -33,7 +30,6 @@ import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
 import { withAlpha } from "@/lib/theme-colors";
-import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import {
   useAgentSessionStore,
@@ -65,6 +61,11 @@ import {
 } from "./agentArtifactState";
 import { AgentComposerProjectLine, AgentComposerSurface } from "./AgentComposerSurface";
 import {
+  AGENTS_ARTIFACT_MIN_WIDTH,
+  AGENTS_CHAT_MIN_WIDTH,
+  AgentsArtifactPaneRegion,
+} from "./AgentsArtifactPaneRegion";
+import {
   AgentsChatHeader,
   type AgentsChatHeaderProps,
 } from "./AgentsChatHeader";
@@ -76,7 +77,6 @@ import {
 import {
   cancelDeferredFrameJob,
   scheduleDeferredFrameJob,
-  useAfterPaintMounted,
   type DeferredFrameJob,
 } from "./agentDeferredFrame";
 import { preloadAgentTerminalExperience } from "./agentTerminalPreload";
@@ -96,13 +96,7 @@ import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEven
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
 import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
 
-const LazyAgentsArtifactPane = lazy(() =>
-  preloadAgentsArtifactPane().then((module) => ({ default: module.AgentsArtifactPane })),
-);
-
 const AGENTS_ARTIFACT_WIDTH_STORAGE_KEY = "ralphx-agents-artifact-width";
-const AGENTS_ARTIFACT_MIN_WIDTH = 320;
-const AGENTS_CHAT_MIN_WIDTH = 320;
 const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
@@ -124,17 +118,6 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return error;
   }
   return fallback;
-}
-
-function AgentArtifactPaneLoadingShell() {
-  return (
-    <div
-      className="flex h-full min-h-[220px] items-center justify-center p-6 text-center text-sm font-medium text-[var(--text-primary)]"
-      data-testid="agents-artifact-pane-loading"
-    >
-      Loading panel...
-    </div>
-  );
 }
 
 interface AgentsViewProps {
@@ -1601,113 +1584,6 @@ export function AgentsView({
 
       </section>
     </TooltipProvider>
-  );
-}
-
-interface AgentsArtifactPaneRegionProps {
-  conversationId: string;
-  conversation: AgentConversation;
-  workspace: AgentConversationWorkspace | null;
-  hasAutoOpenArtifacts: boolean;
-  artifactWidthCss: string;
-  isArtifactResizing: boolean;
-  onResizeStart: (event: ReactMouseEvent) => void;
-  onResizeReset: (event: ReactMouseEvent) => void;
-  onTabChange: (tab: AgentArtifactTab) => void;
-  onTaskModeChange: (mode: AgentTaskArtifactMode) => void;
-  onPublishWorkspace: (conversationId: string) => Promise<void>;
-  isPublishingWorkspace: boolean;
-  onClose: () => void;
-  terminalUnavailableReason: string | null;
-  setTerminalPanelDockElement: (element: HTMLDivElement | null) => void;
-}
-
-function AgentsArtifactPaneRegion({
-  conversationId,
-  conversation,
-  workspace,
-  hasAutoOpenArtifacts,
-  artifactWidthCss,
-  isArtifactResizing,
-  onResizeStart,
-  onResizeReset,
-  onTabChange,
-  onTaskModeChange,
-  onPublishWorkspace,
-  isPublishingWorkspace,
-  onClose,
-  terminalUnavailableReason,
-  setTerminalPanelDockElement,
-}: AgentsArtifactPaneRegionProps) {
-  const { artifactState, artifactPaneOpen } = useResolvedAgentArtifactState(
-    conversationId,
-    hasAutoOpenArtifacts,
-  );
-  const contentMounted = useAfterPaintMounted(artifactPaneOpen);
-
-  return (
-    <>
-      {artifactPaneOpen ? (
-        <div className="max-lg:hidden">
-          <ResizeHandle
-            isResizing={isArtifactResizing}
-            onMouseDown={onResizeStart}
-            onDoubleClick={onResizeReset}
-            testId="agents-artifact-resize-handle"
-          />
-        </div>
-      ) : null}
-      <div
-        className={cn(
-          "h-full shrink-0 overflow-hidden",
-          artifactPaneOpen &&
-            "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-20 max-lg:!w-[min(100%,420px)] max-lg:!min-w-0 max-lg:!max-w-none",
-        )}
-        style={{
-          width: artifactPaneOpen ? artifactWidthCss : "0px",
-          minWidth: artifactPaneOpen ? AGENTS_ARTIFACT_MIN_WIDTH : 0,
-          maxWidth: artifactPaneOpen
-            ? `calc(100% - ${AGENTS_CHAT_MIN_WIDTH}px)`
-            : 0,
-          opacity: artifactPaneOpen ? 1 : 0,
-          pointerEvents: artifactPaneOpen ? "auto" : "none",
-          transition: "none",
-        }}
-        data-testid="agents-artifact-resizable-pane"
-      >
-        <div className="flex h-full min-h-0 flex-col">
-          {artifactPaneOpen ? (
-            <div className="min-h-0 flex-1">
-              {contentMounted ? (
-                <Suspense fallback={<AgentArtifactPaneLoadingShell />}>
-                  <LazyAgentsArtifactPane
-                    conversation={conversation}
-                    workspace={workspace}
-                    activeTab={artifactState.activeTab}
-                    taskMode={artifactState.taskMode}
-                    onTabChange={onTabChange}
-                    onTaskModeChange={onTaskModeChange}
-                    onPublishWorkspace={onPublishWorkspace}
-                    isPublishingWorkspace={isPublishingWorkspace}
-                    onClose={onClose}
-                  />
-                </Suspense>
-              ) : (
-                <AgentArtifactPaneLoadingShell />
-              )}
-            </div>
-          ) : null}
-          <AgentsTerminalDockHost
-            dock="panel"
-            conversationId={conversationId}
-            workspace={workspace}
-            terminalUnavailableReason={terminalUnavailableReason}
-            hasAutoOpenArtifacts={hasAutoOpenArtifacts}
-            setDockElement={setTerminalPanelDockElement}
-          />
-        </div>
-      </div>
-    </>
   );
 }
 
