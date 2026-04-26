@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useChildSessionStatus } from "@/hooks/useChildSessionStatus";
-import { chatKeys, useConversation } from "@/hooks/useChat";
+import { chatKeys, useConversationHistoryWindow } from "@/hooks/useChat";
 import { cn } from "@/lib/utils";
 import { MessageItem } from "./MessageItem";
 
@@ -61,8 +61,9 @@ export function ChildSessionTranscriptModal({
     () => mostRecentConversation(conversationsQuery.data ?? []),
     [conversationsQuery.data],
   );
-  const conversationQuery = useConversation(conversation?.id ?? null, {
+  const conversationQuery = useConversationHistoryWindow(conversation?.id ?? null, {
     enabled: open && !!conversation?.id,
+    pageSize: 40,
   });
 
   const title = statusQuery.data?.title ?? conversation?.title ?? "Ideation run";

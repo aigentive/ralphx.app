@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
 
 import type {
@@ -103,9 +103,12 @@ export function AgentsStartComposer({
   const [startFromOptions, setStartFromOptions] = useState<BranchBaseOption[]>([]);
   const [selectedStartFromKey, setSelectedStartFromKey] = useState("");
   const [isLoadingStartFrom, setIsLoadingStartFrom] = useState(false);
+  const [hydratedStartFromProjectId, setHydratedStartFromProjectId] =
+    useState<string | null>(null);
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const startFromRequestRef = useRef(0);
   const animatedHeadingWord = useAnimatedStarterWord();
 
   const normalizedRuntime = useMemo(
@@ -127,6 +130,9 @@ export function AgentsStartComposer({
     () => projects.find((project) => project.id === projectId) ?? null,
     [projectId, projects]
   );
+  const activeProjectId = activeProject?.id ?? null;
+  const activeProjectBaseBranch = activeProject?.baseBranch ?? null;
+  const activeProjectWorkingDirectory = activeProject?.workingDirectory ?? null;
   const selectedStartFrom =
     startFromOptions.find((option) => option.key === selectedStartFromKey) ?? null;
   const fallbackStartFrom = useMemo<AgentConversationBaseSelection | null>(() => {
@@ -176,46 +182,66 @@ export function AgentsStartComposer({
   };
 
   useEffect(() => {
-    if (!activeProject?.workingDirectory) {
+    startFromRequestRef.current += 1;
+    setHydratedStartFromProjectId(null);
+
+    if (!activeProjectId || !activeProjectWorkingDirectory) {
       setStartFromOptions([]);
       setSelectedStartFromKey("");
       setIsLoadingStartFrom(false);
       return;
     }
 
-    let cancelled = false;
-    setIsLoadingStartFrom(true);
+    const fallback = fallbackBranchBaseOptions(activeProjectBaseBranch);
+    setStartFromOptions(fallback.options);
+    setSelectedStartFromKey(fallback.selectedKey);
+    setIsLoadingStartFrom(false);
+  }, [activeProjectBaseBranch, activeProjectId, activeProjectWorkingDirectory]);
 
-    async function loadStartFromOptions() {
-      const result = await loadBranchBaseOptions({
-        projectId: activeProject!.id,
-        workingDirectory: activeProject!.workingDirectory,
-        projectBaseBranch: activeProject!.baseBranch,
-      });
-
-      if (cancelled) {
-        return;
-      }
-
-      setStartFromOptions(result.options);
-      setSelectedStartFromKey(result.selectedKey);
-      setIsLoadingStartFrom(false);
+  const ensureStartFromOptionsLoaded = useCallback(() => {
+    if (
+      !activeProjectId ||
+      !activeProjectWorkingDirectory ||
+      isLoadingStartFrom ||
+      hydratedStartFromProjectId === activeProjectId
+    ) {
+      return;
     }
 
-    void loadStartFromOptions().catch(() => {
-      if (cancelled) {
-        return;
-      }
-      const fallback = fallbackBranchBaseOptions(activeProject.baseBranch);
-      setStartFromOptions(fallback.options);
-      setSelectedStartFromKey(fallback.selectedKey);
-      setIsLoadingStartFrom(false);
-    });
+    const requestId = ++startFromRequestRef.current;
+    setIsLoadingStartFrom(true);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [activeProject]);
+    void loadBranchBaseOptions({
+      projectId: activeProjectId,
+      workingDirectory: activeProjectWorkingDirectory,
+      projectBaseBranch: activeProjectBaseBranch,
+    })
+      .then((result) => {
+        if (startFromRequestRef.current !== requestId) {
+          return;
+        }
+        setStartFromOptions(result.options);
+        setSelectedStartFromKey(result.selectedKey);
+        setHydratedStartFromProjectId(activeProjectId);
+        setIsLoadingStartFrom(false);
+      })
+      .catch(() => {
+        if (startFromRequestRef.current !== requestId) {
+          return;
+        }
+        const fallback = fallbackBranchBaseOptions(activeProjectBaseBranch);
+        setStartFromOptions(fallback.options);
+        setSelectedStartFromKey(fallback.selectedKey);
+        setHydratedStartFromProjectId(activeProjectId);
+        setIsLoadingStartFrom(false);
+      });
+  }, [
+    activeProjectBaseBranch,
+    activeProjectId,
+    activeProjectWorkingDirectory,
+    hydratedStartFromProjectId,
+    isLoadingStartFrom,
+  ]);
 
   const handleRemoveAttachment = (attachmentId: string) => {
     setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
@@ -391,8 +417,14 @@ export function AgentsStartComposer({
               onValueChange={setSelectedStartFromKey}
               options={startFromOptions}
               placeholder={isLoadingStartFrom ? "Loading branch..." : "Base branch"}
-              disabled={isLoadingStartFrom || startFromOptions.length === 0}
+              disabled={!activeProjectId || (isLoadingStartFrom && startFromOptions.length === 0)}
               testId="agents-start-base"
+              onIntent={ensureStartFromOptionsLoaded}
+              onOpenChange={(open) => {
+                if (open) {
+                  ensureStartFromOptionsLoaded();
+                }
+              }}
             />
           </div>
 

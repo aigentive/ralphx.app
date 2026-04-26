@@ -612,6 +612,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             <ChatMessageList
               messages={messagesData}
               conversationId={activeConversationId}
+              firstItemIndex={activeConversation.loadedStartIndex}
               failedRun={showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null}
               onDismissFailedRun={setDismissedErrorId}
               isSending={isSending}
@@ -624,6 +625,9 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               isFinalizing={isFinalizing}
               teamFilter={showTeamUi && activeTeam ? teamFilter : undefined}
               contextKey={showTeamUi && activeTeam ? contextKey : undefined}
+              hasOlderMessages={activeConversation.hasOlderMessages}
+              isFetchingOlderMessages={activeConversation.isFetchingOlderMessages}
+              onLoadOlderMessages={activeConversation.fetchOlderMessages}
             />
           </div>
         )}

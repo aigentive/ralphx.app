@@ -75,7 +75,7 @@ vi.mock("@/hooks/useChat", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/hooks/useChat")>();
   return {
     ...actual,
-    useConversation: (...args: unknown[]) => useConversationMock(...args),
+    useConversationHistoryWindow: (...args: unknown[]) => useConversationMock(...args),
   };
 });
 
@@ -267,6 +267,7 @@ describe("AgentsArtifactPane", () => {
     );
     expect(useConversationMock).toHaveBeenCalledWith("conversation-1", {
       enabled: false,
+      pageSize: 40,
     });
     expect(getIdeationSessionMock).not.toHaveBeenCalled();
     expect(useDependencyGraphMock).toHaveBeenCalledWith("");

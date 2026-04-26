@@ -31,7 +31,7 @@ import type {
   AgentArtifactTab,
   AgentTaskArtifactMode,
 } from "@/stores/agentSessionStore";
-import { useConversation } from "@/hooks/useChat";
+import { useConversationHistoryWindow } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { useVerificationStatus } from "@/hooks/useVerificationStatus";
@@ -143,8 +143,9 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
   const shouldLoadDependencyGraph =
     shouldLoadIdeationData &&
     (effectiveActiveTab === "proposal" || effectiveActiveTab === "tasks");
-  const conversationQuery = useConversation(conversation?.id ?? null, {
+  const conversationQuery = useConversationHistoryWindow(conversation?.id ?? null, {
     enabled: shouldLoadIdeationData && !!conversation?.id,
+    pageSize: 40,
   });
   const conversationData = conversationQuery.data;
   const conversationMessages = useMemo(

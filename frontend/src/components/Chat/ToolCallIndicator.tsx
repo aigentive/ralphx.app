@@ -8,7 +8,7 @@
  * - Compact, readable design
  */
 
-import React, { useState, useMemo } from "react";
+import React, { Suspense, useState, useMemo } from "react";
 import { Wrench, ChevronDown, ChevronRight, FileText, Terminal, FileEdit, Search, FolderSearch, Loader2 } from "lucide-react";
 import { createSummary, formatValue, getToolVerb } from "./ToolCallIndicator.helpers";
 import { isDiffToolCall, isTaskToolCall } from "./DiffToolCallView.utils";
@@ -85,7 +85,11 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   // Check widget registry for specialized renderers
   const SpecializedWidget = getToolCallWidget(toolCall.name);
   if (SpecializedWidget) {
-    return React.createElement(SpecializedWidget, { toolCall, compact, className });
+    return (
+      <Suspense fallback={null}>
+        {React.createElement(SpecializedWidget, { toolCall, compact, className })}
+      </Suspense>
+    );
   }
 
   const iconSize = compact ? 12 : 14;

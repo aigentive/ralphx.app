@@ -48,7 +48,7 @@ describe("ToolCallIndicator", () => {
       expect(screen.queryByText("mcp__ralphx__v1_send_ideation_message")).not.toBeInTheDocument();
     });
 
-    it("renders ideation prompt sends with a session id as the attached ideation card", () => {
+    it("renders ideation prompt sends with a session id as the attached ideation card", async () => {
       const toolCall: ToolCall = makeToolCall("mcp__ralphx__v1_send_ideation_message", {
         id: "call-send-ideation",
         result: {
@@ -60,9 +60,9 @@ describe("ToolCallIndicator", () => {
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
-      expect(screen.getByText("Ideation Session")).toBeInTheDocument();
-      expect(screen.getByText("Ideation run")).toBeInTheDocument();
-      expect(screen.getByText("Open Run")).toBeInTheDocument();
+      expect(await screen.findByText("Ideation Session")).toBeInTheDocument();
+      expect(await screen.findByText("Ideation run")).toBeInTheDocument();
+      expect(await screen.findByText("Open Run")).toBeInTheDocument();
       expect(screen.queryByText("Ideation prompt sent")).not.toBeInTheDocument();
     });
   });

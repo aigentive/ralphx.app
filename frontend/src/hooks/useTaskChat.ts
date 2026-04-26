@@ -15,7 +15,11 @@ import type { ChatConversation, AgentRun } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { logger } from "@/lib/logger";
-import { chatKeys, useConversation } from "./useChat";
+import {
+  chatKeys,
+  invalidateConversationDataQueries,
+  useConversationHistoryWindow,
+} from "./useChat";
 import { useAgentEvents } from "./useAgentEvents";
 import { useTaskStateTransitions } from "./useTaskStateTransitions";
 
@@ -86,8 +90,10 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
     },
   });
 
-  // Fetch active conversation with messages
-  const activeConversation = useConversation(activeConversationId);
+  // Fetch active conversation with a tail-window transcript.
+  const activeConversation = useConversationHistoryWindow(activeConversationId, {
+    pageSize: 40,
+  });
 
   // Fetch agent run status for the active conversation
   const agentRunStatus = useQuery<AgentRun | null, Error>({
@@ -239,9 +245,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
     onSuccess: (result) => {
       // Invalidate active conversation to refetch messages
       if (activeConversationId) {
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(activeConversationId),
-        });
+        invalidateConversationDataQueries(queryClient, activeConversationId);
       }
 
       // Invalidate conversations list to update message counts
@@ -266,9 +270,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
       setActiveConversation(effectiveStoreKey, conversationId);
 
       // Invalidate the conversation query to ensure fresh data is fetched
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversation(conversationId),
-      });
+      invalidateConversationDataQueries(queryClient, conversationId);
     },
     [setActiveConversation, queryClient, effectiveStoreKey]
   );

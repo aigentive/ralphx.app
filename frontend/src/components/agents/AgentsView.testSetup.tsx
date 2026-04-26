@@ -106,7 +106,7 @@ vi.mock("./useProjectAgentConversations", () => ({
   useProjectAgentConversations: (
     projectId: string | null | undefined,
     includeArchived = false,
-    options?: { search?: string }
+    options?: { search?: string; enabled?: boolean }
   ) => useProjectAgentConversationsMock(projectId, includeArchived, options),
 }));
 
@@ -169,6 +169,12 @@ vi.mock("./agentTerminalPreload", () => ({
 vi.mock("@/hooks/useChat", () => ({
   chatKeys: {
     conversation: (conversationId: string) => ["chat", "conversations", conversationId],
+    conversationHistory: (conversationId: string) => [
+      "chat",
+      "conversations",
+      conversationId,
+      "history",
+    ],
     conversationList: (contextType: string, contextId: string) => [
       "chat",
       "conversations",
@@ -178,6 +184,16 @@ vi.mock("@/hooks/useChat", () => ({
   },
   invalidateConversationDataQueries: vi.fn(),
   useConversation: (conversationId: string | null) => useConversationMock(conversationId),
+  useConversationHistoryWindow: (conversationId: string | null) => {
+    const query = useConversationMock(conversationId);
+    return {
+      ...query,
+      loadedStartIndex: 0,
+      hasOlderMessages: false,
+      isFetchingOlderMessages: false,
+      fetchOlderMessages: vi.fn(),
+    };
+  },
 }));
 
 vi.mock("@/api/chat", () => ({
@@ -570,7 +586,9 @@ export function setupAgentsViewTest() {
       queuedMessageId: null,
     },
   });
-  createConversationMock.mockResolvedValue({ id: "conversation-seeded" });
+  createConversationMock.mockResolvedValue(
+    conversation({ id: "conversation-2", contextId: "project-1" })
+  );
   spawnConversationSessionNamerMock.mockResolvedValue(undefined);
   updateConversationTitleMock.mockResolvedValue({
     ...conversation(),

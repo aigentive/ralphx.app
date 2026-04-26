@@ -23,13 +23,30 @@ type ConversationsResult = {
 const { conversationsByProject } = vi.hoisted(() => ({
   conversationsByProject: new Map<string, ConversationsResult>(),
 }));
-const { archivedConversationCounts } = vi.hoisted(() => ({
+const { projectConversationCalls } = vi.hoisted(() => ({
+  projectConversationCalls: [] as Array<{
+    projectId: string | null;
+    includeArchived: boolean;
+    options?: { search?: string; enabled?: boolean };
+  }>,
+}));
+const { archivedConversationCounts, archivedCountCalls } = vi.hoisted(() => ({
   archivedConversationCounts: new Map<string, number>(),
+  archivedCountCalls: [] as string[][],
 }));
 
 vi.mock("./useProjectAgentConversations", () => ({
-  useProjectAgentConversations: (projectId: string | null | undefined) =>
+  useProjectAgentConversations: (
+    projectId: string | null | undefined,
+    includeArchived = false,
+    options?: { search?: string; enabled?: boolean }
+  ) =>
     (() => {
+      projectConversationCalls.push({
+        projectId: projectId ?? null,
+        includeArchived,
+        options,
+      });
       const result = conversationsByProject.get(projectId ?? "");
       if (result) {
         return {
@@ -50,6 +67,7 @@ vi.mock("./useProjectAgentConversations", () => ({
 
 vi.mock("./useArchivedConversationCounts", () => ({
   useArchivedConversationCounts: (projectIds: string[]) => {
+    archivedCountCalls.push(projectIds);
     const byProjectId = Object.fromEntries(
       projectIds.map((projectId) => [projectId, archivedConversationCounts.get(projectId) ?? 0])
     );
@@ -141,7 +159,9 @@ function getProjectRowOrder() {
 describe("AgentsSidebar", () => {
   beforeEach(() => {
     conversationsByProject.clear();
+    projectConversationCalls.length = 0;
     archivedConversationCounts.clear();
+    archivedCountCalls.length = 0;
     useChatStore.setState({ activeConversationIds: {}, agentStatus: {} });
     useAgentSessionStore.setState({
       expandedProjectIds: { "project-1": true, "project-2": true },
@@ -269,6 +289,100 @@ describe("AgentsSidebar", () => {
     expect(screen.queryByText("Start")).not.toBeInTheDocument();
   });
 
+  it("only enables sidebar conversation and archived-count queries for the focused project by default", () => {
+    const focused = project({ id: "project-1", name: "alpha" });
+    const idle = project({ id: "project-2", name: "beta" });
+    const anotherIdle = project({ id: "project-3", name: "gamma" });
+    conversationsByProject.set("project-1", {
+      data: [conversation({ id: "conversation-1" })],
+      total: 1,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+    conversationsByProject.set("project-2", {
+      data: [conversation({ id: "conversation-2", projectId: "project-2", contextId: "project-2" })],
+      total: 1,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar([focused, idle, anotherIdle]);
+
+    expect(projectConversationCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          projectId: "project-1",
+          options: expect.objectContaining({ enabled: true }),
+        }),
+        expect.objectContaining({
+          projectId: "project-2",
+          options: expect.objectContaining({ enabled: false }),
+        }),
+        expect.objectContaining({
+          projectId: "project-3",
+          options: expect.objectContaining({ enabled: false }),
+        }),
+      ])
+    );
+    expect(archivedCountCalls.at(-1)).toEqual(["project-1"]);
+  });
+
+  it("searches conversations on the backend across projects without matching project names", async () => {
+    const focused = project({ id: "project-1", name: "alpha" });
+    const idle = project({ id: "project-2", name: "beta" });
+    conversationsByProject.set("project-1", {
+      data: [],
+      total: 0,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+    conversationsByProject.set("project-2", {
+      data: [
+        conversation({
+          id: "conversation-search",
+          title: "Fix sidebar search",
+          projectId: "project-2",
+          contextId: "project-2",
+        }),
+      ],
+      total: 1,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar([focused, idle]);
+
+    fireEvent.click(screen.getByTestId("agents-search-toggle"));
+    fireEvent.change(screen.getByTestId("agents-search-input"), {
+      target: { value: "sidebar" },
+    });
+
+    await waitFor(() =>
+      expect(projectConversationCalls).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            projectId: "project-2",
+            options: expect.objectContaining({
+              enabled: true,
+              search: "sidebar",
+            }),
+          }),
+        ])
+      )
+    );
+    expect(screen.getByTestId("agents-session-conversation-search")).toHaveTextContent(
+      "Fix sidebar search"
+    );
+  });
+
   it("can reveal empty projects from the filter pill", () => {
     conversationsByProject.set("project-1", {
       data: [],
@@ -309,6 +423,7 @@ describe("AgentsSidebar", () => {
   it("supports alphabetical sorting from the sort pill", () => {
     const alpha = project({ id: "project-1", name: "alpha" });
     const beta = project({ id: "project-2", name: "beta" });
+    useAgentSessionStore.setState({ showAllProjects: true });
 
     conversationsByProject.set("project-1", {
       data: [conversation({ id: "conversation-1", projectId: "project-1", contextId: "project-1" })],

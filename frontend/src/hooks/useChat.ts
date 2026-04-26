@@ -115,6 +115,7 @@ export function invalidateConversationDataQueries(
 ) {
   queryClient.invalidateQueries({
     queryKey: chatKeys.conversation(conversationId),
+    exact: true,
   });
   queryClient.invalidateQueries({
     queryKey: chatKeys.conversationHistory(conversationId),
@@ -327,9 +328,11 @@ export function useChat(
   // Fetch conversations for this context
   const conversations = useConversations(context);
 
-  // Fetch active conversation with messages
-  const activeConversation = useConversation(activeConversationId, {
+  // Fetch the active transcript as a newest-message window. The returned
+  // message order is chronological inside the loaded window.
+  const activeConversation = useConversationHistoryWindow(activeConversationId, {
     enabled: !(options?.skipActiveConversationQuery ?? false),
+    pageSize: 40,
   });
 
   // Fetch agent run status

@@ -44,8 +44,8 @@ afterEach(() => {
 
 describe("TaskToolCallDelegatedTranscript", () => {
   it("refetches when the delegated conversation receives a new message_created event", async () => {
-    const getConversationSpy = vi
-      .spyOn(chatApi, "getConversation")
+    const getConversationMessagesPageSpy = vi
+      .spyOn(chatApi, "getConversationMessagesPage")
       .mockResolvedValueOnce({
         conversation: {
           id: "child-conv-1",
@@ -79,6 +79,10 @@ describe("TaskToolCallDelegatedTranscript", () => {
             createdAt: "2026-04-12T10:00:00Z",
           } satisfies ChatMessageResponse,
         ],
+        limit: 40,
+        offset: 0,
+        totalMessageCount: 1,
+        hasOlder: false,
       })
       .mockResolvedValueOnce({
         conversation: {
@@ -128,6 +132,10 @@ describe("TaskToolCallDelegatedTranscript", () => {
             createdAt: "2026-04-12T10:00:06Z",
           } satisfies ChatMessageResponse,
         ],
+        limit: 40,
+        offset: 0,
+        totalMessageCount: 2,
+        hasOlder: false,
       });
 
     renderWithQueryClient(
@@ -138,7 +146,8 @@ describe("TaskToolCallDelegatedTranscript", () => {
     );
 
     expect(await screen.findByText("First delegated update")).toBeInTheDocument();
-    expect(getConversationSpy).toHaveBeenCalledTimes(1);
+    expect(getConversationMessagesPageSpy).toHaveBeenCalledTimes(1);
+    expect(getConversationMessagesPageSpy).toHaveBeenCalledWith("child-conv-1", 40, 0);
 
     await act(async () => {
       emitEvent("agent:message_created", {
@@ -146,7 +155,7 @@ describe("TaskToolCallDelegatedTranscript", () => {
       });
     });
 
-    await waitFor(() => expect(getConversationSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getConversationMessagesPageSpy).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("Second delegated update")).toBeInTheDocument();
   });
 });

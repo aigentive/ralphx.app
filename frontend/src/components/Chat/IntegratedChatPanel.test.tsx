@@ -33,7 +33,7 @@ vi.mock("@/hooks/useTeamModeAvailability", () => ({
 // Hoisted mutable state for useChat mock (vi.hoisted runs before vi.mock)
 // ============================================================================
 
-const { useChatMockState } = vi.hoisted(() => {
+const { useChatMockState, useChatCalls, historyWindowCalls } = vi.hoisted(() => {
   const useChatMockState = {
     messages: [] as Array<{ id: string; role: string; content: string; createdAt: string; toolCalls: null; contentBlocks: null }>,
     conversation: null as { contextType: string; contextId: string } | null,
@@ -52,7 +52,11 @@ const { useChatMockState } = vi.hoisted(() => {
       loadedStartIndex?: number;
     } | undefined,
   };
-  return { useChatMockState };
+  return {
+    useChatMockState,
+    useChatCalls: [] as unknown[][],
+    historyWindowCalls: [] as unknown[][],
+  };
 });
 
 // ============================================================================
@@ -77,7 +81,9 @@ vi.mock("@/providers/EventProvider", () => ({
 
 // Mock useChat hook — reads from useChatMockState so individual tests can inject messages
 vi.mock("@/hooks/useChat", () => ({
-  useChat: () => ({
+  useChat: (...args: unknown[]) => {
+    useChatCalls.push(args);
+    return {
     messages: {
       data: { messages: useChatMockState.messages, conversation: useChatMockState.conversation },
       isLoading: false,
@@ -86,20 +92,27 @@ vi.mock("@/hooks/useChat", () => ({
     conversations: { data: useChatMockState.conversations, isLoading: false },
     switchConversation: vi.fn(),
     createConversation: vi.fn(),
-  }),
-  useConversation: () => ({
+    };
+  },
+  useConversation: (...args: unknown[]) => {
+    historyWindowCalls.push(["useConversation", ...args]);
+    return {
     data: undefined,
     isLoading: false,
     error: null,
-  }),
-  useConversationHistoryWindow: () => ({
+    };
+  },
+  useConversationHistoryWindow: (...args: unknown[]) => {
+    historyWindowCalls.push(args);
+    return {
     data: useChatMockState.historyData,
     isLoading: false,
     isFetchingOlderMessages: false,
     hasOlderMessages: false,
     loadedStartIndex: useChatMockState.historyData?.loadedStartIndex ?? 0,
     fetchOlderMessages: vi.fn(),
-  }),
+    };
+  },
   chatKeys: {
     all: ["chat"],
     conversationList: (type: string, id: string) => ["chat", "conversations", type, id],
@@ -253,6 +266,8 @@ describe("IntegratedChatPanel", () => {
     useChatMockState.conversation = null;
     useChatMockState.conversations = [];
     useChatMockState.historyData = undefined;
+    useChatCalls.length = 0;
+    historyWindowCalls.length = 0;
 
     // Reset stores
     act(() => {
@@ -299,6 +314,64 @@ describe("IntegratedChatPanel", () => {
           selectedTaskId: undefined,
         })
       );
+    });
+  });
+
+  describe("transcript pagination", () => {
+    it("uses the tail-window conversation query for primary transcripts and skips the full active query", async () => {
+      mockChatPanelContext.storeContextKey = "project:project-1";
+      mockChatPanelContext.currentContextType = "project";
+      mockChatPanelContext.currentContextId = "project-1";
+      mockChatPanelContext.activeConversationId = "conv-1";
+      useChatMockState.conversations = [{ id: "conv-1" }];
+      useChatMockState.historyData = {
+        conversation: {
+          id: "conv-1",
+          contextType: "project",
+          contextId: "project-1",
+          providerHarness: "codex",
+          providerSessionId: "thread-1",
+          upstreamProvider: null,
+          providerProfile: null,
+        },
+        messages: [
+          {
+            id: "msg-tail",
+            role: "assistant",
+            content: "Latest loaded message",
+            createdAt: "2026-04-23T09:00:00Z",
+            toolCalls: null,
+            contentBlocks: null,
+          },
+        ],
+        loadedStartIndex: 25,
+      };
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel
+            projectId="project-1"
+            selectedTaskIdOverride={null}
+            storeContextKeyOverride="project:project-1"
+          />
+        </TestWrapper>
+      );
+
+      expect(useChatCalls.at(-1)?.[1]).toEqual(
+        expect.objectContaining({ skipActiveConversationQuery: true })
+      );
+      expect(historyWindowCalls).toEqual(
+        expect.arrayContaining([
+          [
+            "conv-1",
+            expect.objectContaining({
+              enabled: true,
+              pageSize: 40,
+            }),
+          ],
+        ])
+      );
+      expect(await screen.findByText("Latest loaded message")).toBeInTheDocument();
     });
   });
 

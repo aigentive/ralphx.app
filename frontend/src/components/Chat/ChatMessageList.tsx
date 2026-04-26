@@ -369,8 +369,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     );
     const teamMessages = useTeamStore(teamMsgSelector);
 
-    // Fetch attachments for all messages
-    const { data: attachmentsMap } = useMessageAttachments(messages, conversationId);
+    const { data: attachmentsMap } = useMessageAttachments(messages, conversationId, {
+      enabled: !shouldShowInitialPaintCover,
+    });
     const normalizedStreamingContentBlocks = useMemo(
       () => normalizeStreamingVerificationContentBlocks(streamingContentBlocks),
       [streamingContentBlocks],

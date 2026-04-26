@@ -76,6 +76,7 @@ export function AgentsArtifactPaneRegion({
     hasAutoOpenArtifacts,
   );
   const contentMounted = useAfterPaintMounted(artifactPaneOpen);
+  const shouldRenderArtifactContent = artifactPaneOpen || contentMounted;
 
   return (
     <>
@@ -108,7 +109,7 @@ export function AgentsArtifactPaneRegion({
         data-testid="agents-artifact-resizable-pane"
       >
         <div className="flex h-full min-h-0 flex-col">
-          {artifactPaneOpen ? (
+          {shouldRenderArtifactContent ? (
             <div className="min-h-0 flex-1">
               {contentMounted ? (
                 <Suspense fallback={<AgentArtifactPaneLoadingShell />}>

@@ -10,33 +10,112 @@
  *   2. Import and add to TOOL_CALL_WIDGETS below
  */
 
-import type { ComponentType } from "react";
+import {
+  lazy,
+  type ComponentType,
+  type LazyExoticComponent,
+} from "react";
 import type { ToolCallWidgetProps } from "./shared";
-import { StepIndicator } from "./StepIndicator";
-import { ContextWidget } from "./ContextWidget";
-import { StepsManifestWidget } from "./StepsManifestWidget";
-import { IssuesSummaryWidget } from "./IssuesSummaryWidget";
-import { ArtifactWidget } from "./ArtifactWidget";
-import { ReviewWidget } from "./ReviewWidget";
-import { MergeWidget } from "./MergeWidget";
-import { ProposalWidget } from "./ProposalWidget";
-import { IdeationWidget } from "./IdeationWidget";
-import { VerificationWidget } from "./VerificationWidget";
-import { ChildSessionWidget } from "./ChildSessionWidget";
-import { GrepWidget } from "./GrepWidget";
-import { GlobWidget } from "./GlobWidget";
-import { ReadWidget } from "./ReadWidget";
-import { BashWidget } from "./BashWidget";
-import { FileChangeWidget } from "./FileChangeWidget";
-import { SkillWidget } from "./SkillWidget";
-import { SendMessageWidget } from "./SendMessageWidget";
-import { ProjectOrchestrationWidget } from "./ProjectOrchestrationWidget";
-import { TaskCreateWidget, TaskUpdateWidget, TaskListWidget, TeamCreateWidget, TeamDeleteWidget } from "./TeamTaskWidgets";
-import { SessionContextWidget, TeamSessionStateWidget, SearchMemoriesWidget, TeamPlanWidget } from "./McpContextWidgets";
 import { getToolCallLookupCandidates } from "./tool-name";
 
 /** Registry type: tool name (lowercase) → React component */
-export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
+export type ToolCallWidgetComponent =
+  | ComponentType<ToolCallWidgetProps>
+  | LazyExoticComponent<ComponentType<ToolCallWidgetProps>>;
+export type ToolCallWidgetRegistry = Record<string, ToolCallWidgetComponent>;
+
+function lazyWidget(
+  loader: () => Promise<{ default: ComponentType<ToolCallWidgetProps> }>
+): LazyExoticComponent<ComponentType<ToolCallWidgetProps>> {
+  return lazy(loader);
+}
+
+const StepIndicator = lazyWidget(() =>
+  import("./StepIndicator").then((module) => ({ default: module.StepIndicator }))
+);
+const ContextWidget = lazyWidget(() =>
+  import("./ContextWidget").then((module) => ({ default: module.ContextWidget }))
+);
+const StepsManifestWidget = lazyWidget(() =>
+  import("./StepsManifestWidget").then((module) => ({ default: module.StepsManifestWidget }))
+);
+const IssuesSummaryWidget = lazyWidget(() =>
+  import("./IssuesSummaryWidget").then((module) => ({ default: module.IssuesSummaryWidget }))
+);
+const ArtifactWidget = lazyWidget(() =>
+  import("./ArtifactWidget").then((module) => ({ default: module.ArtifactWidget }))
+);
+const ReviewWidget = lazyWidget(() =>
+  import("./ReviewWidget").then((module) => ({ default: module.ReviewWidget }))
+);
+const MergeWidget = lazyWidget(() =>
+  import("./MergeWidget").then((module) => ({ default: module.MergeWidget }))
+);
+const ProposalWidget = lazyWidget(() =>
+  import("./ProposalWidget").then((module) => ({ default: module.ProposalWidget }))
+);
+const IdeationWidget = lazyWidget(() =>
+  import("./IdeationWidget").then((module) => ({ default: module.IdeationWidget }))
+);
+const VerificationWidget = lazyWidget(() =>
+  import("./VerificationWidget").then((module) => ({ default: module.VerificationWidget }))
+);
+const ChildSessionWidget = lazyWidget(() =>
+  import("./ChildSessionWidget").then((module) => ({ default: module.ChildSessionWidget }))
+);
+const GrepWidget = lazyWidget(() =>
+  import("./GrepWidget").then((module) => ({ default: module.GrepWidget }))
+);
+const GlobWidget = lazyWidget(() =>
+  import("./GlobWidget").then((module) => ({ default: module.GlobWidget }))
+);
+const ReadWidget = lazyWidget(() =>
+  import("./ReadWidget").then((module) => ({ default: module.ReadWidget }))
+);
+const BashWidget = lazyWidget(() =>
+  import("./BashWidget").then((module) => ({ default: module.BashWidget }))
+);
+const FileChangeWidget = lazyWidget(() =>
+  import("./FileChangeWidget").then((module) => ({ default: module.FileChangeWidget }))
+);
+const SkillWidget = lazyWidget(() =>
+  import("./SkillWidget").then((module) => ({ default: module.SkillWidget }))
+);
+const SendMessageWidget = lazyWidget(() =>
+  import("./SendMessageWidget").then((module) => ({ default: module.SendMessageWidget }))
+);
+const ProjectOrchestrationWidget = lazyWidget(() =>
+  import("./ProjectOrchestrationWidget").then((module) => ({
+    default: module.ProjectOrchestrationWidget,
+  }))
+);
+const TaskCreateWidget = lazyWidget(() =>
+  import("./TeamTaskWidgets").then((module) => ({ default: module.TaskCreateWidget }))
+);
+const TaskUpdateWidget = lazyWidget(() =>
+  import("./TeamTaskWidgets").then((module) => ({ default: module.TaskUpdateWidget }))
+);
+const TaskListWidget = lazyWidget(() =>
+  import("./TeamTaskWidgets").then((module) => ({ default: module.TaskListWidget }))
+);
+const TeamCreateWidget = lazyWidget(() =>
+  import("./TeamTaskWidgets").then((module) => ({ default: module.TeamCreateWidget }))
+);
+const TeamDeleteWidget = lazyWidget(() =>
+  import("./TeamTaskWidgets").then((module) => ({ default: module.TeamDeleteWidget }))
+);
+const SessionContextWidget = lazyWidget(() =>
+  import("./McpContextWidgets").then((module) => ({ default: module.SessionContextWidget }))
+);
+const TeamSessionStateWidget = lazyWidget(() =>
+  import("./McpContextWidgets").then((module) => ({ default: module.TeamSessionStateWidget }))
+);
+const SearchMemoriesWidget = lazyWidget(() =>
+  import("./McpContextWidgets").then((module) => ({ default: module.SearchMemoriesWidget }))
+);
+const TeamPlanWidget = lazyWidget(() =>
+  import("./McpContextWidgets").then((module) => ({ default: module.TeamPlanWidget }))
+);
 
 /**
  * The widget registry. Maps tool names to specialized widget components.
@@ -163,7 +242,7 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
  * Look up a specialized widget for a tool name.
  * Returns undefined if no specialized widget is registered.
  */
-export function getToolCallWidget(toolName: string): ComponentType<ToolCallWidgetProps> | undefined {
+export function getToolCallWidget(toolName: string): ToolCallWidgetComponent | undefined {
   for (const candidate of getToolCallLookupCandidates(toolName)) {
     const widget = TOOL_CALL_WIDGETS[candidate];
     if (widget) {

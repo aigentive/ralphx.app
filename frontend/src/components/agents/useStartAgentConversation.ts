@@ -10,6 +10,7 @@ import type {
 } from "@/api/chat";
 import { chatKeys, invalidateConversationDataQueries } from "@/hooks/useChat";
 import type { AgentRuntimeSelection } from "@/stores/agentSessionStore";
+import type { ChatConversation } from "@/types/chat-conversation";
 
 import {
   getAgentConversationStoreKey,
@@ -74,59 +75,68 @@ export function useStartAgentConversation({
       files: File[];
     }) => {
       const normalizedRuntime = normalizeRuntimeSelection(runtime);
-      let conversationIdOverride: string | null = null;
+      const seedConversationState = (
+        conversation: ChatConversation,
+        workspace: AgentConversationWorkspace | null | undefined,
+      ) => {
+        const conversationId = conversation.id;
+        const optimisticConversation = toProjectAgentConversation(conversation);
+
+        setOptimisticConversationsById((current) => ({
+          ...current,
+          [conversationId]: optimisticConversation,
+        }));
+        if (workspace) {
+          setOptimisticWorkspacesByConversationId((current) => ({
+            ...current,
+            [conversationId]: workspace,
+          }));
+        }
+        queryClient.setQueryData(chatKeys.conversation(conversationId), {
+          conversation,
+          messages: [],
+        });
+        queryClient.setQueryData(
+          ["agents", "conversation-workspace", conversationId],
+          workspace ?? null,
+        );
+        setOptimisticSelectedConversationId(conversationId);
+        setFocusedProject(targetProjectId);
+        setRuntimeForConversation(conversationId, targetProjectId, normalizedRuntime);
+        selectConversation(targetProjectId, conversationId);
+        setActiveConversation(
+          getAgentConversationStoreKey({
+            id: conversationId,
+            contextType: "project",
+            contextId: targetProjectId,
+          }),
+          conversationId
+        );
+      };
+      const resultConversationSeed = await chatApi.createConversation(
+        "project",
+        targetProjectId
+      );
+      seedConversationState(resultConversationSeed, null);
 
       if (files.length > 0) {
-        const createdConversation = await chatApi.createConversation("project", targetProjectId);
-        conversationIdOverride = createdConversation.id;
         await Promise.all(
-          files.map((file) => uploadDraftAttachment(createdConversation.id, file))
+          files.map((file) => uploadDraftAttachment(resultConversationSeed.id, file))
         );
       }
 
       const result = await chatApi.startAgentConversation({
         projectId: targetProjectId,
         content,
-        ...(conversationIdOverride ? { conversationId: conversationIdOverride } : {}),
+        conversationId: resultConversationSeed.id,
         providerHarness: normalizedRuntime.provider,
         modelId: normalizedRuntime.modelId,
         mode,
         ...(base ? { base } : {}),
       });
       const resolvedConversationId = result.conversation.id;
-      const optimisticConversation = toProjectAgentConversation(result.conversation);
-
-      setOptimisticConversationsById((current) => ({
-        ...current,
-        [resolvedConversationId]: optimisticConversation,
-      }));
       const optimisticWorkspace = result.workspace;
-      if (optimisticWorkspace) {
-        setOptimisticWorkspacesByConversationId((current) => ({
-          ...current,
-          [resolvedConversationId]: optimisticWorkspace,
-        }));
-      }
-      queryClient.setQueryData(chatKeys.conversation(resolvedConversationId), {
-        conversation: result.conversation,
-        messages: [],
-      });
-      queryClient.setQueryData(
-        ["agents", "conversation-workspace", resolvedConversationId],
-        optimisticWorkspace ?? null,
-      );
-      setOptimisticSelectedConversationId(resolvedConversationId);
-      setFocusedProject(targetProjectId);
-      setRuntimeForConversation(resolvedConversationId, targetProjectId, normalizedRuntime);
-      selectConversation(targetProjectId, resolvedConversationId);
-      setActiveConversation(
-        getAgentConversationStoreKey({
-          id: resolvedConversationId,
-          contextType: "project",
-          contextId: targetProjectId,
-        }),
-        resolvedConversationId
-      );
+      seedConversationState(result.conversation, optimisticWorkspace ?? null);
       invalidateConversationDataQueries(queryClient, resolvedConversationId);
       await invalidateProjectConversations(targetProjectId);
       handleAutoManagedTitle({

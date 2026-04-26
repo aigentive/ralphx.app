@@ -12,13 +12,10 @@ import {
   TeamSessionStateWidget,
 } from "./McpContextWidgets";
 import { MergeWidget } from "./MergeWidget";
-import { ReadWidget } from "./ReadWidget";
 import { ReviewWidget } from "./ReviewWidget";
 import { SendMessageWidget } from "./SendMessageWidget";
 import { StepIndicator } from "./StepIndicator";
 import { StepsManifestWidget } from "./StepsManifestWidget";
-import { GrepWidget } from "./GrepWidget";
-import { GlobWidget } from "./GlobWidget";
 import {
   TaskCreateWidget,
   TaskListWidget,
@@ -47,19 +44,39 @@ describe("tool widget registry coverage", () => {
     expect(canonicalizeToolName("mcp__ralphx__fs_grep")).toBe("grep");
     expect(canonicalizeToolName("mcp__ralphx__fs_glob")).toBe("glob");
 
-    expect(getToolCallWidget("ralphx:get_merge_target")).toBe(MergeWidget);
-    expect(getToolCallWidget("ralphx::get_merge_target")).toBe(MergeWidget);
-    expect(getToolCallWidget("ralphx:start_step")).toBe(StepIndicator);
-    expect(getToolCallWidget("ralphx::start_step")).toBe(StepIndicator);
-    expect(getToolCallWidget("ralphx:get_task_context")).toBe(ContextWidget);
-    expect(getToolCallWidget("ralphx::get_task_context")).toBe(ContextWidget);
-    expect(getToolCallWidget("ralphx:get_review_notes")).toBe(ReviewWidget);
-    expect(getToolCallWidget("ralphx::get_review_notes")).toBe(ReviewWidget);
-    expect(getToolCallWidget("ralphx:search_memories")).toBe(SearchMemoriesWidget);
-    expect(getToolCallWidget("ralphx::search_memories")).toBe(SearchMemoriesWidget);
-    expect(getToolCallWidget("mcp__ralphx__fs_read_file")).toBe(ReadWidget);
-    expect(getToolCallWidget("mcp__ralphx__fs_grep")).toBe(GrepWidget);
-    expect(getToolCallWidget("mcp__ralphx__fs_glob")).toBe(GlobWidget);
+    expect(getToolCallWidget("ralphx:get_merge_target")).toBe(
+      getToolCallWidget("mcp__ralphx__get_merge_target")
+    );
+    expect(getToolCallWidget("ralphx::get_merge_target")).toBe(
+      getToolCallWidget("mcp__ralphx__get_merge_target")
+    );
+    expect(getToolCallWidget("ralphx:start_step")).toBe(
+      getToolCallWidget("mcp__ralphx__start_step")
+    );
+    expect(getToolCallWidget("ralphx::start_step")).toBe(
+      getToolCallWidget("mcp__ralphx__start_step")
+    );
+    expect(getToolCallWidget("ralphx:get_task_context")).toBe(
+      getToolCallWidget("mcp__ralphx__get_task_context")
+    );
+    expect(getToolCallWidget("ralphx::get_task_context")).toBe(
+      getToolCallWidget("mcp__ralphx__get_task_context")
+    );
+    expect(getToolCallWidget("ralphx:get_review_notes")).toBe(
+      getToolCallWidget("mcp__ralphx__get_review_notes")
+    );
+    expect(getToolCallWidget("ralphx::get_review_notes")).toBe(
+      getToolCallWidget("mcp__ralphx__get_review_notes")
+    );
+    expect(getToolCallWidget("ralphx:search_memories")).toBe(
+      getToolCallWidget("mcp__ralphx__search_memories")
+    );
+    expect(getToolCallWidget("ralphx::search_memories")).toBe(
+      getToolCallWidget("mcp__ralphx__search_memories")
+    );
+    expect(getToolCallWidget("mcp__ralphx__fs_read_file")).toBe(getToolCallWidget("read"));
+    expect(getToolCallWidget("mcp__ralphx__fs_grep")).toBe(getToolCallWidget("grep"));
+    expect(getToolCallWidget("mcp__ralphx__fs_glob")).toBe(getToolCallWidget("glob"));
   });
 
   it.each([
@@ -182,11 +199,11 @@ describe("tool widget registry coverage", () => {
       }),
       expectedText: "Team Plan",
     },
-  ])("routes $label through a specialized widget", ({ toolCall, expectedText }) => {
+  ])("routes $label through a specialized widget", async ({ toolCall, expectedText }) => {
     render(<ToolCallIndicator toolCall={toolCall} />);
 
     expect(screen.queryByTestId("tool-call-indicator")).not.toBeInTheDocument();
-    expect(screen.getAllByText(new RegExp(expectedText, "i")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(new RegExp(expectedText, "i"))).length).toBeGreaterThan(0);
   });
 
   it.each([
@@ -218,15 +235,15 @@ describe("tool widget registry coverage", () => {
       }),
       expectedText: "Resolve merge target",
     },
-  ])("routes $label through the same dedicated rendering path", ({ toolCall, expectedTestId, expectedText }) => {
+  ])("routes $label through the same dedicated rendering path", async ({ toolCall, expectedTestId, expectedText }) => {
     render(<ToolCallIndicator toolCall={toolCall} />);
 
     expect(screen.queryByTestId("tool-call-indicator")).not.toBeInTheDocument();
     if (expectedTestId) {
-      expect(screen.getByTestId(expectedTestId)).toBeInTheDocument();
+      expect(await screen.findByTestId(expectedTestId)).toBeInTheDocument();
     }
     if (expectedText) {
-      expect(screen.getAllByText(new RegExp(expectedText, "i")).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText(new RegExp(expectedText, "i"))).length).toBeGreaterThan(0);
     }
   });
 });

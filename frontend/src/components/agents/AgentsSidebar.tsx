@@ -26,7 +26,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -72,6 +72,7 @@ const PROJECT_SORT_LABELS: Record<AgentProjectSort, string> = {
   az: "A-Z",
   za: "Z-A",
 };
+const AGENTS_SEARCH_DEBOUNCE_MS = 180;
 
 interface AgentsSidebarProps {
   projects: Project[];
@@ -114,10 +115,40 @@ export function AgentsSidebar({
   const projectSort = useAgentSessionStore((s) => s.projectSort);
   const setShowAllProjects = useAgentSessionStore((s) => s.setShowAllProjects);
   const setProjectSort = useAgentSessionStore((s) => s.setProjectSort);
-  const normalizedSearch = searchQuery.trim().toLowerCase();
-  const { totalArchivedCount } = useArchivedConversationCounts(
-    projects.map((project) => project.id)
+  const normalizedSearchInput = searchQuery.trim().toLowerCase();
+  const normalizedSearch = useDebouncedValue(
+    normalizedSearchInput,
+    AGENTS_SEARCH_DEBOUNCE_MS
   );
+  const pinnedProjectId = pinnedConversation?.projectId ?? null;
+  const shouldHydrateAllSidebarProjects =
+    showAllProjects || showArchived || normalizedSearch.length > 0;
+  const archivedCountProjectIds = useMemo(() => {
+    if (shouldHydrateAllSidebarProjects) {
+      return projects.map((project) => project.id);
+    }
+
+    const projectIds = new Set<string>();
+    if (focusedProjectId) {
+      projectIds.add(focusedProjectId);
+    }
+    if (pinnedProjectId) {
+      projectIds.add(pinnedProjectId);
+    }
+    if (projectIds.size === 0 && projects[0]) {
+      projectIds.add(projects[0].id);
+    }
+
+    return projects
+      .filter((project) => projectIds.has(project.id))
+      .map((project) => project.id);
+  }, [
+    focusedProjectId,
+    pinnedProjectId,
+    projects,
+    shouldHydrateAllSidebarProjects,
+  ]);
+  const { totalArchivedCount } = useArchivedConversationCounts(archivedCountProjectIds);
   const orderedProjects = useMemo(() => {
     if (projectSort === "latest") {
       return projects;
@@ -445,12 +476,18 @@ function ProjectSessionGroup({
     useState<AgentConversation | null>(null);
   const expanded = useAgentSessionStore((s) => s.expandedProjectIds[project.id] ?? true);
   const toggleProjectExpanded = useAgentSessionStore((s) => s.toggleProjectExpanded);
+  const shouldEnableConversationQuery =
+    showAllProjects ||
+    showArchived ||
+    isFocused ||
+    Boolean(pinnedConversation) ||
+    searchQuery.length > 0;
   const conversations = useProjectAgentConversations(project.id, showArchived, {
     search: searchQuery,
+    enabled: shouldEnableConversationQuery,
   });
   const activeConversationIds = useChatStore((s) => s.activeConversationIds);
   const agentStatuses = useChatStore((s) => s.agentStatus);
-  const projectMatchesSearch = project.name.toLowerCase().includes(searchQuery);
   const visibleConversations = useMemo(() => {
     const items = conversations.data ?? [];
     if (
@@ -490,7 +527,8 @@ function ProjectSessionGroup({
     !conversations.isLoading &&
     visibleConversations.length === 0 &&
     (showArchived ||
-      (searchQuery ? !projectMatchesSearch || !showAllProjects : !showAllProjects))
+      searchQuery.length > 0 ||
+      !showAllProjects)
   ) {
     return null;
   }
@@ -846,6 +884,17 @@ function ProjectSessionGroup({
       </div>
     </div>
   );
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timeout);
+  }, [delayMs, value]);
+
+  return debouncedValue;
 }
 
 function SessionStateGlyph({

@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 
+import {
+  cancelDeferredFrameJob,
+  scheduleDeferredFrameJob,
+} from "./agentDeferredFrame";
+
 export function useDeferredAgentHydration(key: string | null | undefined): boolean {
   const [isReady, setIsReady] = useState(false);
 
@@ -9,8 +14,8 @@ export function useDeferredAgentHydration(key: string | null | undefined): boole
       return;
     }
 
-    const frame = window.requestAnimationFrame(() => setIsReady(true));
-    return () => window.cancelAnimationFrame(frame);
+    const job = scheduleDeferredFrameJob(() => setIsReady(true));
+    return () => cancelDeferredFrameJob(job);
   }, [key]);
 
   return isReady;

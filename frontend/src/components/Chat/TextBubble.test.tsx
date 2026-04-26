@@ -41,62 +41,69 @@ describe("TextBubble", () => {
   // ============================================================================
 
   describe("markdown rendering", () => {
-    it("renders headings in user messages", () => {
-      render(<TextBubble text="# Heading 1" isUser={true} />);
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
-    });
-
-    it("renders headings in assistant messages", () => {
+    it("paints plain text before markdown hydration", async () => {
       render(<TextBubble text="# Heading 1" isUser={false} />);
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
+
+      expect(screen.getByText("# Heading 1")).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
     });
 
-    it("renders lists in user messages", () => {
+    it("renders headings in user messages", async () => {
+      render(<TextBubble text="# Heading 1" isUser={true} />);
+      expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
+    });
+
+    it("renders headings in assistant messages", async () => {
+      render(<TextBubble text="# Heading 1" isUser={false} />);
+      expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
+    });
+
+    it("renders lists in user messages", async () => {
       const text = "- Item 1\n- Item 2\n- Item 3";
       render(<TextBubble text={text} isUser={true} />);
-      expect(screen.getByText("Item 1")).toBeInTheDocument();
+      expect(await screen.findByText("Item 1")).toBeInTheDocument();
       expect(screen.getByText("Item 2")).toBeInTheDocument();
       expect(screen.getByText("Item 3")).toBeInTheDocument();
     });
 
-    it("renders lists in assistant messages", () => {
+    it("renders lists in assistant messages", async () => {
       const text = "- Item 1\n- Item 2\n- Item 3";
       render(<TextBubble text={text} isUser={false} />);
-      expect(screen.getByText("Item 1")).toBeInTheDocument();
+      expect(await screen.findByText("Item 1")).toBeInTheDocument();
       expect(screen.getByText("Item 2")).toBeInTheDocument();
       expect(screen.getByText("Item 3")).toBeInTheDocument();
     });
 
-    it("renders inline code in user messages", () => {
+    it("renders inline code in user messages", async () => {
       render(<TextBubble text="Use `const` for constants" isUser={true} />);
-      expect(screen.getByText("const")).toBeInTheDocument();
+      expect(await screen.findByText("const")).toBeInTheDocument();
     });
 
-    it("renders inline code in assistant messages", () => {
+    it("renders inline code in assistant messages", async () => {
       render(<TextBubble text="Use `const` for constants" isUser={false} />);
-      expect(screen.getByText("const")).toBeInTheDocument();
+      expect(await screen.findByText("const")).toBeInTheDocument();
     });
 
-    it("renders code blocks in user messages", () => {
+    it("renders code blocks in user messages", async () => {
       const text = "```javascript\nconst x = 1;\n```";
       render(<TextBubble text={text} isUser={true} />);
-      expect(screen.getByText("const x = 1;")).toBeInTheDocument();
+      expect(await screen.findByText("const x = 1;")).toBeInTheDocument();
     });
 
-    it("renders code blocks in assistant messages", () => {
+    it("renders code blocks in assistant messages", async () => {
       const text = "```javascript\nconst x = 1;\n```";
       render(<TextBubble text={text} isUser={false} />);
-      expect(screen.getByText("const x = 1;")).toBeInTheDocument();
+      expect(await screen.findByText("const x = 1;")).toBeInTheDocument();
     });
 
-    it("renders bold text in user messages", () => {
+    it("renders bold text in user messages", async () => {
       render(<TextBubble text="This is **bold** text" isUser={true} />);
-      expect(screen.getByText("bold")).toBeInTheDocument();
+      expect(await screen.findByText("bold")).toBeInTheDocument();
     });
 
-    it("renders bold text in assistant messages", () => {
+    it("renders bold text in assistant messages", async () => {
       render(<TextBubble text="This is **bold** text" isUser={false} />);
-      expect(screen.getByText("bold")).toBeInTheDocument();
+      expect(await screen.findByText("bold")).toBeInTheDocument();
     });
 
     it("opens absolute local file links with the system opener instead of navigating the webview", async () => {
@@ -108,7 +115,7 @@ describe("TextBubble", () => {
         />
       );
 
-      const link = screen.getByRole("link", { name: "agent-models.ts" });
+      const link = await screen.findByRole("link", { name: "agent-models.ts" });
       expect(link).toHaveAttribute(
         "href",
         "file:///tmp/ralphx-worktree/frontend/src/lib/agent-models.ts",

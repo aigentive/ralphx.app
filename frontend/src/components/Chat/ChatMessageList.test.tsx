@@ -38,6 +38,9 @@ const mockHandleAtBottomStateChange = vi.fn();
 const mockHandleFollowOutput = vi.fn((atBottom: boolean) =>
   atBottom ? "smooth" as const : false as const
 );
+const mockUseMessageAttachments = vi.hoisted(() =>
+  vi.fn(() => ({ data: new Map() }))
+);
 
 // Capture hook call args to verify virtuosoRef and disabled are passed
 const mockUseChatAutoScroll = vi.fn(() => ({
@@ -57,7 +60,7 @@ vi.mock("@/hooks/useChatAutoScroll", () => ({
 
 // Mock useMessageAttachments — returns empty map by default (no attachments)
 vi.mock("@/hooks/useMessageAttachments", () => ({
-  useMessageAttachments: () => ({ data: new Map() }),
+  useMessageAttachments: (...args: unknown[]) => mockUseMessageAttachments(...args),
 }));
 
 const createMessages = (count: number): ChatMessageData[] => {
@@ -95,6 +98,7 @@ function render(ui: ReactElement) {
 describe("ChatMessageList - Scroll Behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseMessageAttachments.mockReturnValue({ data: new Map() });
     mockIsAtBottom = true;
     scrollIntoViewMock.mockClear();
   });
@@ -174,6 +178,30 @@ describe("ChatMessageList - Scroll Behavior", () => {
         expect(screen.queryByTestId("chat-transcript-settling-placeholders")).not.toBeInTheDocument()
       );
       expect(onInitialPaintReady).toHaveBeenCalledWith("conv-1");
+    });
+
+    it("defers attachment hydration until the initial transcript cover has cleared", async () => {
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          initialPaintCoverKey="conv-1"
+          onInitialPaintReady={vi.fn()}
+        />
+      );
+
+      expect(mockUseMessageAttachments).toHaveBeenLastCalledWith(
+        defaultProps.messages,
+        "conv-1",
+        expect.objectContaining({ enabled: false })
+      );
+
+      await waitFor(() =>
+        expect(mockUseMessageAttachments).toHaveBeenLastCalledWith(
+          defaultProps.messages,
+          "conv-1",
+          expect.objectContaining({ enabled: true })
+        )
+      );
     });
 
     it("does not treat the transcript as reveal-ready while the virtualized item list is hidden", () => {

@@ -15,11 +15,16 @@ import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import {
   agentProjectFixture as project,
   conversationFixture as conversation,
+  conversationWorkspaceFixture as conversationWorkspace,
 } from "./agentsTestFixtures";
 
 const {
   archiveConversationMock,
   createConversationMock,
+  getPlanBranchesMock,
+  listAgentConversationWorkspacesByProjectMock,
+  listConversationsMock,
+  listIdeationSessionsMock,
   spawnConversationSessionNamerMock,
   startAgentConversationMock,
   useConversationMock,
@@ -151,6 +156,89 @@ describe("AgentsView start conversation", () => {
     invalidateSpy.mockRestore();
   });
 
+  it("paints the conversation shell after seeding before the heavy agent start resolves", async () => {
+    mockAgentViewData();
+    const seededConversation = conversation({
+      id: "conversation-seeded",
+      contextId: "project-1",
+      title: null,
+    });
+    let resolveStart:
+      | ((value: Awaited<ReturnType<typeof startAgentConversationMock>>) => void)
+      | null = null;
+    createConversationMock.mockResolvedValue(seededConversation);
+    startAgentConversationMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveStart = resolve;
+      })
+    );
+
+    renderAgentsView();
+
+    fireEvent.change(screen.getByTestId("agents-start-textarea"), {
+      target: { value: "fix agent landing flow" },
+    });
+    fireEvent.click(screen.getByTestId("agents-start-submit"));
+
+    await waitFor(() =>
+      expect(createConversationMock).toHaveBeenCalledWith("project", "project-1")
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    expect(useAgentSessionStore.getState().selectedConversationId).toBe(
+      "conversation-seeded"
+    );
+    expect(startAgentConversationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conversation-seeded",
+        content: "fix agent landing flow",
+      })
+    );
+
+    resolveStart?.({
+      conversation: seededConversation,
+      workspace: conversationWorkspace({
+        conversationId: "conversation-seeded",
+      }),
+      sendResult: {
+        conversationId: "conversation-seeded",
+        agentRunId: "run-seeded",
+        isNewConversation: false,
+        wasQueued: false,
+        queuedAsPending: false,
+        queuedMessageId: null,
+      },
+    });
+
+    await waitFor(() =>
+      expect(spawnConversationSessionNamerMock).toHaveBeenCalledWith(
+        "conversation-seeded",
+        "fix agent landing flow"
+      )
+    );
+  });
+
+  it("does not hydrate branch base options until the starter base picker gets intent", async () => {
+    mockAgentViewData();
+
+    renderAgentsView();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-start-composer")).toBeInTheDocument()
+    );
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(getPlanBranchesMock).not.toHaveBeenCalled();
+    expect(listIdeationSessionsMock).not.toHaveBeenCalled();
+    expect(listConversationsMock).not.toHaveBeenCalled();
+    expect(listAgentConversationWorkspacesByProjectMock).not.toHaveBeenCalled();
+
+    fireEvent.pointerEnter(screen.getByTestId("agents-start-base"));
+
+    await waitFor(() => expect(getPlanBranchesMock).toHaveBeenCalledWith("project-1"));
+  });
+
   it("starts a chat-mode conversation from the selected base and shows its workspace", async () => {
     mockAgentViewData();
     startAgentConversationMock.mockResolvedValue({
@@ -260,6 +348,9 @@ describe("AgentsView start conversation", () => {
 
   it("uploads starter attachments against a seeded conversation before sending the first message", async () => {
     mockAgentViewData();
+    createConversationMock.mockResolvedValue(
+      conversation({ id: "conversation-seeded", contextId: "project-1" })
+    );
     startAgentConversationMock.mockResolvedValue({
       conversation: conversation({ id: "conversation-seeded", contextId: "project-1" }),
       workspace: {

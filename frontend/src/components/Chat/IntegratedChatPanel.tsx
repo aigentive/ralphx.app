@@ -13,7 +13,6 @@ import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } fr
 import { type VirtuosoHandle } from "react-virtuoso";
 import {
   useChat,
-  useConversation,
   useConversationHistoryWindow,
   chatKeys,
 } from "@/hooks/useChat";
@@ -213,7 +212,9 @@ export function IntegratedChatPanel({
   const hasHistoryConversation = !!taskHistoryState?.conversationId;
 
   // Get task data from React Query (useTasks) which has full task data
-  const { data: tasks = EMPTY_TASKS } = useTasks(projectId);
+  const { data: tasks = EMPTY_TASKS } = useTasks(projectId, {
+    enabled: Boolean(selectedTaskId),
+  });
 
   // Read from Zustand store (event-updated, sync) — same pattern as TaskDetailOverlay
   const taskFromStore = useTaskStore((state) =>
@@ -522,7 +523,7 @@ export function IntegratedChatPanel({
     isVisible,
     storeKey: storeContextKey,
     disableAutoSelect: true,
-    skipActiveConversationQuery: !!ideationSessionId,
+    skipActiveConversationQuery: true,
     ...(sendOptions !== undefined ? { sendOptions } : {}),
   });
 
@@ -578,26 +579,32 @@ export function IntegratedChatPanel({
   }, [autoSelectConversation, conversationsData, conversationsLoading, isVisible]);
 
   const {
-    messages: activeConversation,
     sendMessage,
     switchConversation: handleSelectConversation,
     createConversation: handleNewConversation,
   } = regularChatData;
 
-  // Load teammate conversation messages when on a teammate tab
-  const teammateConversation = useConversation(teammateConversationId);
-  const ideationConversationHistory = useConversationHistoryWindow(
-    ideationSessionId && !isTeammateTab ? activeConversationId : null,
+  // Load active transcript windows through the shared tail-window query. The
+  // backend returns each newest window oldest-to-newest; older pages prepend.
+  const teammateConversationHistory = useConversationHistoryWindow(
+    isTeammateTab ? teammateConversationId : null,
     {
-      enabled: !!ideationSessionId && !isTeammateTab,
+      enabled: !!teammateConversationId && isTeammateTab,
+      pageSize: 40,
+    }
+  );
+  const primaryConversationHistory = useConversationHistoryWindow(
+    !isTeammateTab ? activeConversationId : null,
+    {
+      enabled: !!activeConversationId && !isTeammateTab,
       pageSize: 40,
     }
   );
 
   const primaryConversationData =
-    ideationSessionId && !isTeammateTab
-      ? ideationConversationHistory.data
-      : activeConversation.data;
+    !isTeammateTab
+      ? primaryConversationHistory.data ?? regularChatData.messages.data
+      : regularChatData.messages.data;
   const currentPrimaryConversationData =
     activeConversationId &&
     primaryConversationData &&
@@ -607,10 +614,10 @@ export function IntegratedChatPanel({
       : null;
   const currentTeammateConversationData =
     teammateConversationId &&
-    teammateConversation.data &&
-    (!teammateConversation.data.conversation?.id ||
-      teammateConversation.data.conversation.id === teammateConversationId)
-      ? teammateConversation.data
+    teammateConversationHistory.data &&
+    (!teammateConversationHistory.data.conversation?.id ||
+      teammateConversationHistory.data.conversation.id === teammateConversationId)
+      ? teammateConversationHistory.data
       : null;
 
   // Check if active conversation belongs to current context (needed by recovery effects below)
@@ -729,9 +736,9 @@ export function IntegratedChatPanel({
   // Loading state: show skeleton when conversations list is loading OR active conversation is loading
   const isConversationsLoading = conversations.isLoading;
   const isActiveConversationLoading = activeConversationId
-    ? ideationSessionId && !isTeammateTab
-      ? ideationConversationHistory.isLoading
-      : activeConversation.isLoading
+    ? isTeammateTab
+      ? teammateConversationHistory.isLoading && !currentTeammateConversationData
+      : primaryConversationHistory.isLoading && !primaryConversationData
     : false;
   const isLoading = isConversationsLoading || isActiveConversationLoading;
   const transcriptConversationId = effectiveConversationId ?? activeConversationId ?? null;
@@ -1183,9 +1190,9 @@ export function IntegratedChatPanel({
               }
               onInitialPaintReady={handleTranscriptInitialPaintReady}
               firstItemIndex={
-                ideationSessionId && !isTeammateTab
-                  ? ideationConversationHistory.loadedStartIndex
-                  : 0
+                isTeammateTab
+                  ? teammateConversationHistory.loadedStartIndex
+                  : primaryConversationHistory.loadedStartIndex
               }
               failedRun={failedRunProp}
               onDismissFailedRun={setDismissedErrorId}
@@ -1202,19 +1209,19 @@ export function IntegratedChatPanel({
               providerSessionId={activeConversationMeta?.providerSessionId ?? null}
               contentWidthClassName={contentWidthClassName}
               hasOlderMessages={
-                !!ideationSessionId &&
-                !isTeammateTab &&
-                ideationConversationHistory.hasOlderMessages
+                isTeammateTab
+                  ? teammateConversationHistory.hasOlderMessages
+                  : primaryConversationHistory.hasOlderMessages
               }
               isFetchingOlderMessages={
-                !!ideationSessionId &&
-                !isTeammateTab &&
-                ideationConversationHistory.isFetchingOlderMessages
+                isTeammateTab
+                  ? teammateConversationHistory.isFetchingOlderMessages
+                  : primaryConversationHistory.isFetchingOlderMessages
               }
               onLoadOlderMessages={
-                ideationSessionId && !isTeammateTab
-                  ? ideationConversationHistory.fetchOlderMessages
-                  : undefined
+                isTeammateTab
+                  ? teammateConversationHistory.fetchOlderMessages
+                  : primaryConversationHistory.fetchOlderMessages
               }
             />
           )}

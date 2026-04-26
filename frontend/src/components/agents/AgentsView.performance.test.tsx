@@ -236,7 +236,12 @@ describe("AgentsView performance", () => {
       opacity: "0",
       pointerEvents: "none",
     });
+    expect(screen.getByTestId("agents-artifact-pane")).toBeInTheDocument();
     expect(integratedChatPanelRenderMock).not.toHaveBeenCalled();
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("agents-artifact-pane")).not.toBeInTheDocument()
+    );
   });
 
   it("warms the artifact pane on publish shortcut intent", async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 
-import { useConversation } from "@/hooks/useChat";
+import { useConversationHistoryWindow } from "@/hooks/useChat";
 import type { Project } from "@/types/project";
 
 import {
@@ -36,8 +36,9 @@ export function useAgentsSelectionModel({
   const defaultProjectId = focusedProjectId || selectedProjectId || projectId || projects[0]?.id || null;
   const activeProjectId = selectedProjectId || defaultProjectId;
   const focusedConversations = useProjectAgentConversations(activeProjectId, showArchived);
-  const selectedConversationQuery = useConversation(selectedConversationId, {
+  const selectedConversationQuery = useConversationHistoryWindow(selectedConversationId, {
     enabled: !!selectedConversationId,
+    pageSize: 40,
   });
   const selectedConversationData = selectedConversationQuery.data;
   const selectedConversationFallback = useMemo(() => {

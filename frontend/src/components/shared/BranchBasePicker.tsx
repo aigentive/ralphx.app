@@ -20,6 +20,8 @@ interface BranchBasePickerProps {
   testId?: string;
   className?: string;
   align?: "start" | "center" | "end";
+  onIntent?: () => void;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function BranchBasePicker({
@@ -32,6 +34,8 @@ export function BranchBasePicker({
   testId,
   className,
   align = "end",
+  onIntent,
+  onOpenChange,
 }: BranchBasePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -50,6 +54,7 @@ export function BranchBasePicker({
   }, [options, searchQuery]);
 
   const handleOpenChange = (open: boolean) => {
+    onOpenChange?.(open);
     setIsOpen(open);
     if (!open) {
       setSearchQuery("");
@@ -76,6 +81,8 @@ export function BranchBasePicker({
       data-testid={testId}
       data-theme-button-skip="true"
       aria-label="Start from"
+      onFocus={onIntent}
+      onPointerEnter={onIntent}
     >
       <GitBranch className="h-3.5 w-3.5 shrink-0" />
       <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em]">
