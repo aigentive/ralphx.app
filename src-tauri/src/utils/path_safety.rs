@@ -1,10 +1,10 @@
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
 
 /// Minimal lexical guard for filesystem sinks that receive paths already scoped by
 /// higher-level project/worktree logic.
-pub fn validate_absolute_non_root_path(path: &Path, context: &str) -> AppResult<()> {
+pub fn validate_absolute_non_root_path(path: &Path, context: &str) -> AppResult<PathBuf> {
     if !path.is_absolute() {
         return Err(AppError::Validation(format!(
             "{context} path must be absolute: {}",
@@ -12,93 +12,94 @@ pub fn validate_absolute_non_root_path(path: &Path, context: &str) -> AppResult<
         )));
     }
 
-    if path.parent().is_none() {
+    let mut normalized = PathBuf::new();
+    let mut normal_components = 0usize;
+
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::Normal(part) => {
+                normal_components += 1;
+                normalized.push(part);
+            }
+            Component::ParentDir | Component::CurDir => {
+                return Err(AppError::Validation(format!(
+                    "{context} path contains unsafe components: {}",
+                    path.display()
+                )));
+            }
+        }
+    }
+
+    if normal_components == 0 {
         return Err(AppError::Validation(format!(
             "{context} path must not be a filesystem root: {}",
             path.display()
         )));
     }
 
-    if path.components().any(|component| {
-        matches!(
-            component,
-            Component::ParentDir | Component::Prefix(_) | Component::CurDir
-        )
-    }) {
-        return Err(AppError::Validation(format!(
-            "{context} path contains unsafe components: {}",
-            path.display()
-        )));
-    }
-
-    Ok(())
+    Ok(normalized)
 }
 
 pub fn checked_exists(path: &Path, context: &str) -> AppResult<bool> {
-    validate_absolute_non_root_path(path, context)?;
+    let safe_path = validate_absolute_non_root_path(path, context)?;
 
-    // codeql[rust/path-injection]
-    Ok(path.exists())
+    Ok(safe_path.exists())
 }
 
 pub fn checked_is_file(path: &Path, context: &str) -> AppResult<bool> {
-    validate_absolute_non_root_path(path, context)?;
+    let safe_path = validate_absolute_non_root_path(path, context)?;
 
-    // codeql[rust/path-injection]
-    Ok(path.is_file())
+    Ok(safe_path.is_file())
 }
 
 pub fn checked_is_symlink(path: &Path, context: &str) -> AppResult<bool> {
-    validate_absolute_non_root_path(path, context)?;
+    let safe_path = validate_absolute_non_root_path(path, context)?;
 
-    // codeql[rust/path-injection]
-    Ok(path.is_symlink())
+    Ok(safe_path.is_symlink())
 }
 
 pub fn checked_read_to_string(path: &Path, context: &str) -> AppResult<String> {
-    validate_absolute_non_root_path(path, context)?;
+    let safe_path = validate_absolute_non_root_path(path, context)?;
 
-    // codeql[rust/path-injection]
-    std::fs::read_to_string(path).map_err(|e| {
+    std::fs::read_to_string(&safe_path).map_err(|e| {
         AppError::Infrastructure(format!(
             "Failed to read {context} file {}: {e}",
-            path.display()
+            safe_path.display()
         ))
     })
 }
 
 pub fn checked_remove_file(path: &Path, context: &str) -> AppResult<()> {
-    validate_absolute_non_root_path(path, context)?;
+    let safe_path = validate_absolute_non_root_path(path, context)?;
 
-    // codeql[rust/path-injection]
-    std::fs::remove_file(path).map_err(|e| {
+    std::fs::remove_file(&safe_path).map_err(|e| {
         AppError::Infrastructure(format!(
             "Failed to remove {context} file {}: {e}",
-            path.display()
+            safe_path.display()
         ))
     })
 }
 
 pub async fn checked_remove_dir_all(path: &Path, context: &str) -> AppResult<()> {
-    validate_absolute_non_root_path(path, context)?;
+    let safe_path = validate_absolute_non_root_path(path, context)?;
 
-    // codeql[rust/path-injection]
-    tokio::fs::remove_dir_all(path).await.map_err(|e| {
+    tokio::fs::remove_dir_all(&safe_path).await.map_err(|e| {
         AppError::Infrastructure(format!(
             "Failed to remove {context} directory {}: {e}",
-            path.display()
+            safe_path.display()
         ))
     })
 }
 
 pub async fn checked_read_dir(path: &Path, context: &str) -> AppResult<tokio::fs::ReadDir> {
-    validate_absolute_non_root_path(path, context)?;
+    let safe_path = validate_absolute_non_root_path(path, context)?;
 
-    // codeql[rust/path-injection]
-    tokio::fs::read_dir(path).await.map_err(|e| {
+    tokio::fs::read_dir(&safe_path).await.map_err(|e| {
         AppError::Infrastructure(format!(
             "Failed to read {context} directory {}: {e}",
-            path.display()
+            safe_path.display()
         ))
     })
 }
@@ -123,7 +124,8 @@ mod tests {
 
     #[test]
     fn accepts_absolute_child_path() {
-        validate_absolute_non_root_path(Path::new("/tmp/ralphx-child"), "test")
+        let path = validate_absolute_non_root_path(Path::new("/tmp/ralphx-child"), "test")
             .expect("normal absolute child path should be accepted");
+        assert_eq!(path, PathBuf::from("/tmp/ralphx-child"));
     }
 }
