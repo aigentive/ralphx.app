@@ -18,7 +18,8 @@ use crate::application::task_transition_service::PrBranchFreshnessOutcome;
 use crate::application::TaskTransitionService;
 use crate::domain::entities::plan_branch::PrStatus as DbPrStatus;
 use crate::domain::entities::{
-    AgentConversationWorkspace, AgentConversationWorkspacePublicationEvent, ChatContextType,
+    AgentConversationWorkspace, AgentConversationWorkspaceMode,
+    AgentConversationWorkspacePublicationEvent, AgentConversationWorkspaceStatus, ChatContextType,
     ChatConversationId,
 };
 use crate::domain::entities::{InternalStatus, PlanBranchId, TaskId};
@@ -793,6 +794,18 @@ async fn agent_workspace_poll_loop(
             return;
         }
 
+        if !agent_workspace_pr_polling_should_continue(
+            Arc::clone(&workspace_repo),
+            &conversation_id,
+            pr_number,
+        )
+        .await
+        {
+            active.remove(&conversation_id);
+            stopping.remove(&conversation_id);
+            return;
+        }
+
         let permit = match semaphore.acquire().await {
             Ok(permit) => permit,
             Err(_) => {
@@ -891,6 +904,67 @@ async fn agent_workspace_poll_loop(
             }
         }
     }
+}
+
+async fn agent_workspace_pr_polling_should_continue(
+    workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    conversation_id: &ChatConversationId,
+    pr_number: i64,
+) -> bool {
+    match workspace_repo.get_by_conversation_id(conversation_id).await {
+        Ok(Some(workspace)) if agent_workspace_pr_polling_is_current(&workspace, pr_number) => true,
+        Ok(Some(workspace)) => {
+            tracing::info!(
+                conversation_id = conversation_id.as_str(),
+                pr_number,
+                mode = %workspace.mode,
+                linked_plan_branch_id = workspace
+                    .linked_plan_branch_id
+                    .as_ref()
+                    .map(|id| id.as_str()),
+                publication_pr_number = workspace.publication_pr_number,
+                publication_pr_status = workspace.publication_pr_status.as_deref(),
+                publication_push_status = workspace.publication_push_status.as_deref(),
+                "Agent workspace PR poller: workspace is no longer direct-pollable"
+            );
+            false
+        }
+        Ok(None) => {
+            tracing::info!(
+                conversation_id = conversation_id.as_str(),
+                pr_number,
+                "Agent workspace PR poller: workspace row disappeared"
+            );
+            false
+        }
+        Err(error) => {
+            tracing::warn!(
+                conversation_id = conversation_id.as_str(),
+                pr_number,
+                error = %error,
+                "Agent workspace PR poller: failed to refresh workspace ownership"
+            );
+            true
+        }
+    }
+}
+
+fn agent_workspace_pr_polling_is_current(
+    workspace: &AgentConversationWorkspace,
+    pr_number: i64,
+) -> bool {
+    workspace.status == AgentConversationWorkspaceStatus::Active
+        && workspace.mode == AgentConversationWorkspaceMode::Edit
+        && workspace.linked_plan_branch_id.is_none()
+        && workspace.publication_pr_number == Some(pr_number)
+        && matches!(
+            workspace.publication_push_status.as_deref(),
+            None | Some("pushed")
+        )
+        && !matches!(
+            workspace.publication_pr_status.as_deref(),
+            Some("closed") | Some("merged")
+        )
 }
 
 async fn mark_agent_workspace_pr_open(

@@ -110,6 +110,15 @@ async fn list_active_direct_published_workspaces_filters_to_open_edit_workspaces
     execution_owned.publication_pr_number = Some(74);
     repo.create_or_update(execution_owned).await.unwrap();
 
+    let ideation_id = ChatConversationId::from_string("77777777-7777-7777-7777-777777777777");
+    seed_conversation(&db, &ideation_id);
+    let mut ideation = make_workspace(ideation_id);
+    ideation.mode = AgentConversationWorkspaceMode::Ideation;
+    ideation.publication_pr_number = Some(77);
+    ideation.publication_pr_status = Some("open".to_string());
+    ideation.publication_push_status = Some("pushed".to_string());
+    repo.create_or_update(ideation).await.unwrap();
+
     let closed_id = ChatConversationId::from_string("44444444-4444-4444-4444-444444444444");
     seed_conversation(&db, &closed_id);
     let mut closed = make_workspace(closed_id);

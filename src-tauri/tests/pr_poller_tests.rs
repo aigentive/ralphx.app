@@ -362,6 +362,50 @@ async fn recover_agent_workspace_pr_pollers_skips_workspaces_waiting_on_agent() 
     assert_eq!(chat_service.call_count(), 0);
 }
 
+#[tokio::test]
+async fn agent_workspace_poller_stops_when_workspace_is_ideation_owned() {
+    let workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
+    let conversation_id = ChatConversationId::from_string("12121212-3434-5656-7878-909090909090");
+    let project_id = ProjectId::from_string("project-1".to_string());
+    let mut workspace = make_agent_workspace(conversation_id, project_id);
+    workspace.mode = AgentConversationWorkspaceMode::Ideation;
+    workspace.linked_plan_branch_id = Some(PlanBranchId::from_string("plan-branch-1"));
+    workspace_repo
+        .create_or_update(workspace.clone())
+        .await
+        .unwrap();
+
+    let github = Arc::new(MockGithubService::new());
+    let registry = PrPollerRegistry::new(
+        Some(Arc::clone(&github) as Arc<dyn GithubServiceTrait>),
+        Arc::new(MemoryPlanBranchRepository::new()),
+    );
+    let chat_service = Arc::new(MockChatService::new());
+
+    registry.start_agent_workspace_polling(
+        workspace.conversation_id,
+        72,
+        std::path::PathBuf::from("/tmp/agent-workspace"),
+        Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+        Arc::clone(&chat_service) as Arc<dyn ChatService>,
+    );
+
+    for _ in 0..20 {
+        if !registry.is_agent_workspace_polling(&workspace.conversation_id) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    assert!(
+        !registry.is_agent_workspace_polling(&workspace.conversation_id),
+        "workspace poller should exit once ideation/task-pipeline ownership takes over"
+    );
+    assert_eq!(github.check_calls(), 0);
+    assert_eq!(github.review_feedback_calls(), 0);
+    assert_eq!(chat_service.call_count(), 0);
+}
+
 // ============================================================================
 // Test 1: start_polling with no github_service is a no-op
 // ============================================================================
