@@ -1,8 +1,6 @@
-import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useProjects } from "@/hooks/useProjects";
-import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
 import { useAgentArtifactController } from "./useAgentArtifactController";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
@@ -27,8 +25,7 @@ import { useAgentsSessionBindings } from "./useAgentsSessionBindings";
 import { useSyncedAgentProjectFocus } from "./useSyncedAgentProjectFocus";
 import { useAgentsOptimisticState } from "./useAgentsOptimisticState";
 import { useAgentsTerminalDocks } from "./useAgentsTerminalDocks";
-
-const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
+import { useAgentsSidebarState } from "./useAgentsSidebarState";
 
 interface AgentsViewProps {
   projectId: string;
@@ -40,7 +37,16 @@ export function AgentsView({
   onCreateProject,
 }: AgentsViewProps) {
   const queryClient = useQueryClient();
-  const [showArchived, setShowArchived] = useState(false);
+  const {
+    closeSidebarOverlay,
+    isSidebarCollapsed,
+    isSidebarOverlayOpen,
+    setShowArchived,
+    showArchived,
+    sidebarWidth,
+    suppressSidebarTransition,
+    toggleSidebarCollapse,
+  } = useAgentsSidebarState();
   const {
     optimisticConversationsById,
     optimisticSelectedConversationId,
@@ -56,18 +62,6 @@ export function AgentsView({
     isArtifactResizing,
     splitContainerRef,
   } = useAgentArtifactResize();
-  const {
-    sidebarWidth,
-    isCollapsed: isSidebarCollapsed,
-    isOverlayOpen: isSidebarOverlayOpen,
-    toggleCollapse: toggleSidebarCollapse,
-    closeOverlay: closeSidebarOverlay,
-    suppressTransition: suppressSidebarTransition,
-  } = useResponsiveSidebarLayout({
-    storageKey: AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY,
-    largeWidth: 340,
-    mediumWidth: 276,
-  });
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const {
     clearAgentConversationSelection,
