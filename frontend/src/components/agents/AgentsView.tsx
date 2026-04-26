@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -38,7 +37,6 @@ import {
   type AgentConversation,
 } from "./agentConversations";
 import {
-  DEFAULT_AGENT_RUNTIME,
   AGENT_MODEL_OPTIONS,
   AGENT_PROVIDER_OPTIONS,
   normalizeRuntimeSelection,
@@ -51,7 +49,6 @@ import { AgentsArtifactPaneRegion } from "./AgentsArtifactPaneRegion";
 import { AgentsChatHeaderController } from "./AgentsChatHeaderController";
 import {
   AGENT_CONVERSATION_MODE_OPTIONS,
-  resolveConversationAgentMode,
 } from "./agentConversationMode";
 import { AgentsStartComposer } from "./AgentsStartComposer";
 import {
@@ -70,6 +67,7 @@ import { useAgentsSelectionModel } from "./useAgentsSelectionModel";
 import { useAgentsWorkspaceModel } from "./useAgentsWorkspaceModel";
 import { useAgentsAttachedIdeation } from "./useAgentsAttachedIdeation";
 import { useAgentsAutoTitle } from "./useAgentsAutoTitle";
+import { useAgentsActiveComposerControls } from "./useAgentsActiveComposerControls";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
@@ -95,7 +93,6 @@ export function AgentsView({
   const queryClient = useQueryClient();
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [publishingConversationId, setPublishingConversationId] = useState<string | null>(null);
-  const [switchingConversationModeId, setSwitchingConversationModeId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [optimisticConversationsById, setOptimisticConversationsById] = useState<
     Record<string, AgentConversation>
@@ -625,89 +622,27 @@ export function AgentsView({
     ]
   );
 
-  const defaultRuntime =
-    (defaultProjectId ? lastRuntimeByProjectId[defaultProjectId] : null) ??
-    (selectedConversationId ? runtimeByConversationId[selectedConversationId] : null) ??
-    DEFAULT_AGENT_RUNTIME;
-
-  const activeProjectOptions = useMemo(
-    () =>
-      activeProjectId
-        ? projects
-            .filter((project) => project.id === activeProjectId)
-            .map((project) => ({
-              id: project.id,
-              label: project.name,
-              description: project.workingDirectory,
-            }))
-        : [],
-    [activeProjectId, projects]
-  );
-
-  const handleActiveModelChange = useCallback(
-    (modelId: string) => {
-      if (!selectedConversationId || !activeProjectId) {
-        return;
-      }
-      setRuntimeForConversation(selectedConversationId, activeProjectId, {
-        provider: normalizedActiveRuntime.provider,
-        modelId,
-      });
-    },
-    [
-      activeProjectId,
-      normalizedActiveRuntime.provider,
-      selectedConversationId,
-      setRuntimeForConversation,
-    ]
-  );
-
-  const handleActiveConversationModeChange = useCallback(
-    async (mode: AgentConversationWorkspaceMode) => {
-      if (
-        !selectedConversationId ||
-        !activeProjectId ||
-        !activeConversation ||
-        activeConversation.contextType !== "project" ||
-        activeConversationModeLocked
-      ) {
-        return;
-      }
-
-      const currentMode = resolveConversationAgentMode(activeConversation, activeWorkspace);
-      if (currentMode === mode) {
-        return;
-      }
-
-      setSwitchingConversationModeId(selectedConversationId);
-      try {
-        await chatApi.switchAgentConversationMode({
-          conversationId: selectedConversationId,
-          mode,
-        });
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: ["agents", "conversation-workspace", selectedConversationId],
-          }),
-          invalidateProjectConversations(activeProjectId),
-          invalidateConversationDataQueries(queryClient, selectedConversationId),
-        ]);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to change agent mode");
-      } finally {
-        setSwitchingConversationModeId(null);
-      }
-    },
-    [
-      activeConversation,
-      activeConversationModeLocked,
-      activeProjectId,
-      activeWorkspace,
-      invalidateProjectConversations,
-      queryClient,
-      selectedConversationId,
-    ]
-  );
+  const {
+    activeProjectOptions,
+    defaultRuntime,
+    handleActiveConversationModeChange,
+    handleActiveModelChange,
+    switchingConversationModeId,
+  } = useAgentsActiveComposerControls({
+    activeConversation,
+    activeConversationModeLocked,
+    activeProjectId,
+    activeWorkspace,
+    defaultProjectId,
+    invalidateProjectConversations,
+    lastRuntimeByProjectId,
+    normalizedActiveRuntime,
+    projects,
+    queryClient,
+    runtimeByConversationId,
+    selectedConversationId,
+    setRuntimeForConversation,
+  });
 
   const sidebarProps = {
     projects,
