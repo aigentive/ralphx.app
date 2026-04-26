@@ -1509,14 +1509,14 @@ describe("ChatMessageList - Scroll Behavior", () => {
   });
 
   describe("scroll-to-bottom on shouldFilterLastAssistant clear — Task #9 fix", () => {
-    // Verifies that scrollToBottom() is called when shouldFilterLastAssistant transitions true→false.
-    // This ensures the finalized assistant message is visible after streaming ends.
+    // Verifies that true-bottom pinning runs when shouldFilterLastAssistant transitions true→false.
+    // This ensures the finalized assistant message metadata/actions are visible after streaming ends.
 
     beforeEach(() => {
       mockScrollToBottom.mockClear();
     });
 
-    it("calls scrollToBottom when active streaming ends (streamingContentBlocks cleared)", () => {
+    it("pins to bottom when active streaming ends (streamingContentBlocks cleared)", async () => {
       const messages: ChatMessageData[] = [
         { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
         { id: "msg-2", role: "assistant", content: "Response", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
@@ -1544,10 +1544,10 @@ describe("ChatMessageList - Scroll Behavior", () => {
         />
       );
 
-      expect(mockScrollToBottom).toHaveBeenCalledOnce();
+      await waitFor(() => expect(mockScrollToBottom).toHaveBeenCalledOnce());
     });
 
-    it("calls scrollToBottom when isFinalizing transitions from true to false", () => {
+    it("pins to bottom when isFinalizing transitions from true to false", async () => {
       const messages: ChatMessageData[] = [
         { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
         { id: "msg-2", role: "assistant", content: "Response", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
@@ -1575,7 +1575,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
         />
       );
 
-      expect(mockScrollToBottom).toHaveBeenCalledOnce();
+      await waitFor(() => expect(mockScrollToBottom).toHaveBeenCalledOnce());
     });
 
     it("does NOT call scrollToBottom when filter stays false across renders", () => {
