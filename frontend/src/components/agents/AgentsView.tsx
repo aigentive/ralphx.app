@@ -1,5 +1,4 @@
 import {
-  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -22,8 +21,6 @@ import { executionApi } from "@/api/execution";
 import { ideationApi } from "@/api/ideation";
 import { projectsApi } from "@/api/projects";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
-import { BranchBasePicker } from "@/components/shared/BranchBasePicker";
-import type { BranchBaseOption } from "@/components/shared/branchBaseOptions";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { chatKeys, invalidateConversationDataQueries, useConversation } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
@@ -60,6 +57,7 @@ import {
   useResolvedAgentArtifactState,
 } from "./agentArtifactState";
 import { AgentComposerProjectLine, AgentComposerSurface } from "./AgentComposerSurface";
+import { AgentConversationBaseLine } from "./AgentConversationBaseLine";
 import {
   AGENTS_ARTIFACT_MIN_WIDTH,
   AGENTS_CHAT_MIN_WIDTH,
@@ -71,9 +69,14 @@ import {
 } from "./AgentsChatHeader";
 import { preloadAgentsArtifactPane } from "./agentArtifactPanePreload";
 import {
+  AGENT_CONVERSATION_MODE_OPTIONS,
   isWorkspaceModeLocked,
   resolveConversationAgentMode,
 } from "./agentConversationMode";
+import {
+  getAgentTerminalUnavailableReason,
+  runtimeFromConversation,
+} from "./agentConversationRuntime";
 import {
   cancelDeferredFrameJob,
   scheduleDeferredFrameJob,
@@ -100,16 +103,6 @@ const AGENTS_ARTIFACT_WIDTH_STORAGE_KEY = "ralphx-agents-artifact-width";
 const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
-const AGENT_CONVERSATION_MODE_OPTIONS: Array<{
-  id: AgentConversationWorkspaceMode;
-  label: string;
-  description: string;
-}> = [
-  { id: "chat", label: "Chat", description: "Ask read-only questions about the project." },
-  { id: "edit", label: "Agent", description: "Build, change, and review code in a branch." },
-  { id: "ideation", label: "Ideation", description: "Plan work before creating tasks." },
-];
-
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) {
     return error.message;
@@ -1679,71 +1672,6 @@ function AgentsChatHeaderController({
   );
 }
 
-const AgentConversationBaseLine = memo(function AgentConversationBaseLine({
-  workspace,
-}: {
-  workspace: AgentConversationWorkspace | null;
-}) {
-  if (!workspace) {
-    return null;
-  }
-
-  const baseLabel = workspace.baseDisplayName ?? workspace.baseRef;
-  const option: BranchBaseOption = {
-    key: `${workspace.baseRefKind}:${workspace.baseRef}`,
-    label: baseLabel,
-    detail: workspace.baseDisplayName ? workspace.baseRef : undefined,
-    source: "local",
-    selection: {
-      kind:
-        workspace.baseRefKind === "project_default" ||
-        workspace.baseRefKind === "current_branch" ||
-        workspace.baseRefKind === "local_branch"
-          ? workspace.baseRefKind
-          : "local_branch",
-      ref: workspace.baseRef,
-      displayName: baseLabel,
-    },
-  };
-
-  return (
-    <div
-      className="flex min-w-0 justify-end"
-      data-testid="agents-conversation-base"
-    >
-      <BranchBasePicker
-        value={option.key}
-        onValueChange={() => undefined}
-        options={[option]}
-        placeholder="Base branch"
-        readOnly
-      />
-    </div>
-  );
-});
-
-function getAgentTerminalUnavailableReason(
-  conversation: AgentConversation | null,
-  workspace: AgentConversationWorkspace | null,
-): string | null {
-  if (!conversation) {
-    return "Select an agent conversation";
-  }
-  if (conversation.contextType !== "project") {
-    return "Terminal is available for project conversations";
-  }
-  if (!workspace) {
-    return "Terminal requires a workspace-backed conversation";
-  }
-  if (workspace.status === "missing") {
-    return "Terminal unavailable because the workspace is missing";
-  }
-  if (workspace.linkedIdeationSessionId || workspace.linkedPlanBranchId) {
-    return "Terminal disabled while ideation or execution owns this workspace";
-  }
-  return null;
-}
-
 async function uploadDraftAttachment(conversationId: string, file: File): Promise<{ id: string }> {
   const arrayBuffer = await file.arrayBuffer();
   const fileData = Array.from(new Uint8Array(arrayBuffer));
@@ -1756,28 +1684,4 @@ async function uploadDraftAttachment(conversationId: string, file: File): Promis
       mimeType: file.type || undefined,
     },
   });
-}
-
-function runtimeFromConversation(
-  conversation: AgentConversation | null
-): AgentRuntimeSelection | null {
-  if (!conversation?.providerHarness) {
-    return null;
-  }
-
-  if (conversation.providerHarness === "claude") {
-    return {
-      provider: "claude",
-      modelId: "sonnet",
-    };
-  }
-
-  if (conversation.providerHarness === "codex") {
-    return {
-      provider: "codex",
-      modelId: DEFAULT_AGENT_RUNTIME.modelId,
-    };
-  }
-
-  return null;
 }
