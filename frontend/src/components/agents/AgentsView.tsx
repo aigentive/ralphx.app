@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Menu } from "lucide-react";
 import { toast } from "sonner";
 
@@ -66,13 +66,13 @@ import {
   agentConversationKeys,
 } from "./useProjectAgentConversations";
 import { archivedConversationCountKey } from "./useArchivedConversationCounts";
-import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
 import { uploadDraftAttachment } from "./chatAttachmentUpload";
 import { useAgentArtifactResize } from "./useAgentArtifactResize";
 import { useAgentsSelectionModel } from "./useAgentsSelectionModel";
 import { useAgentsWorkspaceModel } from "./useAgentsWorkspaceModel";
+import { useAgentsAttachedIdeation } from "./useAgentsAttachedIdeation";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
@@ -117,7 +117,6 @@ export function AgentsView({
   const autoTitleStateRef = useRef<
     Map<string, { messages: string[]; lastTitle: string | null }>
   >(new Map());
-  const childArchiveSyncRef = useRef<Set<string>>(new Set());
   const syncedProjectIdRef = useRef<string | null>(null);
   const {
     sidebarWidth,
@@ -183,60 +182,7 @@ export function AgentsView({
     runtimeByConversationId,
     selectedConversationId,
   });
-  const shouldHydrateAttachedIdeation =
-    activeConversation?.contextType === "ideation" ||
-    (activeConversation?.contextType === "project" &&
-      (activeConversationMode === "ideation" ||
-        Boolean(activeWorkspace?.linkedIdeationSessionId || activeWorkspace?.linkedPlanBranchId)));
-  const attachedIdeationSessionId = useMemo(
-    () =>
-      shouldHydrateAttachedIdeation
-        ? resolveAttachedIdeationSessionId(activeConversation, selectedConversationMessages)
-        : null,
-    [activeConversation, selectedConversationMessages, shouldHydrateAttachedIdeation],
-  );
-  const attachedIdeationSessionQuery = useQuery({
-    queryKey: ideationKeys.sessionWithData(attachedIdeationSessionId ?? ""),
-    queryFn: () => ideationApi.sessions.getWithData(attachedIdeationSessionId!),
-    enabled: shouldHydrateAttachedIdeation && !!attachedIdeationSessionId,
-    staleTime: 5_000,
-  });
-  const attachedIdeationSessionData =
-    attachedIdeationSessionId &&
-    attachedIdeationSessionQuery.data?.session.id === attachedIdeationSessionId
-      ? attachedIdeationSessionQuery.data
-      : null;
-  const hasAutoOpenArtifacts = useMemo(() => {
-    if (!attachedIdeationSessionData) {
-      return false;
-    }
-
-    const session = attachedIdeationSessionData.session;
-    return Boolean(
-      session.planArtifactId ||
-        session.inheritedPlanArtifactId ||
-        session.acceptanceStatus === "pending" ||
-        session.verificationInProgress ||
-        session.verificationStatus !== "unverified" ||
-        attachedIdeationSessionData.proposals.length > 0
-    );
-  }, [attachedIdeationSessionData]);
   useAgentConversationTitleEvents(activeProjectId);
-  useProjectAgentBridgeEvents({
-    conversation: activeConversation,
-    attachedIdeationSessionId,
-    projectId: activeProjectId,
-  });
-  const {
-    openArtifactTab,
-    scheduleArtifactPanePreload,
-    setArtifactPaneVisibility,
-    setArtifactTaskMode,
-    toggleArtifactPaneVisibility,
-  } = useAgentArtifactController({
-    hasAutoOpenArtifacts,
-    selectedConversationId,
-  });
 
   useEffect(() => {
     if (!projectId || syncedProjectIdRef.current === projectId) {
@@ -323,6 +269,31 @@ export function AgentsView({
     },
     [queryClient]
   );
+  const {
+    attachedIdeationSessionId,
+    hasAutoOpenArtifacts,
+  } = useAgentsAttachedIdeation({
+    activeConversation,
+    activeConversationMode,
+    activeWorkspace,
+    invalidateProjectConversations,
+    selectedConversationMessages,
+  });
+  useProjectAgentBridgeEvents({
+    conversation: activeConversation,
+    attachedIdeationSessionId,
+    projectId: activeProjectId,
+  });
+  const {
+    openArtifactTab,
+    scheduleArtifactPanePreload,
+    setArtifactPaneVisibility,
+    setArtifactTaskMode,
+    toggleArtifactPaneVisibility,
+  } = useAgentArtifactController({
+    hasAutoOpenArtifacts,
+    selectedConversationId,
+  });
 
   const handleAutoManagedTitle = useCallback(
     ({
@@ -538,33 +509,6 @@ export function AgentsView({
   const handlePreloadArtifacts = useCallback(() => {
     scheduleArtifactPanePreload();
   }, [scheduleArtifactPanePreload]);
-
-  useEffect(() => {
-    if (
-      activeConversation?.contextType !== "project" ||
-      !attachedIdeationSessionData ||
-      activeConversation.archivedAt ||
-      childArchiveSyncRef.current.has(activeConversation.id)
-    ) {
-      return;
-    }
-    const session = attachedIdeationSessionData.session;
-    const sessionArchived = session.status === "archived" || Boolean(session.archivedAt);
-    if (!sessionArchived) {
-      return;
-    }
-    childArchiveSyncRef.current.add(activeConversation.id);
-    void chatApi.archiveConversation(activeConversation.id)
-      .then(() => invalidateProjectConversations(activeConversation.projectId))
-      .catch(() => {
-        childArchiveSyncRef.current.delete(activeConversation.id);
-        // Status sync is best-effort; manual archive remains available.
-      });
-  }, [
-    activeConversation,
-    attachedIdeationSessionData,
-    invalidateProjectConversations,
-  ]);
 
   const handleArchiveProject = useCallback(
     async (targetProjectId: string) => {
