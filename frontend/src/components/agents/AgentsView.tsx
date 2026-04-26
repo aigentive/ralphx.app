@@ -7,8 +7,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { AgentConversationWorkspace } from "@/api/chat";
-import { chatKeys } from "@/hooks/useChat";
-import { ideationKeys } from "@/hooks/useIdeation";
 import { useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
 import { useChatStore } from "@/stores/chatStore";
@@ -17,10 +15,6 @@ import type { AgentConversation } from "./agentConversations";
 import { useAgentArtifactController } from "./useAgentArtifactController";
 import { AgentsArtifactPaneRegion } from "./AgentsArtifactPaneRegion";
 import { AgentsTerminalRegion } from "./AgentsTerminalRegion";
-import {
-  agentConversationKeys,
-} from "./useProjectAgentConversations";
-import { archivedConversationCountKey } from "./useArchivedConversationCounts";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
 import { useAgentArtifactResize } from "./useAgentArtifactResize";
@@ -37,6 +31,7 @@ import { AgentsShellLayout } from "./AgentsShellLayout";
 import { AgentsActiveConversationPanel } from "./AgentsActiveConversationPanel";
 import { AgentsStartConversationPanel } from "./AgentsStartConversationPanel";
 import { useAgentArtifactActions } from "./useAgentArtifactActions";
+import { useAgentConversationInvalidation } from "./useAgentConversationInvalidation";
 
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
@@ -145,24 +140,7 @@ export function AgentsView({
     selectedConversationFallback,
   });
 
-  const invalidateProjectConversations = useCallback(
-    async (targetProjectId: string) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: agentConversationKeys.project(targetProjectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversationList("project", targetProjectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: archivedConversationCountKey(targetProjectId),
-          refetchType: "active",
-        }),
-        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() }),
-      ]);
-    },
-    [queryClient]
-  );
+  const invalidateProjectConversations = useAgentConversationInvalidation(queryClient);
   const {
     attachedIdeationSessionId,
     hasAutoOpenArtifacts,
