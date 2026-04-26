@@ -12,7 +12,7 @@ export interface AgentRuntimeSelection {
   modelId: string;
 }
 
-interface AgentArtifactState {
+export interface AgentArtifactState {
   isOpen: boolean;
   activeTab: AgentArtifactTab;
   taskMode: AgentTaskArtifactMode;
@@ -41,6 +41,7 @@ interface AgentSessionActions {
   setProjectSort: (projectSort: AgentProjectSort) => void;
   setArtifactOpen: (conversationId: string, isOpen: boolean) => void;
   setArtifactTab: (conversationId: string, tab: AgentArtifactTab) => void;
+  setArtifactState: (conversationId: string, artifactState: AgentArtifactState) => void;
   setTaskArtifactMode: (conversationId: string, mode: AgentTaskArtifactMode) => void;
   setRuntimeForConversation: (
     conversationId: string,
@@ -137,6 +138,11 @@ export const useAgentSessionStore = create<AgentSessionState & AgentSessionActio
           const artifactState = ensureArtifactState(state, conversationId);
           artifactState.activeTab = tab;
           artifactState.isOpen = true;
+        }),
+
+      setArtifactState: (conversationId, artifactState) =>
+        set((state) => {
+          state.artifactByConversationId[conversationId] = { ...artifactState };
         }),
 
       setTaskArtifactMode: (conversationId, mode) =>

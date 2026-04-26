@@ -253,13 +253,20 @@ vi.mock("./AgentsArtifactPane", () => ({
   AgentsArtifactPane: ({
     conversation,
     activeTab,
+    onClose,
     onPublishWorkspace,
   }: {
     conversation: AgentConversation | null;
     activeTab?: string;
+    onClose?: () => void;
     onPublishWorkspace?: (conversationId: string) => Promise<void>;
   }) => (
     <div data-testid="agents-artifact-pane" data-active-tab={activeTab ?? ""}>
+      {onClose ? (
+        <button type="button" data-testid="agents-artifact-pane-close" onClick={onClose}>
+          Close
+        </button>
+      ) : null}
       {conversation && onPublishWorkspace ? (
         <button
           type="button"
@@ -1742,6 +1749,95 @@ describe("AgentsView", () => {
     await waitFor(() =>
       expect(screen.getByTestId("agents-artifact-pane")).toBeInTheDocument()
     );
+  });
+
+  it("opens the artifact pane before persisting the panel state", async () => {
+    mockAgentViewData(
+      conversation({
+        contextType: "ideation",
+        contextId: "session-1",
+        ideationSessionId: "session-1",
+        agentMode: "ideation",
+      })
+    );
+    mockSessionWithData();
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
+
+    renderAgentsView();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    setItemSpy.mockClear();
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toBeInTheDocument();
+    expect(setItemSpy).not.toHaveBeenCalled();
+
+    setItemSpy.mockRestore();
+  });
+
+  it("closes the artifact pane before persisting the panel state", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+      artifactByConversationId: {
+        "conversation-1": {
+          isOpen: true,
+          activeTab: "publish",
+          taskMode: "graph",
+        },
+      },
+    });
+
+    renderAgentsView();
+
+    await screen.findByTestId("agents-artifact-pane");
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    setItemSpy.mockClear();
+
+    fireEvent.click(screen.getByLabelText("Close panel"));
+
+    expect(screen.queryByTestId("agents-artifact-resizable-pane")).not.toBeInTheDocument();
+    expect(setItemSpy).not.toHaveBeenCalled();
+
+    setItemSpy.mockRestore();
+  });
+
+  it("closes the artifact pane from the pane close action before persisting state", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+      artifactByConversationId: {
+        "conversation-1": {
+          isOpen: true,
+          activeTab: "publish",
+          taskMode: "graph",
+        },
+      },
+    });
+
+    renderAgentsView();
+
+    await screen.findByTestId("agents-artifact-pane");
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    setItemSpy.mockClear();
+
+    fireEvent.click(screen.getByTestId("agents-artifact-pane-close"));
+
+    expect(screen.queryByTestId("agents-artifact-resizable-pane")).not.toBeInTheDocument();
+    expect(setItemSpy).not.toHaveBeenCalled();
+
+    setItemSpy.mockRestore();
   });
 
   it("auto-opens the artifact pane when the conversation already has plan data", async () => {

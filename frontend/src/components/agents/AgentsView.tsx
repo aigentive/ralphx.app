@@ -60,7 +60,9 @@ import {
   selectArtifactState,
   selectHasStoredArtifactState,
   useAgentSessionStore,
+  type AgentArtifactState,
   type AgentArtifactTab,
+  type AgentTaskArtifactMode,
   type AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
 import { AgentsSidebar } from "./AgentsSidebar";
@@ -125,6 +127,11 @@ const AGENTS_CHAT_MIN_WIDTH = 320;
 const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
+const DEFAULT_AGENT_ARTIFACT_UI_STATE: AgentArtifactState = {
+  isOpen: false,
+  activeTab: "plan",
+  taskMode: "graph",
+};
 const AGENT_CONVERSATION_MODE_OPTIONS: Array<{
   id: AgentConversationWorkspaceMode;
   label: string;
@@ -220,10 +227,15 @@ export function AgentsView({
     return Number.isFinite(parsed) && parsed >= AGENTS_ARTIFACT_MIN_WIDTH ? parsed : null;
   });
   const [isArtifactResizing, setIsArtifactResizing] = useState(false);
+  const [optimisticArtifactByConversationId, setOptimisticArtifactByConversationId] =
+    useState<Record<string, AgentArtifactState>>({});
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const artifactResizeFrameRef = useRef<number | null>(null);
   const pendingArtifactWidthRef = useRef<number | null>(null);
   const artifactResizeBoundsRef = useRef<{ right: number; maxWidth: number } | null>(null);
+  const artifactPersistenceJobsRef = useRef<
+    Map<string, { frame: number | null; timer: number | null; state: AgentArtifactState }>
+  >(new Map());
   const autoTitleStateRef = useRef<
     Map<string, { messages: string[]; lastTitle: string | null }>
   >(new Map());
@@ -254,9 +266,7 @@ export function AgentsView({
   const selectConversation = useAgentSessionStore((s) => s.selectConversation);
   const clearSelection = useAgentSessionStore((s) => s.clearSelection);
   const setRuntimeForConversation = useAgentSessionStore((s) => s.setRuntimeForConversation);
-  const setArtifactOpen = useAgentSessionStore((s) => s.setArtifactOpen);
-  const setArtifactTab = useAgentSessionStore((s) => s.setArtifactTab);
-  const setTaskArtifactMode = useAgentSessionStore((s) => s.setTaskArtifactMode);
+  const setArtifactState = useAgentSessionStore((s) => s.setArtifactState);
   const clearAgentConversationSelection = useCallback(() => {
     setOptimisticSelectedConversationId(null);
     clearSelection();
@@ -279,10 +289,14 @@ export function AgentsView({
   const defaultProjectId = focusedProjectId || selectedProjectId || projectId || projects[0]?.id || null;
   const activeProjectId = selectedProjectId || defaultProjectId;
   const focusedConversations = useProjectAgentConversations(activeProjectId, showArchived);
-  const artifactState = useAgentSessionStore(selectArtifactState(selectedConversationId));
+  const persistedArtifactState = useAgentSessionStore(selectArtifactState(selectedConversationId));
   const hasStoredArtifactState = useAgentSessionStore(
     selectHasStoredArtifactState(selectedConversationId)
   );
+  const optimisticArtifactState = selectedConversationId
+    ? optimisticArtifactByConversationId[selectedConversationId] ?? null
+    : null;
+  const artifactState = optimisticArtifactState ?? persistedArtifactState;
   const selectedConversationQuery = useConversation(selectedConversationId, {
     enabled: !!selectedConversationId,
   });
@@ -402,7 +416,7 @@ export function AgentsView({
         attachedIdeationSessionData.proposals.length > 0
     );
   }, [attachedIdeationSessionData]);
-  const artifactPaneOpen = hasStoredArtifactState
+  const artifactPaneOpen = optimisticArtifactState || hasStoredArtifactState
     ? artifactState.isOpen
     : hasAutoOpenArtifacts;
   useAgentConversationTitleEvents(activeProjectId);
@@ -412,25 +426,114 @@ export function AgentsView({
     projectId: activeProjectId,
   });
 
+  const cancelArtifactPersistenceJob = useCallback((conversationId: string) => {
+    const job = artifactPersistenceJobsRef.current.get(conversationId);
+    if (!job) {
+      return;
+    }
+    if (job.frame !== null) {
+      window.cancelAnimationFrame(job.frame);
+    }
+    if (job.timer !== null) {
+      window.clearTimeout(job.timer);
+    }
+    artifactPersistenceJobsRef.current.delete(conversationId);
+  }, []);
+
+  const flushArtifactPersistenceJobs = useCallback(() => {
+    for (const [conversationId, job] of Array.from(artifactPersistenceJobsRef.current)) {
+      if (job.frame !== null) {
+        window.cancelAnimationFrame(job.frame);
+      }
+      if (job.timer !== null) {
+        window.clearTimeout(job.timer);
+      }
+      artifactPersistenceJobsRef.current.delete(conversationId);
+      setArtifactState(conversationId, job.state);
+    }
+  }, [setArtifactState]);
+
+  const scheduleArtifactStatePersistence = useCallback(
+    (conversationId: string, nextState: AgentArtifactState) => {
+      cancelArtifactPersistenceJob(conversationId);
+      const job: { frame: number | null; timer: number | null; state: AgentArtifactState } = {
+        frame: null,
+        timer: null,
+        state: nextState,
+      };
+      job.frame = window.requestAnimationFrame(() => {
+        job.frame = null;
+        job.timer = window.setTimeout(() => {
+          job.timer = null;
+          artifactPersistenceJobsRef.current.delete(conversationId);
+          setArtifactState(conversationId, nextState);
+        }, 0);
+      });
+      artifactPersistenceJobsRef.current.set(conversationId, job);
+    },
+    [cancelArtifactPersistenceJob, setArtifactState],
+  );
+
+  useEffect(
+    () => () => flushArtifactPersistenceJobs(),
+    [flushArtifactPersistenceJobs],
+  );
+
+  const updateArtifactState = useCallback(
+    (
+      conversationId: string,
+      updater: (current: AgentArtifactState) => AgentArtifactState,
+    ) => {
+      const currentState =
+        optimisticArtifactByConversationId[conversationId] ??
+        useAgentSessionStore.getState().artifactByConversationId[conversationId] ??
+        DEFAULT_AGENT_ARTIFACT_UI_STATE;
+      const nextState = updater(currentState);
+      setOptimisticArtifactByConversationId((current) => ({
+        ...current,
+        [conversationId]: nextState,
+      }));
+      scheduleArtifactStatePersistence(conversationId, nextState);
+    },
+    [optimisticArtifactByConversationId, scheduleArtifactStatePersistence],
+  );
+
   const setArtifactPaneVisibility = useCallback(
     (conversationId: string, isOpen: boolean) => {
-      setArtifactOpen(conversationId, isOpen);
+      updateArtifactState(conversationId, (current) => ({
+        ...current,
+        isOpen,
+      }));
     },
-    [setArtifactOpen],
+    [updateArtifactState],
   );
 
   const toggleArtifactPaneVisibility = useCallback(
     (conversationId: string, isOpen: boolean) => {
-      setArtifactOpen(conversationId, !isOpen);
+      setArtifactPaneVisibility(conversationId, !isOpen);
     },
-    [setArtifactOpen],
+    [setArtifactPaneVisibility],
   );
 
   const openArtifactTab = useCallback(
     (conversationId: string, tab: AgentArtifactTab) => {
-      setArtifactTab(conversationId, tab);
+      updateArtifactState(conversationId, (current) => ({
+        ...current,
+        activeTab: tab,
+        isOpen: true,
+      }));
     },
-    [setArtifactTab],
+    [updateArtifactState],
+  );
+
+  const setArtifactTaskMode = useCallback(
+    (conversationId: string, mode: AgentTaskArtifactMode) => {
+      updateArtifactState(conversationId, (current) => ({
+        ...current,
+        taskMode: mode,
+      }));
+    },
+    [updateArtifactState],
   );
 
   const handleArtifactResizeStart = useCallback((event: ReactMouseEvent) => {
@@ -1608,7 +1711,7 @@ export function AgentsView({
                         activeTab={artifactState.activeTab}
                         taskMode={artifactState.taskMode}
                         onTabChange={handleSelectArtifact}
-                        onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
+                        onTaskModeChange={(mode) => setArtifactTaskMode(selectedConversationId, mode)}
                         onPublishWorkspace={handlePublishWorkspace}
                         isPublishingWorkspace={publishingConversationId === selectedConversationId}
                         onClose={() => setArtifactPaneVisibility(selectedConversationId, false)}
