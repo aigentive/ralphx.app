@@ -2,6 +2,7 @@ import {
   CheckCircle2,
   Code,
   Circle,
+  ExternalLink,
   FileText,
   GitPullRequestArrow,
   GitBranch,
@@ -13,7 +14,8 @@ import {
 } from "lucide-react";
 import type { ElementType } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 
 import { artifactApi } from "@/api/artifact";
@@ -497,6 +499,7 @@ function AgentPublishPanel({
   onPublishWorkspace: ((conversationId: string) => Promise<void>) | undefined;
   isPublishingWorkspace: boolean;
 }) {
+  const queryClient = useQueryClient();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [commitFiles, setCommitFiles] = useState<DiffViewerFileChange[]>([]);
   const conversationId = workspace?.conversationId ?? null;
@@ -514,6 +517,62 @@ function AgentPublishPanel({
     staleTime: 0,
     refetchInterval: isPublishingWorkspace ? 1_500 : false,
   });
+  const freshnessQuery = useQuery({
+    queryKey: ["agents", "conversation-workspace-freshness", conversationId],
+    queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(conversationId!),
+    enabled: !!conversationId && workspace?.mode === "edit",
+    staleTime: 5_000,
+  });
+  const updateFromBaseMutation = useMutation({
+    mutationFn: () => chatApi.updateAgentConversationWorkspaceFromBase(conversationId!),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(
+        ["agents", "conversation-workspace", result.workspace.conversationId],
+        result.workspace,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["agents", "conversation-workspace", result.workspace.conversationId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["agents", "conversation-workspace-freshness", result.workspace.conversationId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            "agents",
+            "conversation-workspace-publication-events",
+            result.workspace.conversationId,
+          ],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["agents", "workspace-diff", result.workspace.conversationId],
+        }),
+      ]);
+      toast.success(
+        result.updated
+          ? `Updated from ${result.targetRef}`
+          : `Already current with ${result.targetRef}`,
+      );
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update from base",
+      );
+      if (conversationId) {
+        void Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["agents", "conversation-workspace", conversationId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["agents", "conversation-workspace-freshness", conversationId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
+          }),
+        ]);
+      }
+    },
+  });
   const changes = changesQuery.data ?? [];
   const publicationEvents = publicationEventsQuery.data ?? [];
 
@@ -528,8 +587,13 @@ function AgentPublishPanel({
     : workspace.publicationPrUrl
       ? "Published PR"
       : "No PR yet";
+  const freshness = freshnessQuery.data;
+  const isBranchUpdateNeeded = Boolean(freshness?.isBaseAhead);
+  const isUpdatingFromBase = updateFromBaseMutation.isPending;
+  const effectivePublishing = isPublishingWorkspace || isUpdatingFromBase;
+  const baseActionLabel = workspace.baseRef || base;
   const publishDisabled =
-    !onPublishWorkspace || isPublishingWorkspace || workspace.status === "missing";
+    !onPublishWorkspace || effectivePublishing || workspace.status === "missing";
 
   return (
     <div className="min-h-full p-4" data-testid="agents-publish-pane">
@@ -564,21 +628,50 @@ function AgentPublishPanel({
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <PublishFact icon={GitBranch} label="Branch" value={branch} />
             <PublishFact icon={FileText} label="Base" value={base} />
-            <PublishFact icon={GitPullRequestArrow} label="Pull Request" value={prLabel} />
+            <PublishFact
+              icon={GitPullRequestArrow}
+              label="Pull Request"
+              value={prLabel}
+              action={
+                workspace.publicationPrUrl
+                  ? {
+                      label: "Open pull request",
+                      testId: "agents-open-pr",
+                      onClick: async () => {
+                        await openUrl(workspace.publicationPrUrl!);
+                      },
+                    }
+                  : undefined
+              }
+            />
             <PublishFact
               icon={CheckCircle2}
               label="Mode"
               value={workspace.mode === "edit" ? "Edit agent" : workspace.mode}
             />
           </div>
+          {isBranchUpdateNeeded && (
+            <div
+              className="mt-4 rounded-md border px-3 py-2 text-xs leading-relaxed"
+              style={{
+                background: "var(--bg-subtle)",
+                borderColor: "var(--status-warning)",
+                color: "var(--text-secondary)",
+              }}
+              data-testid="agents-base-stale"
+            >
+              Base branch {freshness?.baseRef ?? baseActionLabel} has new commits.
+              Update this workspace before publishing.
+            </div>
+          )}
           <PublishPipelineSteps
             status={workspace.publicationPushStatus}
-            isPublishing={isPublishingWorkspace}
+            isPublishing={effectivePublishing}
           />
           <PublishEventLog
             events={publicationEvents}
             isLoading={publicationEventsQuery.isLoading}
-            isPublishing={isPublishingWorkspace}
+            isPublishing={effectivePublishing}
           />
         </section>
 
@@ -614,20 +707,37 @@ function AgentPublishPanel({
                 <Code className="h-3.5 w-3.5" />
                 Review Changes
               </Button>
-              <Button
-                type="button"
-                className="h-9 gap-2 px-3 text-xs"
-                onClick={() => void onPublishWorkspace?.(workspace.conversationId)}
-                disabled={publishDisabled}
-                data-testid="agents-publish-confirm"
-              >
-                {isPublishingWorkspace ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <GitPullRequestArrow className="h-3.5 w-3.5" />
-                )}
-                Commit & Publish
-              </Button>
+              {isBranchUpdateNeeded ? (
+                <Button
+                  type="button"
+                  className="h-9 gap-2 px-3 text-xs"
+                  onClick={() => updateFromBaseMutation.mutate()}
+                  disabled={isUpdatingFromBase || workspace.status === "missing"}
+                  data-testid="agents-update-from-base"
+                >
+                  {isUpdatingFromBase ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <GitBranch className="h-3.5 w-3.5" />
+                  )}
+                  Update from {baseActionLabel}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  className="h-9 gap-2 px-3 text-xs"
+                  onClick={() => void onPublishWorkspace?.(workspace.conversationId)}
+                  disabled={publishDisabled}
+                  data-testid="agents-publish-confirm"
+                >
+                  {isPublishingWorkspace ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <GitPullRequestArrow className="h-3.5 w-3.5" />
+                  )}
+                  Commit & Publish
+                </Button>
+              )}
             </div>
           </div>
         </section>
@@ -693,11 +803,23 @@ function PublishEventLog({
     return null;
   }
 
-  const recentEvents = events.slice(-6).reverse();
   const activeStartedEventId =
     isPublishing && events.length > 0
       ? [...events].reverse().find((event) => event.status === "started")?.id
       : null;
+  const visibleEvents = events
+    .filter((event) =>
+      event.status === "failed" ||
+      event.status === "succeeded" ||
+      event.status === "needs_agent" ||
+      event.id === activeStartedEventId
+    )
+    .slice(-6)
+    .reverse();
+
+  if (visibleEvents.length === 0) {
+    return null;
+  }
 
   return (
     <div className="mt-4" data-testid="agents-publish-events">
@@ -705,7 +827,7 @@ function PublishEventLog({
         Publish history
       </div>
       <div className="space-y-2">
-        {recentEvents.map((event) => {
+        {visibleEvents.map((event) => {
           const eventState =
             event.status === "failed" || event.status === "succeeded"
               ? event.status
@@ -789,6 +911,9 @@ function PublishPipelineSteps({
       return PUBLISH_STEPS.length;
     }
     if (normalizedStatus === "pushing") {
+      return 3;
+    }
+    if (normalizedStatus === "refreshed") {
       return 3;
     }
     if (normalizedStatus === "refreshing") {
@@ -880,10 +1005,16 @@ function PublishFact({
   icon: Icon,
   label,
   value,
+  action,
 }: {
   icon: ElementType;
   label: string;
   value: string;
+  action?: {
+    label: string;
+    testId: string;
+    onClick: () => void | Promise<void>;
+  } | undefined;
 }) {
   return (
     <div
@@ -894,12 +1025,33 @@ function PublishFact({
       }}
     >
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
           {label}
         </div>
-        <div className="mt-1 truncate text-xs font-medium text-[var(--text-primary)]">
-          {value}
+        <div className="mt-1 flex min-w-0 items-center gap-2">
+          <div className="truncate text-xs font-medium text-[var(--text-primary)]">
+            {value}
+          </div>
+          {action && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-6 w-6 shrink-0 p-0"
+                  aria-label={action.label}
+                  data-testid={action.testId}
+                  onClick={() => void action.onClick()}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                {action.label}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
     </div>

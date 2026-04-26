@@ -913,6 +913,8 @@ export const chatApi = {
   getAgentConversationWorkspace,
   listAgentConversationWorkspacesByProject,
   listAgentConversationWorkspacePublicationEvents,
+  getAgentConversationWorkspaceFreshness,
+  updateAgentConversationWorkspaceFromBase,
   publishAgentConversationWorkspace,
   getAgentRunStatus,
   // Message sending & queue
@@ -1028,6 +1030,23 @@ export interface AgentConversationWorkspacePublicationEvent {
   createdAt: string;
 }
 
+export interface AgentConversationWorkspaceFreshness {
+  conversationId: string;
+  baseRef: string;
+  baseDisplayName: string | null;
+  targetRef: string;
+  capturedBaseCommit: string | null;
+  targetBaseCommit: string;
+  isBaseAhead: boolean;
+}
+
+export interface UpdateAgentConversationWorkspaceFromBaseResult {
+  workspace: AgentConversationWorkspace;
+  updated: boolean;
+  targetRef: string;
+  baseCommit: string;
+}
+
 const SendAgentMessageResponseSchema = z.object({
   conversation_id: z.string(),
   agent_run_id: z.string(),
@@ -1074,6 +1093,15 @@ const AgentConversationWorkspacePublicationEventResponseSchema = z.object({
 const AgentConversationWorkspacePublicationEventListResponseSchema = z.array(
   AgentConversationWorkspacePublicationEventResponseSchema
 );
+const AgentConversationWorkspaceFreshnessResponseSchema = z.object({
+  conversation_id: z.string(),
+  base_ref: z.string(),
+  base_display_name: z.string().nullable(),
+  target_ref: z.string(),
+  captured_base_commit: z.string().nullable(),
+  target_base_commit: z.string(),
+  is_base_ahead: z.boolean(),
+});
 
 const StartAgentConversationResponseSchema = z.object({
   conversation: ChatConversationResponseSchema,
@@ -1094,6 +1122,12 @@ const PublishAgentConversationWorkspaceResponseSchema = z.object({
   pr_number: z.number().nullable(),
   pr_url: z.string().nullable(),
 });
+const UpdateAgentConversationWorkspaceFromBaseResponseSchema = z.object({
+  workspace: AgentConversationWorkspaceResponseSchema,
+  updated: z.boolean(),
+  target_ref: z.string(),
+  base_commit: z.string(),
+});
 
 type RawAgentConversationWorkspace = z.infer<
   typeof AgentConversationWorkspaceResponseSchema
@@ -1109,6 +1143,12 @@ type RawPublishAgentConversationWorkspaceResponse = z.infer<
 >;
 type RawAgentConversationWorkspacePublicationEvent = z.infer<
   typeof AgentConversationWorkspacePublicationEventResponseSchema
+>;
+type RawAgentConversationWorkspaceFreshness = z.infer<
+  typeof AgentConversationWorkspaceFreshnessResponseSchema
+>;
+type RawUpdateAgentConversationWorkspaceFromBaseResponse = z.infer<
+  typeof UpdateAgentConversationWorkspaceFromBaseResponseSchema
 >;
 
 function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): SendAgentMessageResult {
@@ -1193,6 +1233,31 @@ function transformAgentConversationWorkspacePublicationEvent(
   };
 }
 
+function transformAgentConversationWorkspaceFreshness(
+  raw: RawAgentConversationWorkspaceFreshness
+): AgentConversationWorkspaceFreshness {
+  return {
+    conversationId: raw.conversation_id,
+    baseRef: raw.base_ref,
+    baseDisplayName: raw.base_display_name,
+    targetRef: raw.target_ref,
+    capturedBaseCommit: raw.captured_base_commit,
+    targetBaseCommit: raw.target_base_commit,
+    isBaseAhead: raw.is_base_ahead,
+  };
+}
+
+function transformUpdateAgentConversationWorkspaceFromBaseResponse(
+  raw: RawUpdateAgentConversationWorkspaceFromBaseResponse
+): UpdateAgentConversationWorkspaceFromBaseResult {
+  return {
+    workspace: transformAgentConversationWorkspace(raw.workspace),
+    updated: raw.updated,
+    targetRef: raw.target_ref,
+    baseCommit: raw.base_commit,
+  };
+}
+
 export async function getAgentConversationWorkspace(
   conversationId: string
 ): Promise<AgentConversationWorkspace | null> {
@@ -1224,6 +1289,28 @@ export async function listAgentConversationWorkspacePublicationEvents(
     AgentConversationWorkspacePublicationEventListResponseSchema
   );
   return raw.map(transformAgentConversationWorkspacePublicationEvent);
+}
+
+export async function getAgentConversationWorkspaceFreshness(
+  conversationId: string
+): Promise<AgentConversationWorkspaceFreshness> {
+  const raw = await typedInvoke(
+    "get_agent_conversation_workspace_freshness",
+    { conversationId },
+    AgentConversationWorkspaceFreshnessResponseSchema
+  );
+  return transformAgentConversationWorkspaceFreshness(raw);
+}
+
+export async function updateAgentConversationWorkspaceFromBase(
+  conversationId: string
+): Promise<UpdateAgentConversationWorkspaceFromBaseResult> {
+  const raw = await typedInvoke(
+    "update_agent_conversation_workspace_from_base",
+    { conversationId },
+    UpdateAgentConversationWorkspaceFromBaseResponseSchema
+  );
+  return transformUpdateAgentConversationWorkspaceFromBaseResponse(raw);
 }
 
 export async function publishAgentConversationWorkspace(

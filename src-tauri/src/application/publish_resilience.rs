@@ -1,11 +1,11 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::domain::services::GithubServiceTrait;
 use crate::domain::state_machine::transition_handler::{
     classify_commit_hook_failure_text, update_source_from_target, CommitHookFailureKind,
     SourceUpdateResult,
 };
-use crate::domain::services::GithubServiceTrait;
 use crate::error::AppResult;
 use crate::{application::GitService, domain::entities::Project};
 
@@ -34,6 +34,14 @@ pub enum PublishBranchFreshnessOutcome {
     OperationalError {
         message: String,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishBranchFreshnessStatus {
+    pub target_ref: String,
+    pub captured_base_commit: Option<String>,
+    pub target_base_commit: String,
+    pub is_base_ahead: bool,
 }
 
 pub fn classify_publish_failure(error: &str) -> PublishFailureClass {
@@ -147,6 +155,44 @@ pub async fn ensure_publish_branch_fresh(
     .await;
 
     publish_branch_freshness_outcome_from_source_update(result, &target_ref, &target_sha)
+}
+
+pub async fn inspect_publish_branch_freshness(
+    repo_path: &Path,
+    base_ref: &str,
+    captured_base_commit: Option<&str>,
+) -> AppResult<PublishBranchFreshnessStatus> {
+    GitService::fetch_origin(repo_path).await?;
+    let target_ref = resolve_publish_freshness_target(repo_path, base_ref).await;
+    let target_sha = GitService::get_branch_sha(repo_path, &target_ref).await?;
+
+    Ok(publish_branch_freshness_status_from_commits(
+        captured_base_commit,
+        &target_ref,
+        &target_sha,
+    ))
+}
+
+pub fn publish_branch_freshness_status_from_commits(
+    captured_base_commit: Option<&str>,
+    target_ref: &str,
+    target_base_commit: &str,
+) -> PublishBranchFreshnessStatus {
+    let captured_base_commit = captured_base_commit
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let is_base_ahead = captured_base_commit
+        .as_deref()
+        .map(|captured| captured != target_base_commit)
+        .unwrap_or(false);
+
+    PublishBranchFreshnessStatus {
+        target_ref: target_ref.to_string(),
+        captured_base_commit,
+        target_base_commit: target_base_commit.to_string(),
+        is_base_ahead,
+    }
 }
 
 pub(crate) fn publish_branch_freshness_outcome_from_source_update(

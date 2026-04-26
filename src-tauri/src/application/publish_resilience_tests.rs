@@ -1,7 +1,8 @@
 use super::publish_resilience::review_base_for_publish;
 use super::publish_resilience::{
     classify_publish_failure, publish_branch_freshness_outcome_from_source_update,
-    remote_tracking_ref_for_publish, PublishBranchFreshnessOutcome, PublishFailureClass,
+    publish_branch_freshness_status_from_commits, remote_tracking_ref_for_publish,
+    PublishBranchFreshnessOutcome, PublishFailureClass,
 };
 use crate::domain::state_machine::transition_handler::SourceUpdateResult;
 use std::path::PathBuf;
@@ -120,4 +121,25 @@ fn derives_remote_tracking_ref_for_publish_base() {
         remote_tracking_ref_for_publish("origin/main"),
         "origin/main"
     );
+}
+
+#[test]
+fn reports_publish_base_as_current_when_captured_commit_matches_target() {
+    let status =
+        publish_branch_freshness_status_from_commits(Some("base-sha"), "origin/main", "base-sha");
+
+    assert_eq!(status.target_ref, "origin/main");
+    assert_eq!(status.captured_base_commit.as_deref(), Some("base-sha"));
+    assert_eq!(status.target_base_commit, "base-sha");
+    assert!(!status.is_base_ahead);
+}
+
+#[test]
+fn reports_publish_base_as_ahead_when_target_commit_changed() {
+    let status =
+        publish_branch_freshness_status_from_commits(Some("old-base"), "origin/main", "new-base");
+
+    assert_eq!(status.captured_base_commit.as_deref(), Some("old-base"));
+    assert_eq!(status.target_base_commit, "new-base");
+    assert!(status.is_base_ahead);
 }

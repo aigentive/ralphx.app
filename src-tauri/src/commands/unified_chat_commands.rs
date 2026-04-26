@@ -28,8 +28,9 @@ use crate::application::chat_service::{
 use crate::application::git_service::GitService;
 use crate::application::publish_resilience::{
     classify_publish_failure, count_publish_reviewable_commits, ensure_publish_branch_fresh,
-    publish_push_status_for_failure, push_publish_branch, review_base_for_publish,
-    PublishBranchFreshnessOutcome, PublishFailureClass,
+    inspect_publish_branch_freshness, publish_push_status_for_failure, push_publish_branch,
+    review_base_for_publish, PublishBranchFreshnessOutcome, PublishBranchFreshnessStatus,
+    PublishFailureClass,
 };
 use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, ChatServiceError, SendResult,
@@ -206,6 +207,44 @@ pub struct PublishAgentConversationWorkspaceResponse {
     pub created_pr: bool,
     pub pr_number: Option<i64>,
     pub pr_url: Option<String>,
+}
+
+/// Read-only freshness state for an edit-agent workspace base branch.
+#[derive(Debug, Serialize)]
+pub struct AgentConversationWorkspaceFreshnessResponse {
+    pub conversation_id: String,
+    pub base_ref: String,
+    pub base_display_name: Option<String>,
+    pub target_ref: String,
+    pub captured_base_commit: Option<String>,
+    pub target_base_commit: String,
+    pub is_base_ahead: bool,
+}
+
+impl AgentConversationWorkspaceFreshnessResponse {
+    fn from_workspace_status(
+        workspace: &AgentConversationWorkspace,
+        status: PublishBranchFreshnessStatus,
+    ) -> Self {
+        Self {
+            conversation_id: workspace.conversation_id.as_str(),
+            base_ref: workspace.base_ref.clone(),
+            base_display_name: workspace.base_display_name.clone(),
+            target_ref: status.target_ref,
+            captured_base_commit: status.captured_base_commit,
+            target_base_commit: status.target_base_commit,
+            is_base_ahead: status.is_base_ahead,
+        }
+    }
+}
+
+/// Result of explicitly updating an edit-agent workspace branch from its base.
+#[derive(Debug, Serialize)]
+pub struct UpdateAgentConversationWorkspaceFromBaseResponse {
+    pub workspace: AgentConversationWorkspaceResponse,
+    pub updated: bool,
+    pub target_ref: String,
+    pub base_commit: String,
 }
 
 /// Durable publish operation event for an agent conversation workspace.
@@ -1649,6 +1688,222 @@ pub async fn list_agent_conversation_workspace_publication_events(
                 .map(AgentConversationWorkspacePublicationEventResponse::from)
                 .collect()
         })
+}
+
+/// Inspect whether the workspace's captured base commit is behind the current base ref.
+#[tauri::command]
+pub async fn get_agent_conversation_workspace_freshness(
+    conversation_id: String,
+    state: State<'_, AppState>,
+) -> Result<AgentConversationWorkspaceFreshnessResponse, String> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let workspace = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "Agent conversation workspace not found for conversation {}",
+                conversation_id
+            )
+        })?;
+
+    if workspace.mode != AgentConversationWorkspaceMode::Edit {
+        return Err(
+            "Only edit-agent conversation workspaces can be inspected for publish freshness"
+                .to_string(),
+        );
+    }
+
+    let project = state
+        .project_repo
+        .get_by_id(&workspace.project_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", workspace.project_id))?;
+    let worktree_path = resolve_valid_agent_conversation_workspace_path(&project, &workspace)
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = inspect_publish_branch_freshness(
+        &worktree_path,
+        &workspace.base_ref,
+        workspace.base_commit.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(AgentConversationWorkspaceFreshnessResponse::from_workspace_status(&workspace, status))
+}
+
+/// Update an edit-agent workspace branch from its captured base ref without publishing it.
+#[tauri::command]
+pub async fn update_agent_conversation_workspace_from_base(
+    conversation_id: String,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    team_service: State<'_, std::sync::Arc<crate::application::TeamService>>,
+    app: tauri::AppHandle,
+) -> Result<UpdateAgentConversationWorkspaceFromBaseResponse, String> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let mut workspace = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "Agent conversation workspace not found for conversation {}",
+                conversation_id
+            )
+        })?;
+
+    if workspace.mode != AgentConversationWorkspaceMode::Edit {
+        return Err(
+            "Ideation-mode agent conversations are updated through the execution pipeline"
+                .to_string(),
+        );
+    }
+    if workspace.is_execution_owned() {
+        return Err(
+            "This agent conversation workspace is owned by an execution plan and cannot be directly updated"
+                .to_string(),
+        );
+    }
+
+    let conversation = state
+        .chat_conversation_repo
+        .get_by_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Conversation not found: {}", conversation_id))?;
+    if conversation.context_type != ChatContextType::Project
+        || conversation.context_id != workspace.project_id.as_str()
+    {
+        return Err(format!(
+            "Conversation {} does not match agent workspace project {}",
+            conversation.id, workspace.project_id
+        ));
+    }
+
+    let repair_service = create_chat_service(
+        &state,
+        app,
+        &execution_state,
+        Some(team_service.inner().clone()),
+    );
+    let project = state
+        .project_repo
+        .get_by_id(&workspace.project_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", workspace.project_id))?;
+    let worktree_path =
+        match resolve_valid_agent_conversation_workspace_path(&project, &workspace).await {
+            Ok(path) => path,
+            Err(error) => {
+                if error
+                    .to_string()
+                    .contains("Agent conversation workspace is missing")
+                {
+                    let _ = state
+                        .agent_conversation_workspace_repo
+                        .update_status(
+                            &workspace.conversation_id,
+                            crate::domain::entities::AgentConversationWorkspaceStatus::Missing,
+                        )
+                        .await;
+                }
+                return Err(error.to_string());
+            }
+        };
+
+    mark_agent_workspace_publish_status(&state, &workspace, "refreshing")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let freshness_conversation_id = workspace.conversation_id.as_str();
+    let outcome = ensure_publish_branch_fresh(
+        &worktree_path,
+        &project,
+        &workspace.branch_name,
+        &workspace.base_ref,
+        &freshness_conversation_id,
+        None,
+    )
+    .await;
+    let (updated, target_ref, base_commit) = match outcome {
+        PublishBranchFreshnessOutcome::AlreadyFresh {
+            base_commit,
+            target_ref,
+        } => (false, target_ref, base_commit),
+        PublishBranchFreshnessOutcome::Updated {
+            base_commit,
+            target_ref,
+        } => (true, target_ref, base_commit),
+        PublishBranchFreshnessOutcome::NeedsAgent { message, .. }
+        | PublishBranchFreshnessOutcome::OperationalError { message } => {
+            mark_agent_workspace_publish_failure(
+                &state,
+                &workspace,
+                &message,
+                None,
+                &repair_service,
+            )
+            .await;
+            return Err(message);
+        }
+    };
+
+    workspace.base_commit = Some(base_commit.clone());
+    workspace = state
+        .agent_conversation_workspace_repo
+        .create_or_update(workspace)
+        .await
+        .map_err(|e| e.to_string())?;
+    state
+        .agent_conversation_workspace_repo
+        .update_publication(
+            &workspace.conversation_id,
+            workspace.publication_pr_number,
+            workspace.publication_pr_url.as_deref(),
+            workspace.publication_pr_status.as_deref(),
+            Some("refreshed"),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    append_agent_workspace_publication_event(
+        &state,
+        &workspace.conversation_id,
+        if updated {
+            "updated_from_base"
+        } else {
+            "base_current"
+        },
+        "succeeded",
+        if updated {
+            "Workspace branch updated from base"
+        } else {
+            "Workspace branch is current with base"
+        },
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let refreshed = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&workspace.conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or(workspace);
+
+    Ok(UpdateAgentConversationWorkspaceFromBaseResponse {
+        workspace: AgentConversationWorkspaceResponse::from(refreshed),
+        updated,
+        target_ref,
+        base_commit,
+    })
 }
 
 /// Commit and publish a general edit agent conversation workspace.

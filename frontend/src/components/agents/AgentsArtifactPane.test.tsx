@@ -12,10 +12,16 @@ const {
   getWorkspaceChangesMock,
   getWorkspaceDiffMock,
   listPublicationEventsMock,
+  getWorkspaceFreshnessMock,
+  updateWorkspaceFromBaseMock,
+  openUrlMock,
 } = vi.hoisted(() => ({
   getWorkspaceChangesMock: vi.fn(),
   getWorkspaceDiffMock: vi.fn(),
   listPublicationEventsMock: vi.fn(),
+  getWorkspaceFreshnessMock: vi.fn(),
+  updateWorkspaceFromBaseMock: vi.fn(),
+  openUrlMock: vi.fn(),
 }));
 
 vi.mock("@/api/chat", async (importOriginal) => {
@@ -26,6 +32,10 @@ vi.mock("@/api/chat", async (importOriginal) => {
       ...actual.chatApi,
       listAgentConversationWorkspacePublicationEvents: (...args: unknown[]) =>
         listPublicationEventsMock(...args),
+      getAgentConversationWorkspaceFreshness: (...args: unknown[]) =>
+        getWorkspaceFreshnessMock(...args),
+      updateAgentConversationWorkspaceFromBase: (...args: unknown[]) =>
+        updateWorkspaceFromBaseMock(...args),
     },
   };
 });
@@ -37,6 +47,10 @@ vi.mock("@/api/diff", () => ({
     getAgentConversationWorkspaceFileDiff: (...args: unknown[]) =>
       getWorkspaceDiffMock(...args),
   },
+}));
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: (...args: unknown[]) => openUrlMock(...args),
 }));
 
 const workspace = (
@@ -104,6 +118,22 @@ describe("AgentsArtifactPane", () => {
       language: "typescript",
     });
     listPublicationEventsMock.mockResolvedValue([]);
+    getWorkspaceFreshnessMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      baseRef: "main",
+      baseDisplayName: "Project default (main)",
+      targetRef: "origin/main",
+      capturedBaseCommit: "base-sha",
+      targetBaseCommit: "base-sha",
+      isBaseAhead: false,
+    });
+    updateWorkspaceFromBaseMock.mockResolvedValue({
+      workspace: workspace({ mode: "edit", baseCommit: "base-sha" }),
+      updated: false,
+      targetRef: "origin/main",
+      baseCommit: "base-sha",
+    });
+    openUrlMock.mockResolvedValue(undefined);
   });
 
   it("anchors the active tab border to the bottom edge of the tab bar", () => {
@@ -143,6 +173,66 @@ describe("AgentsArtifactPane", () => {
     fireEvent.click(screen.getByTestId("agents-publish-confirm"));
 
     expect(publish).toHaveBeenCalledWith("conversation-1");
+  });
+
+  it("opens the published PR from the publish pane", async () => {
+    renderPane(
+      "publish",
+      workspace({
+        mode: "edit",
+        publicationPrNumber: 78,
+        publicationPrUrl: "https://github.com/mock/project/pull/78",
+      }),
+    );
+
+    fireEvent.click(await screen.findByTestId("agents-open-pr"));
+
+    expect(openUrlMock).toHaveBeenCalledWith("https://github.com/mock/project/pull/78");
+  });
+
+  it("uses Update from base as the primary action when the base branch moved", async () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    getWorkspaceFreshnessMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      baseRef: "feature/agent-screen",
+      baseDisplayName: "Current branch (feature/agent-screen)",
+      targetRef: "origin/feature/agent-screen",
+      capturedBaseCommit: "old-base",
+      targetBaseCommit: "new-base",
+      isBaseAhead: true,
+    });
+    updateWorkspaceFromBaseMock.mockResolvedValue({
+      workspace: workspace({
+        mode: "edit",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+        baseCommit: "new-base",
+      }),
+      updated: true,
+      targetRef: "origin/feature/agent-screen",
+      baseCommit: "new-base",
+    });
+
+    renderPane(
+      "publish",
+      workspace({
+        mode: "edit",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+        baseCommit: "old-base",
+      }),
+      publish,
+    );
+
+    expect(await screen.findByTestId("agents-base-stale")).toHaveTextContent(
+      "feature/agent-screen"
+    );
+    fireEvent.click(screen.getByTestId("agents-update-from-base"));
+
+    await waitFor(() =>
+      expect(updateWorkspaceFromBaseMock).toHaveBeenCalledWith("conversation-1")
+    );
+    expect(publish).not.toHaveBeenCalled();
   });
 
   it("loads workspace changes for review before publishing", async () => {
@@ -202,7 +292,7 @@ describe("AgentsArtifactPane", () => {
     expect(screen.getByText(/agent fixable/i)).toBeInTheDocument();
   });
 
-  it("does not show old started publish history rows as active after publish completes", async () => {
+  it("hides old started publish history rows after publish completes", async () => {
     listPublicationEventsMock.mockResolvedValue([
       {
         id: "event-checking",
@@ -243,11 +333,49 @@ describe("AgentsArtifactPane", () => {
     );
 
     expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
-    expect(screen.getByTestId("agents-publish-event-icon-event-checking"))
-      .toHaveAttribute("data-state", "history");
-    expect(screen.getByTestId("agents-publish-event-icon-event-pushing"))
-      .toHaveAttribute("data-state", "history");
+    expect(screen.queryByText("Checking workspace changes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pushing agent branch")).not.toBeInTheDocument();
+    expect(screen.getByText("Draft pull request is ready")).toBeInTheDocument();
     expect(screen.getByTestId("agents-publish-event-icon-event-published"))
       .toHaveAttribute("data-state", "succeeded");
+  });
+
+  it("shows only the latest started publish history row while publishing", async () => {
+    listPublicationEventsMock.mockResolvedValue([
+      {
+        id: "event-checking",
+        conversationId: "conversation-1",
+        step: "checking",
+        status: "started",
+        summary: "Checking workspace changes",
+        classification: null,
+        createdAt: "2026-04-26T09:01:00Z",
+      },
+      {
+        id: "event-pushing",
+        conversationId: "conversation-1",
+        step: "pushing",
+        status: "started",
+        summary: "Pushing agent branch",
+        classification: null,
+        createdAt: "2026-04-26T09:02:00Z",
+      },
+    ]);
+
+    renderPane(
+      "publish",
+      workspace({
+        mode: "edit",
+        publicationPushStatus: "pushing",
+      }),
+      vi.fn(),
+      true,
+    );
+
+    expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
+    expect(screen.queryByText("Checking workspace changes")).not.toBeInTheDocument();
+    expect(screen.getByText("Pushing agent branch")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-publish-event-icon-event-pushing"))
+      .toHaveAttribute("data-state", "active");
   });
 });
