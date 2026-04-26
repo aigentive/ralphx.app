@@ -40,8 +40,6 @@ import { withAlpha } from "@/lib/theme-colors";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import {
-  selectArtifactState,
-  selectHasStoredArtifactState,
   useAgentSessionStore,
   type AgentArtifactState,
   type AgentArtifactTab,
@@ -64,11 +62,11 @@ import {
   AGENT_PROVIDER_OPTIONS,
   normalizeRuntimeSelection,
 } from "./agentOptions";
+import { useAgentArtifactUiStore } from "./agentArtifactUiStore";
 import {
-  DEFAULT_AGENT_ARTIFACT_UI_STATE,
-  selectOptimisticArtifactState,
-  useAgentArtifactUiStore,
-} from "./agentArtifactUiStore";
+  getAgentArtifactStateSnapshot,
+  useResolvedAgentArtifactState,
+} from "./agentArtifactState";
 import { AgentComposerProjectLine, AgentComposerSurface } from "./AgentComposerSurface";
 import {
   AgentsChatHeader,
@@ -79,6 +77,12 @@ import {
   isWorkspaceModeLocked,
   resolveConversationAgentMode,
 } from "./agentConversationMode";
+import {
+  cancelDeferredFrameJob,
+  scheduleDeferredFrameJob,
+  useAfterPaintMounted,
+  type DeferredFrameJob,
+} from "./agentDeferredFrame";
 import {
   preloadAgentTerminalDrawer,
   preloadAgentTerminalExperience,
@@ -123,69 +127,6 @@ const AGENT_CONVERSATION_MODE_OPTIONS: Array<{
   { id: "ideation", label: "Ideation", description: "Plan work before creating tasks." },
 ];
 
-type DeferredFrameJob = { frame: number | null; timer: number | null };
-
-function cancelDeferredFrameJob(job: DeferredFrameJob | null) {
-  if (!job) {
-    return;
-  }
-  if (job.frame !== null) {
-    window.cancelAnimationFrame(job.frame);
-  }
-  if (job.timer !== null) {
-    window.clearTimeout(job.timer);
-  }
-}
-
-function scheduleDeferredFrameJob(callback: () => void): DeferredFrameJob {
-  const job: DeferredFrameJob = {
-    frame: null,
-    timer: null,
-  };
-  job.frame = window.requestAnimationFrame(() => {
-    job.frame = null;
-    job.timer = window.setTimeout(() => {
-      job.timer = null;
-      callback();
-    }, 0);
-  });
-  return job;
-}
-
-function useAfterPaintMounted(isVisible: boolean) {
-  const [isMounted, setIsMounted] = useState(false);
-  const jobRef = useRef<DeferredFrameJob | null>(null);
-
-  const cancelJob = useCallback(() => {
-    cancelDeferredFrameJob(jobRef.current);
-    jobRef.current = null;
-  }, []);
-
-  useEffect(() => () => cancelJob(), [cancelJob]);
-
-  useEffect(() => {
-    cancelJob();
-    if (isVisible) {
-      if (!isMounted) {
-        jobRef.current = scheduleDeferredFrameJob(() => {
-          jobRef.current = null;
-          setIsMounted(true);
-        });
-      }
-      return;
-    }
-
-    if (isMounted) {
-      jobRef.current = scheduleDeferredFrameJob(() => {
-        jobRef.current = null;
-        setIsMounted(false);
-      });
-    }
-  }, [cancelJob, isMounted, isVisible]);
-
-  return isMounted;
-}
-
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) {
     return error.message;
@@ -194,68 +135,6 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return error;
   }
   return fallback;
-}
-
-function resolveAgentArtifactState({
-  optimistic,
-  persisted,
-  hasStored,
-  hasAutoOpenArtifacts,
-}: {
-  optimistic: AgentArtifactState | null;
-  persisted: AgentArtifactState;
-  hasStored: boolean;
-  hasAutoOpenArtifacts: boolean;
-}): AgentArtifactState {
-  if (optimistic) {
-    return optimistic;
-  }
-  if (hasStored) {
-    return persisted;
-  }
-  return {
-    ...DEFAULT_AGENT_ARTIFACT_UI_STATE,
-    isOpen: hasAutoOpenArtifacts,
-  };
-}
-
-function getAgentArtifactStateSnapshot(
-  conversationId: string,
-  hasAutoOpenArtifacts: boolean,
-): AgentArtifactState {
-  const optimistic =
-    useAgentArtifactUiStore.getState().artifactByConversationId[conversationId] ?? null;
-  const persisted =
-    useAgentSessionStore.getState().artifactByConversationId[conversationId] ?? null;
-  return resolveAgentArtifactState({
-    optimistic,
-    persisted: persisted ?? DEFAULT_AGENT_ARTIFACT_UI_STATE,
-    hasStored: Boolean(persisted),
-    hasAutoOpenArtifacts,
-  });
-}
-
-function useResolvedAgentArtifactState(
-  conversationId: string | null,
-  hasAutoOpenArtifacts: boolean,
-) {
-  const optimisticArtifactState = useAgentArtifactUiStore(
-    selectOptimisticArtifactState(conversationId),
-  );
-  const persistedArtifactState = useAgentSessionStore(selectArtifactState(conversationId));
-  const hasStoredArtifactState = useAgentSessionStore(
-    selectHasStoredArtifactState(conversationId),
-  );
-  const artifactState = resolveAgentArtifactState({
-    optimistic: optimisticArtifactState,
-    persisted: persistedArtifactState,
-    hasStored: hasStoredArtifactState,
-    hasAutoOpenArtifacts,
-  });
-  return {
-    artifactState,
-    artifactPaneOpen: artifactState.isOpen,
-  };
 }
 
 function AgentTerminalLoadingShell({
