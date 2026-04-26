@@ -98,7 +98,11 @@ vi.mock("./AgentTerminalDrawer", () => ({
       <button
         type="button"
         data-testid="agent-terminal-placement"
-        onClick={() => onPlacementChange("chat")}
+        onClick={() =>
+          onPlacementChange(
+            placement === "auto" ? "panel" : placement === "panel" ? "chat" : "auto"
+          )
+        }
       >
         {placement}
       </button>
@@ -1320,6 +1324,34 @@ describe("AgentsView", () => {
     fireEvent.click(await screen.findByTestId("agent-terminal-placement"));
 
     expect(useAgentTerminalStore.getState().placement).toBe("chat");
+  });
+
+  it("opens the publish pane when terminal placement changes to panel", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
+    useAgentTerminalStore.setState({
+      openByConversationId: { "conversation-1": true },
+      heightByConversationId: {},
+      activeTerminalByConversationId: {},
+      placement: "auto",
+    });
+
+    renderAgentsView();
+    expect(screen.queryByTestId("agents-artifact-resizable-pane")).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByTestId("agent-terminal-placement"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-artifact-resizable-pane")).toBeInTheDocument()
+    );
+    expect(useAgentTerminalStore.getState().placement).toBe("panel");
+    expect(screen.getByTestId("agents-artifact-resizable-pane")).toContainElement(
+      screen.getByTestId("agent-terminal-drawer")
+    );
   });
 
   it("deselects the selected agent when its row is clicked again", async () => {

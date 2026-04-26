@@ -76,6 +76,8 @@ export function AgentTerminalDrawer({
   const hydrationCompleteRef = useRef(false);
   const bufferedEventsRef = useRef<AgentTerminalEvent[]>([]);
   const lastAppliedEventKeyRef = useRef<string | null>(null);
+  const lastReportedSizeRef = useRef<{ cols: number; rows: number } | null>(null);
+  const resizeReportTimerRef = useRef<number | null>(null);
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [status, setStatus] = useState<AgentTerminalStatus>("running");
   const [cwd, setCwd] = useState(workspace.worktreePath);
@@ -91,27 +93,53 @@ export function AgentTerminalDrawer({
 
   const terminalTheme = useMemo(() => readTerminalTheme(), []);
 
-  const fitAndReportSize = useCallback(() => {
+  const fitTerminal = useCallback(() => {
     const terminal = terminalRef.current;
     const fitAddon = fitAddonRef.current;
     if (!terminal || !fitAddon || !containerRef.current) {
-      return;
+      return null;
     }
 
     try {
       fitAddon.fit();
-      const cols = Math.max(terminal.cols || 0, TERMINAL_MIN_COLS);
-      const rows = Math.max(terminal.rows || 0, TERMINAL_MIN_ROWS);
+      return {
+        cols: Math.max(terminal.cols || 0, TERMINAL_MIN_COLS),
+        rows: Math.max(terminal.rows || 0, TERMINAL_MIN_ROWS),
+      };
+    } catch {
+      // xterm can throw when fitting while detached during fast route switches.
+      return null;
+    }
+  }, []);
+
+  const fitAndReportSize = useCallback(() => {
+    const size = fitTerminal();
+    if (!size) {
+      return;
+    }
+    const lastReported = lastReportedSizeRef.current;
+    if (
+      lastReported &&
+      lastReported.cols === size.cols &&
+      lastReported.rows === size.rows
+    ) {
+      return;
+    }
+    lastReportedSizeRef.current = size;
+
+    if (resizeReportTimerRef.current !== null) {
+      window.clearTimeout(resizeReportTimerRef.current);
+    }
+    resizeReportTimerRef.current = window.setTimeout(() => {
+      resizeReportTimerRef.current = null;
       void resizeAgentTerminal({
         conversationId,
         terminalId,
-        cols,
-        rows,
+        cols: size.cols,
+        rows: size.rows,
       }).catch(() => undefined);
-    } catch {
-      // xterm can throw when fitting while detached during fast route switches.
-    }
-  }, [conversationId, terminalId]);
+    }, 80);
+  }, [conversationId, fitTerminal, terminalId]);
 
   const applySnapshot = useCallback((snapshot: AgentTerminalSnapshot) => {
     setStatus(snapshot.status);
@@ -258,14 +286,16 @@ export function AgentTerminalDrawer({
         return;
       }
 
-      scheduleFit();
-      const cols = Math.max(terminal.cols || 0, TERMINAL_MIN_COLS);
-      const rows = Math.max(terminal.rows || 0, TERMINAL_MIN_ROWS);
+      const initialSize = fitTerminal() ?? {
+        cols: TERMINAL_MIN_COLS,
+        rows: TERMINAL_MIN_ROWS,
+      };
+      lastReportedSizeRef.current = initialSize;
       const snapshot = await openAgentTerminal({
         conversationId,
         terminalId,
-        cols,
-        rows,
+        cols: initialSize.cols,
+        rows: initialSize.rows,
       });
 
       if (disposed) {
@@ -318,6 +348,10 @@ export function AgentTerminalDrawer({
       if (resizeFrame !== null) {
         window.cancelAnimationFrame(resizeFrame);
       }
+      if (resizeReportTimerRef.current !== null) {
+        window.clearTimeout(resizeReportTimerRef.current);
+        resizeReportTimerRef.current = null;
+      }
       resizeObserver?.disconnect();
       dataDisposable?.dispose();
       releaseListener();
@@ -330,6 +364,7 @@ export function AgentTerminalDrawer({
     applyEvent,
     applySnapshot,
     conversationId,
+    fitTerminal,
     fitAndReportSize,
     showControlError,
     terminalId,
@@ -445,6 +480,12 @@ export function AgentTerminalDrawer({
           <span className="min-w-0 truncate font-mono" style={{ color: "var(--text-muted)" }}>
             {branchLabel}
           </span>
+          <span
+            className="hidden min-w-0 truncate font-mono md:inline"
+            style={{ color: "var(--text-muted)" }}
+          >
+            {cwd}
+          </span>
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
@@ -460,7 +501,7 @@ export function AgentTerminalDrawer({
             <Trash2 className="h-3.5 w-3.5" />
           </TerminalIconButton>
           <TerminalIconButton
-            label="Restart terminal"
+            label="Start fresh terminal session"
             onClick={() => void handleRestart()}
             disabled={isRestarting}
           >
@@ -476,7 +517,6 @@ export function AgentTerminalDrawer({
         ref={containerRef}
         className="h-[calc(100%-2.25rem)] w-full px-3 py-2"
         aria-label={`Terminal for ${branchLabel}`}
-        title={cwd}
       />
     </div>
   );

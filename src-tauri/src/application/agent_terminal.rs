@@ -216,6 +216,9 @@ impl AgentTerminalService {
             let session = sessions
                 .get_mut(&key)
                 .ok_or_else(|| AppError::NotFound("Agent terminal is not open".to_string()))?;
+            if !terminal_dimensions_changed(session, request.cols, request.rows) {
+                return Ok(session.snapshot());
+            }
             session.cols = request.cols;
             session.rows = request.rows;
             session.updated_at = Utc::now();
@@ -341,6 +344,9 @@ impl AgentTerminalService {
                 return Ok(None);
             };
             if session.status == AgentTerminalStatus::Running {
+                if !terminal_dimensions_changed(session, cols, rows) {
+                    return Ok(Some(session.snapshot()));
+                }
                 session.cols = cols;
                 session.rows = rows;
                 session.updated_at = Utc::now();
@@ -755,6 +761,10 @@ fn append_capped_history(history: &mut String, data: &str) {
     history.drain(..start);
 }
 
+fn terminal_dimensions_changed(session: &TerminalSession, cols: u16, rows: u16) -> bool {
+    session.cols != cols || session.rows != rows
+}
+
 fn emit_terminal_event(app_handle: Option<&AppHandle>, event: &AgentTerminalEvent) {
     if let Some(app_handle) = app_handle {
         let _ = app_handle.emit(AGENT_TERMINAL_EVENT, event);
@@ -799,5 +809,48 @@ mod tests {
         assert!(history.len() <= MAX_HISTORY_BYTES);
         assert!(history.is_char_boundary(0));
         assert!(history.ends_with('β'));
+    }
+
+    #[test]
+    fn terminal_dimension_change_detection_skips_identical_sizes() {
+        let session = TerminalSession {
+            conversation_id: "conversation-1".to_string(),
+            terminal_id: DEFAULT_TERMINAL_ID.to_string(),
+            cwd: "/tmp/project".to_string(),
+            workspace_branch: "feature/agent".to_string(),
+            status: AgentTerminalStatus::Running,
+            pid: Some(42),
+            process: Arc::new(NoopTerminalProcess),
+            history: String::new(),
+            exit_code: None,
+            exit_signal: None,
+            cols: 120,
+            rows: 32,
+            updated_at: Utc::now(),
+        };
+
+        assert!(!terminal_dimensions_changed(&session, 120, 32));
+        assert!(terminal_dimensions_changed(&session, 121, 32));
+        assert!(terminal_dimensions_changed(&session, 120, 33));
+    }
+
+    struct NoopTerminalProcess;
+
+    impl AgentTerminalProcess for NoopTerminalProcess {
+        fn pid(&self) -> Option<u32> {
+            Some(42)
+        }
+
+        fn write(&self, _data: &[u8]) -> AppResult<()> {
+            Ok(())
+        }
+
+        fn resize(&self, _cols: u16, _rows: u16) -> AppResult<()> {
+            Ok(())
+        }
+
+        fn kill(&self) -> AppResult<()> {
+            Ok(())
+        }
     }
 }

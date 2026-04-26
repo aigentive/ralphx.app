@@ -82,6 +82,7 @@ import { AgentsStartComposer } from "./AgentsStartComposer";
 import {
   AGENT_TERMINAL_DEFAULT_HEIGHT,
   useAgentTerminalStore,
+  type AgentTerminalPlacement,
 } from "./agentTerminalStore";
 import {
   agentConversationKeys,
@@ -468,6 +469,15 @@ export function AgentsView({
     (terminalPlacement === "panel" || terminalPlacement === "auto")
       ? "panel"
       : "chat";
+  const handleTerminalPlacementChange = useCallback(
+    (nextPlacement: AgentTerminalPlacement) => {
+      setTerminalPlacement(nextPlacement);
+      if (nextPlacement === "panel" && selectedConversationId && !artifactPaneOpen) {
+        openArtifactTab(selectedConversationId, "publish");
+      }
+    },
+    [artifactPaneOpen, openArtifactTab, selectedConversationId, setTerminalPlacement],
+  );
   const terminalDrawer =
     shouldRenderTerminal && selectedConversationId && activeWorkspace ? (
       <AgentTerminalDrawer
@@ -479,7 +489,7 @@ export function AgentsView({
         }
         onClose={() => setTerminalOpen(selectedConversationId, false)}
         placement={terminalPlacement}
-        onPlacementChange={setTerminalPlacement}
+        onPlacementChange={handleTerminalPlacementChange}
       />
     ) : null;
 
