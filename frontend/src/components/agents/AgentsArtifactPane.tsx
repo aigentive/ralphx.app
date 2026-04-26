@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   Code,
+  Circle,
   FileText,
   GitPullRequestArrow,
   GitBranch,
@@ -577,6 +578,7 @@ function AgentPublishPanel({
           <PublishEventLog
             events={publicationEvents}
             isLoading={publicationEventsQuery.isLoading}
+            isPublishing={isPublishingWorkspace}
           />
         </section>
 
@@ -673,9 +675,11 @@ function AgentPublishPanel({
 function PublishEventLog({
   events,
   isLoading,
+  isPublishing,
 }: {
   events: AgentConversationWorkspacePublicationEvent[];
   isLoading: boolean;
+  isPublishing: boolean;
 }) {
   if (isLoading && events.length === 0) {
     return (
@@ -690,6 +694,10 @@ function PublishEventLog({
   }
 
   const recentEvents = events.slice(-6).reverse();
+  const activeStartedEventId =
+    isPublishing && events.length > 0
+      ? [...events].reverse().find((event) => event.status === "started")?.id
+      : null;
 
   return (
     <div className="mt-4" data-testid="agents-publish-events">
@@ -697,48 +705,64 @@ function PublishEventLog({
         Publish history
       </div>
       <div className="space-y-2">
-        {recentEvents.map((event) => (
-          <div
-            key={event.id}
-            className="flex items-start gap-2 text-xs"
-            data-testid={`agents-publish-event-${event.step}`}
-          >
-            <span
-              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border"
-              style={{
-                borderColor:
-                  event.status === "failed"
-                    ? "var(--status-danger)"
-                    : event.status === "succeeded"
-                      ? "var(--status-success)"
-                      : "var(--overlay-weak)",
-                color:
-                  event.status === "failed"
-                    ? "var(--status-danger)"
-                    : event.status === "succeeded"
-                      ? "var(--status-success)"
-                      : "var(--text-muted)",
-              }}
+        {recentEvents.map((event) => {
+          const eventState =
+            event.status === "failed" || event.status === "succeeded"
+              ? event.status
+              : event.id === activeStartedEventId
+                ? "active"
+                : "history";
+          return (
+            <div
+              key={event.id}
+              className="flex items-start gap-2 text-xs"
+              data-testid={`agents-publish-event-${event.step}`}
             >
-              {event.status === "failed" ? (
-                <X className="h-3 w-3" />
-              ) : event.status === "succeeded" ? (
-                <CheckCircle2 className="h-3 w-3" />
-              ) : (
-                <Loader2 className="h-3 w-3" />
-              )}
-            </span>
-            <div className="min-w-0">
-              <div className="font-medium text-[var(--text-primary)]">
-                {event.summary}
-              </div>
-              <div className="mt-0.5 text-[11px] capitalize text-[var(--text-muted)]">
-                {event.step.replace(/_/g, " ")}
-                {event.classification ? ` / ${event.classification.replace(/_/g, " ")}` : ""}
+              <span
+                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border"
+                data-state={eventState}
+                data-testid={`agents-publish-event-icon-${event.id}`}
+                style={{
+                  borderColor:
+                    eventState === "failed"
+                      ? "var(--status-danger)"
+                      : eventState === "succeeded"
+                        ? "var(--status-success)"
+                        : eventState === "active"
+                          ? "var(--accent-primary)"
+                          : "var(--overlay-weak)",
+                  color:
+                    eventState === "failed"
+                      ? "var(--status-danger)"
+                      : eventState === "succeeded"
+                        ? "var(--status-success)"
+                        : eventState === "active"
+                          ? "var(--accent-primary)"
+                          : "var(--text-muted)",
+                }}
+              >
+                {eventState === "failed" ? (
+                  <X className="h-3 w-3" />
+                ) : eventState === "succeeded" ? (
+                  <CheckCircle2 className="h-3 w-3" />
+                ) : eventState === "active" ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Circle className="h-2 w-2 fill-current" />
+                )}
+              </span>
+              <div className="min-w-0">
+                <div className="font-medium text-[var(--text-primary)]">
+                  {event.summary}
+                </div>
+                <div className="mt-0.5 text-[11px] capitalize text-[var(--text-muted)]">
+                  {event.step.replace(/_/g, " ")}
+                  {event.classification ? ` / ${event.classification.replace(/_/g, " ")}` : ""}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -67,6 +67,7 @@ function renderPane(
   activeTab: AgentArtifactTab = "tasks",
   paneWorkspace = workspace(),
   onPublishWorkspace = vi.fn(),
+  isPublishingWorkspace = false,
 ) {
   const queryClient = createTestQueryClient();
 
@@ -82,6 +83,7 @@ function renderPane(
             onTabChange={() => {}}
             onTaskModeChange={() => {}}
             onPublishWorkspace={onPublishWorkspace}
+            isPublishingWorkspace={isPublishingWorkspace}
             onClose={() => {}}
           />
         </div>
@@ -198,5 +200,54 @@ describe("AgentsArtifactPane", () => {
     expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
     expect(screen.getByText("Pre-commit hook failed")).toBeInTheDocument();
     expect(screen.getByText(/agent fixable/i)).toBeInTheDocument();
+  });
+
+  it("does not show old started publish history rows as active after publish completes", async () => {
+    listPublicationEventsMock.mockResolvedValue([
+      {
+        id: "event-checking",
+        conversationId: "conversation-1",
+        step: "checking",
+        status: "started",
+        summary: "Checking workspace changes",
+        classification: null,
+        createdAt: "2026-04-26T09:01:00Z",
+      },
+      {
+        id: "event-pushing",
+        conversationId: "conversation-1",
+        step: "pushing",
+        status: "started",
+        summary: "Pushing agent branch",
+        classification: null,
+        createdAt: "2026-04-26T09:02:00Z",
+      },
+      {
+        id: "event-published",
+        conversationId: "conversation-1",
+        step: "published",
+        status: "succeeded",
+        summary: "Draft pull request is ready",
+        classification: null,
+        createdAt: "2026-04-26T09:03:00Z",
+      },
+    ]);
+
+    renderPane(
+      "publish",
+      workspace({
+        mode: "edit",
+        publicationPushStatus: "pushed",
+        publicationPrNumber: 78,
+      }),
+    );
+
+    expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-publish-event-icon-event-checking"))
+      .toHaveAttribute("data-state", "history");
+    expect(screen.getByTestId("agents-publish-event-icon-event-pushing"))
+      .toHaveAttribute("data-state", "history");
+    expect(screen.getByTestId("agents-publish-event-icon-event-published"))
+      .toHaveAttribute("data-state", "succeeded");
   });
 });
