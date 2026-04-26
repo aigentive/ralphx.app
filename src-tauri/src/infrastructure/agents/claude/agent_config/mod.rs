@@ -362,12 +362,6 @@ fn normalize_mcp_tool_name(raw: &str, server_name: &str) -> String {
 }
 
 pub fn config_path() -> PathBuf {
-    if let Ok(path) = std::env::var("RALPHX_CONFIG_PATH") {
-        if !path.is_empty() {
-            return PathBuf::from(path);
-        }
-    }
-
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("config")
@@ -386,42 +380,18 @@ fn config_dir_path() -> PathBuf {
 }
 
 pub fn process_config_path() -> PathBuf {
-    if let Ok(path) = std::env::var("RALPHX_PROCESS_CONFIG_PATH") {
-        if !path.is_empty() {
-            return PathBuf::from(path);
-        }
-    }
-
     config_dir_path().join("processes.yaml")
 }
 
 pub fn claude_config_path() -> PathBuf {
-    if let Ok(path) = std::env::var("RALPHX_CLAUDE_CONFIG_PATH") {
-        if !path.is_empty() {
-            return PathBuf::from(path);
-        }
-    }
-
     config_dir_path().join("harnesses").join("claude.yaml")
 }
 
 pub fn codex_config_path() -> PathBuf {
-    if let Ok(path) = std::env::var("RALPHX_CODEX_CONFIG_PATH") {
-        if !path.is_empty() {
-            return PathBuf::from(path);
-        }
-    }
-
     config_dir_path().join("harnesses").join("codex.yaml")
 }
 
 pub fn external_mcp_config_path() -> PathBuf {
-    if let Ok(path) = std::env::var("RALPHX_EXTERNAL_MCP_CONFIG_PATH") {
-        if !path.is_empty() {
-            return PathBuf::from(path);
-        }
-    }
-
     config_dir_path().join("external-mcp.yaml")
 }
 

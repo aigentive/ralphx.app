@@ -33,17 +33,17 @@ fn test_ralphx_node_path_override_uses_existing_file() {
 }
 
 #[test]
-fn test_ralphx_node_path_nonexistent_falls_through() {
-    // RALPHX_NODE_PATH points to a nonexistent file — should fall through gracefully.
-    let _guard = EnvGuard::set("RALPHX_NODE_PATH", "/nonexistent/__no_such_binary__");
+fn test_ralphx_node_path_unsafe_shape_falls_through() {
+    // Unsafe override shapes should fall through gracefully.
+    let _guard = EnvGuard::set("RALPHX_NODE_PATH", "../node");
     // Must not panic; must return a non-empty path via other resolution steps.
     let result = find_node_binary();
     assert!(
         !result.as_os_str().is_empty(),
         "find_node_binary() should never return an empty path"
     );
-    // Verify the nonexistent path was NOT returned.
-    assert_ne!(result, PathBuf::from("/nonexistent/__no_such_binary__"));
+    // Verify the unsafe path was NOT returned.
+    assert_ne!(result, PathBuf::from("../node"));
 }
 
 #[test]
