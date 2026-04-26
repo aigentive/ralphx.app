@@ -1,8 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { AgentConversationWorkspace } from "@/api/chat";
@@ -30,6 +26,7 @@ import { useAgentConversationInvalidation } from "./useAgentConversationInvalida
 import { useAgentUserMessageAutoTitle } from "./useAgentUserMessageAutoTitle";
 import { AgentsConversationSideRegions } from "./AgentsConversationSideRegions";
 import { useAgentsSessionBindings } from "./useAgentsSessionBindings";
+import { useSyncedAgentProjectFocus } from "./useSyncedAgentProjectFocus";
 
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
@@ -58,7 +55,6 @@ export function AgentsView({
     isArtifactResizing,
     splitContainerRef,
   } = useAgentArtifactResize();
-  const syncedProjectIdRef = useRef<string | null>(null);
   const {
     sidebarWidth,
     isCollapsed: isSidebarCollapsed,
@@ -123,14 +119,7 @@ export function AgentsView({
     selectedConversationId,
   });
   useAgentConversationTitleEvents(activeProjectId);
-
-  useEffect(() => {
-    if (!projectId || syncedProjectIdRef.current === projectId) {
-      return;
-    }
-    syncedProjectIdRef.current = projectId;
-    setFocusedProject(projectId);
-  }, [projectId, setFocusedProject]);
+  useSyncedAgentProjectFocus(projectId, setFocusedProject);
 
   const findConversationById = useAgentConversationLookup({
     focusedConversations,
