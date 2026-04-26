@@ -1259,7 +1259,7 @@ describe("AgentsView", () => {
     await screen.findByTestId("agents-artifact-resizable-pane");
 
     const splitContainer = screen.getByTestId("agents-split-container");
-    vi.spyOn(splitContainer, "getBoundingClientRect").mockReturnValue({
+    const rectSpy = vi.spyOn(splitContainer, "getBoundingClientRect").mockReturnValue({
       x: 100,
       y: 0,
       width: 1200,
@@ -1272,6 +1272,8 @@ describe("AgentsView", () => {
     });
 
     fireEvent.mouseDown(screen.getByTestId("agents-artifact-resize-handle"));
+    fireEvent.mouseMove(document, { clientX: 940 });
+    fireEvent.mouseMove(document, { clientX: 920 });
     fireEvent.mouseMove(document, { clientX: 900 });
     fireEvent.mouseUp(document);
 
@@ -1281,6 +1283,7 @@ describe("AgentsView", () => {
       })
     );
     expect(window.localStorage.getItem("ralphx-agents-artifact-width")).toBe("400");
+    expect(rectSpy).toHaveBeenCalledTimes(1);
   });
 
   it("docks the terminal under the artifact panel in auto mode when the panel is open", async () => {

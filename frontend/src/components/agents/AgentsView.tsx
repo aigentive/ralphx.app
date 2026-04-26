@@ -1,5 +1,6 @@
 import {
   lazy,
+  memo,
   Suspense,
   useCallback,
   useEffect,
@@ -168,6 +169,9 @@ export function AgentsView({
   const [manualArtifactVisibilityByConversationId, setManualArtifactVisibilityByConversationId] =
     useState<Record<string, boolean>>({});
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const artifactResizeFrameRef = useRef<number | null>(null);
+  const pendingArtifactWidthRef = useRef<number | null>(null);
+  const artifactResizeBoundsRef = useRef<{ right: number; maxWidth: number } | null>(null);
   const autoTitleStateRef = useRef<
     Map<string, { messages: string[]; lastTitle: string | null }>
   >(new Map());
@@ -392,13 +396,69 @@ export function AgentsView({
 
   const handleArtifactResizeStart = useCallback((event: ReactMouseEvent) => {
     event.preventDefault();
+    const container = splitContainerRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      artifactResizeBoundsRef.current = {
+        right: rect.right,
+        maxWidth: Math.max(
+          AGENTS_ARTIFACT_MIN_WIDTH,
+          rect.width - AGENTS_CHAT_MIN_WIDTH,
+        ),
+      };
+    } else {
+      artifactResizeBoundsRef.current = null;
+    }
+    pendingArtifactWidthRef.current = null;
     setIsArtifactResizing(true);
   }, []);
 
   const handleArtifactResizeReset = useCallback((event: ReactMouseEvent) => {
     event.preventDefault();
+    if (artifactResizeFrameRef.current !== null) {
+      window.cancelAnimationFrame(artifactResizeFrameRef.current);
+      artifactResizeFrameRef.current = null;
+    }
+    pendingArtifactWidthRef.current = null;
+    artifactResizeBoundsRef.current = null;
     setArtifactPanelWidth(null);
   }, []);
+
+  const flushPendingArtifactWidth = useCallback(() => {
+    if (artifactResizeFrameRef.current !== null) {
+      window.cancelAnimationFrame(artifactResizeFrameRef.current);
+      artifactResizeFrameRef.current = null;
+    }
+    const pendingWidth = pendingArtifactWidthRef.current;
+    pendingArtifactWidthRef.current = null;
+    if (pendingWidth !== null) {
+      setArtifactPanelWidth(pendingWidth);
+    }
+  }, []);
+
+  const scheduleArtifactWidth = useCallback((nextWidth: number) => {
+    pendingArtifactWidthRef.current = nextWidth;
+    if (artifactResizeFrameRef.current !== null) {
+      return;
+    }
+    artifactResizeFrameRef.current = window.requestAnimationFrame(() => {
+      artifactResizeFrameRef.current = null;
+      const pendingWidth = pendingArtifactWidthRef.current;
+      pendingArtifactWidthRef.current = null;
+      if (pendingWidth !== null) {
+        setArtifactPanelWidth(pendingWidth);
+      }
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (artifactResizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(artifactResizeFrameRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!isArtifactResizing) {
@@ -410,18 +470,31 @@ export function AgentsView({
       if (!container) {
         return;
       }
-      const rect = container.getBoundingClientRect();
-      const maxArtifactWidth = Math.max(
-        AGENTS_ARTIFACT_MIN_WIDTH,
-        rect.width - AGENTS_CHAT_MIN_WIDTH,
-      );
-      const nextWidth = rect.right - event.clientX;
-      setArtifactPanelWidth(
-        Math.max(AGENTS_ARTIFACT_MIN_WIDTH, Math.min(maxArtifactWidth, nextWidth)),
+      const bounds =
+        artifactResizeBoundsRef.current ??
+        (() => {
+          const rect = container.getBoundingClientRect();
+          const nextBounds = {
+            right: rect.right,
+            maxWidth: Math.max(
+              AGENTS_ARTIFACT_MIN_WIDTH,
+              rect.width - AGENTS_CHAT_MIN_WIDTH,
+            ),
+          };
+          artifactResizeBoundsRef.current = nextBounds;
+          return nextBounds;
+        })();
+      const nextWidth = bounds.right - event.clientX;
+      scheduleArtifactWidth(
+        Math.max(AGENTS_ARTIFACT_MIN_WIDTH, Math.min(bounds.maxWidth, nextWidth)),
       );
     };
 
-    const handleMouseUp = () => setIsArtifactResizing(false);
+    const handleMouseUp = () => {
+      flushPendingArtifactWidth();
+      artifactResizeBoundsRef.current = null;
+      setIsArtifactResizing(false);
+    };
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
@@ -430,7 +503,7 @@ export function AgentsView({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isArtifactResizing]);
+  }, [flushPendingArtifactWidth, isArtifactResizing, scheduleArtifactWidth]);
 
   useEffect(() => {
     if (artifactPanelWidth !== null) {
@@ -1495,7 +1568,7 @@ interface AgentsChatHeaderProps {
   onSelectArtifact: (tab: AgentArtifactTab) => void;
 }
 
-export function AgentsChatHeader({
+export const AgentsChatHeader = memo(function AgentsChatHeader({
   conversation,
   workspace,
   artifactOpen,
@@ -1698,9 +1771,9 @@ export function AgentsChatHeader({
       </div>
     </div>
   );
-}
+});
 
-function AgentsWorkspaceStatusPill({
+const AgentsWorkspaceStatusPill = memo(function AgentsWorkspaceStatusPill({
   workspace,
 }: {
   workspace: AgentConversationWorkspace;
@@ -1749,9 +1822,9 @@ function AgentsWorkspaceStatusPill({
       </TooltipContent>
     </Tooltip>
   );
-}
+});
 
-function AgentConversationBaseLine({
+const AgentConversationBaseLine = memo(function AgentConversationBaseLine({
   workspace,
 }: {
   workspace: AgentConversationWorkspace | null;
@@ -1792,7 +1865,7 @@ function AgentConversationBaseLine({
       />
     </div>
   );
-}
+});
 
 function getAgentTerminalUnavailableReason(
   conversation: AgentConversation | null,
