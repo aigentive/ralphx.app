@@ -245,6 +245,9 @@ export function AgentTerminalDrawer({
   }, []);
 
   useEffect(() => {
+    if (!hasDocked) {
+      return;
+    }
     const host = containerRef.current;
     if (!host) {
       return;
@@ -259,6 +262,7 @@ export function AgentTerminalDrawer({
     let dataDisposable: IDisposable | null = null;
     let resizeFrame: number | null = null;
     let initFrame: number | null = null;
+    let initTimer: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let unlisten: (() => void) | null = null;
     let listenerPromise: Promise<void> | null = null;
@@ -374,15 +378,19 @@ export function AgentTerminalDrawer({
     };
 
     initFrame = window.requestAnimationFrame(() => {
-      void start().catch((error) => {
-        if (disposed) {
-          return;
-        }
-        setIsHydrating(false);
-        setStatus("error");
-        const message = error instanceof Error ? error.message : "Failed to open terminal";
-        terminalRef.current?.write(`\r\n[terminal error] ${message}\r\n`);
-      });
+      initFrame = null;
+      initTimer = window.setTimeout(() => {
+        initTimer = null;
+        void start().catch((error) => {
+          if (disposed) {
+            return;
+          }
+          setIsHydrating(false);
+          setStatus("error");
+          const message = error instanceof Error ? error.message : "Failed to open terminal";
+          terminalRef.current?.write(`\r\n[terminal error] ${message}\r\n`);
+        });
+      }, 0);
     });
 
     return () => {
@@ -390,6 +398,9 @@ export function AgentTerminalDrawer({
       hydrationCompleteRef.current = false;
       if (initFrame !== null) {
         window.cancelAnimationFrame(initFrame);
+      }
+      if (initTimer !== null) {
+        window.clearTimeout(initTimer);
       }
       if (resizeFrame !== null) {
         window.cancelAnimationFrame(resizeFrame);
@@ -412,6 +423,7 @@ export function AgentTerminalDrawer({
     conversationId,
     fitTerminal,
     fitAndReportSize,
+    hasDocked,
     showControlError,
     terminalId,
     terminalTheme,
