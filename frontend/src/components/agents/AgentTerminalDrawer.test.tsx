@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentConversationWorkspace } from "@/api/chat";
@@ -188,5 +188,39 @@ describe("AgentTerminalDrawer", () => {
         terminalId: "default",
       }),
     );
+  });
+
+  it("requests visual close before waiting for the backend terminal close", async () => {
+    const dockElement = document.createElement("div");
+    document.body.appendChild(dockElement);
+    const onClose = vi.fn();
+    closeAgentTerminalMock.mockReturnValue(new Promise(() => undefined));
+
+    render(
+      <TooltipProvider>
+        <AgentTerminalDrawer
+          conversationId="conversation-1"
+          workspace={workspace()}
+          height={220}
+          onHeightChange={vi.fn()}
+          onClose={onClose}
+          placement="auto"
+          onPlacementChange={vi.fn()}
+          dockElement={dockElement}
+        />
+      </TooltipProvider>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByLabelText("Close terminal"));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(closeAgentTerminalMock).toHaveBeenCalledWith({
+      conversationId: "conversation-1",
+      terminalId: "default",
+    });
   });
 });

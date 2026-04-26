@@ -486,10 +486,9 @@ export function AgentTerminalDrawer({
   }, [applySnapshot, conversationId, showControlError, terminalId]);
 
   const handleClose = useCallback(() => {
-    void closeAgentTerminal({ conversationId, terminalId })
-      .catch(showControlError)
-      .finally(onClose);
-  }, [conversationId, onClose, showControlError, terminalId]);
+    onClose();
+    void closeAgentTerminal({ conversationId, terminalId }).catch(() => undefined);
+  }, [conversationId, onClose, terminalId]);
 
   const handleResizeStart = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {

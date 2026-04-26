@@ -12,6 +12,8 @@ Performance is a product requirement, not a polish pass. Applies to user-trigger
 | Decouple visibility from work (NON-NEGOTIABLE) | Opening/closing panels is separate from fetching data, persisting preferences, starting processes, and mounting expensive children. |
 | Defer teardown (NON-NEGOTIABLE) | Closing a heavy panel should visually close first, then unmount costly subtrees after paint; avoid expensive unmount in the same click commit. |
 | Stable shells | Persisted-open panes still render a lightweight frame first so app/page hydration is not blocked by heavy module evaluation. |
+| Stable toggle frames (NON-NEGOTIABLE) | Frequently toggled panes/drawers keep a lightweight hidden frame mounted; clicks change frame visibility synchronously while heavy child mount/unmount is deferred. |
+| No choppy toggle animation (NON-NEGOTIABLE) | Do not animate first-click open/close for heavy panes/terminals unless proven smooth in the actual split layout; instant state change beats a janky transition. |
 | Transcript hydration (NON-NEGOTIABLE) | Existing conversations should paint chat chrome and visual message placeholders first; sorting/filtering/parsing and virtualized transcript hydration must happen after a paint boundary for every `IntegratedChatPanel` host. |
 | Transcript readiness | Do not remove transcript placeholders because a virtualizer emitted a range alone; wait until rendered message DOM is visible and no virtualizer-hidden list state remains. |
 | Message item boundaries | Keep `MessageItem`, markdown bubbles, tool widgets, and transcript rows memoizable with stable props; avoid parent state, transient panel state, or streaming-only state forcing historical message rerenders. |
