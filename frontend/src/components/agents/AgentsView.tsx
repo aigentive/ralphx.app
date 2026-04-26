@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -9,8 +8,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { AgentConversationWorkspace } from "@/api/chat";
 import { useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
-import { useChatStore } from "@/stores/chatStore";
-import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import type { AgentConversation } from "./agentConversations";
 import { useAgentArtifactController } from "./useAgentArtifactController";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
@@ -32,6 +29,7 @@ import { useAgentArtifactActions } from "./useAgentArtifactActions";
 import { useAgentConversationInvalidation } from "./useAgentConversationInvalidation";
 import { useAgentUserMessageAutoTitle } from "./useAgentUserMessageAutoTitle";
 import { AgentsConversationSideRegions } from "./AgentsConversationSideRegions";
+import { useAgentsSessionBindings } from "./useAgentsSessionBindings";
 
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
@@ -74,21 +72,20 @@ export function AgentsView({
     mediumWidth: 276,
   });
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
-  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
-
-  const focusedProjectId = useAgentSessionStore((s) => s.focusedProjectId);
-  const selectedProjectId = useAgentSessionStore((s) => s.selectedProjectId);
-  const storedSelectedConversationId = useAgentSessionStore((s) => s.selectedConversationId);
-  const runtimeByConversationId = useAgentSessionStore((s) => s.runtimeByConversationId);
-  const lastRuntimeByProjectId = useAgentSessionStore((s) => s.lastRuntimeByProjectId);
-  const setFocusedProject = useAgentSessionStore((s) => s.setFocusedProject);
-  const selectConversation = useAgentSessionStore((s) => s.selectConversation);
-  const clearSelection = useAgentSessionStore((s) => s.clearSelection);
-  const setRuntimeForConversation = useAgentSessionStore((s) => s.setRuntimeForConversation);
-  const clearAgentConversationSelection = useCallback(() => {
-    setOptimisticSelectedConversationId(null);
-    clearSelection();
-  }, [clearSelection]);
+  const {
+    clearAgentConversationSelection,
+    focusedProjectId,
+    lastRuntimeByProjectId,
+    runtimeByConversationId,
+    selectConversation,
+    selectedProjectId,
+    setActiveConversation,
+    setFocusedProject,
+    setRuntimeForConversation,
+    storedSelectedConversationId,
+  } = useAgentsSessionBindings({
+    setOptimisticSelectedConversationId,
+  });
   const [terminalChatDockElement, setTerminalChatDockElement] =
     useState<HTMLDivElement | null>(null);
   const [terminalPanelDockElement, setTerminalPanelDockElement] =
