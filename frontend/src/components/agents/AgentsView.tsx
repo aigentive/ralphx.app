@@ -66,6 +66,7 @@ import { useAgentsAutoTitle } from "./useAgentsAutoTitle";
 import { useAgentsActiveComposerControls } from "./useAgentsActiveComposerControls";
 import { useAgentWorkspacePublisher } from "./useAgentWorkspacePublisher";
 import { useStartAgentConversation } from "./useStartAgentConversation";
+import { useAgentConversationLookup } from "./useAgentConversationLookup";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
@@ -197,14 +198,10 @@ export function AgentsView({
     ]
   );
 
-  const findConversationById = useCallback(
-    (conversationId: string) =>
-      focusedConversations.data?.find((item) => item.id === conversationId) ??
-      (selectedConversationFallback?.id === conversationId
-        ? selectedConversationFallback
-        : null),
-    [focusedConversations.data, selectedConversationFallback]
-  );
+  const findConversationById = useAgentConversationLookup({
+    focusedConversations,
+    selectedConversationFallback,
+  });
 
   const showStarterComposer = useCallback(
     (targetProjectId?: string | null) => {
