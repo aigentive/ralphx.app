@@ -103,25 +103,34 @@ export function AgentsArtifactPane({
   onClose,
 }: AgentsArtifactPaneProps) {
   const queryClient = useQueryClient();
+  const showIdeationTabs = workspace?.mode === "ideation";
+  const showPublishTab =
+    workspace?.mode === "edit" && !workspace.linkedIdeationSessionId && !workspace.linkedPlanBranchId;
+  const shouldLoadIdeationData = showIdeationTabs;
   const conversationQuery = useConversation(conversation?.id ?? null, {
-    enabled: !!conversation?.id,
+    enabled: shouldLoadIdeationData && !!conversation?.id,
   });
   const conversationData = conversationQuery.data;
   const conversationMessages = useMemo(
     () =>
-      conversationData && conversationData.conversation?.id === conversation?.id
+      shouldLoadIdeationData &&
+      conversationData &&
+      conversationData.conversation?.id === conversation?.id
         ? conversationData.messages
         : [],
-    [conversationData, conversation?.id],
+    [conversationData, conversation?.id, shouldLoadIdeationData],
   );
   const attachedSessionId = useMemo(
-    () => resolveAttachedIdeationSessionId(conversation, conversationMessages),
-    [conversation, conversationMessages],
+    () =>
+      shouldLoadIdeationData
+        ? resolveAttachedIdeationSessionId(conversation, conversationMessages)
+        : null,
+    [conversation, conversationMessages, shouldLoadIdeationData],
   );
   const sessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedSessionId ?? ""),
     queryFn: () => ideationApi.sessions.getWithData(attachedSessionId!),
-    enabled: !!attachedSessionId,
+    enabled: shouldLoadIdeationData && !!attachedSessionId,
     staleTime: 0,
     refetchInterval: (query) =>
       query.state.data?.session.verificationInProgress ||
@@ -139,16 +148,21 @@ export function AgentsArtifactPane({
     () => (sessionData?.proposals ?? []).map(toTaskProposal),
     [sessionData?.proposals],
   );
-  const planArtifactId =
-    sessionData?.session.planArtifactId ?? sessionData?.session.inheritedPlanArtifactId ?? null;
+  const planArtifactId = shouldLoadIdeationData
+    ? sessionData?.session.planArtifactId ?? sessionData?.session.inheritedPlanArtifactId ?? null
+    : null;
   const planArtifactQuery = useQuery({
     queryKey: ["agents", "artifact", planArtifactId],
     queryFn: () => artifactApi.get(planArtifactId!),
-    enabled: !!planArtifactId,
+    enabled: shouldLoadIdeationData && !!planArtifactId,
     staleTime: 5_000,
   });
-  const verificationQuery = useVerificationStatus(attachedSessionId ?? undefined);
-  const dependencyQuery = useDependencyGraph(attachedSessionId ?? "");
+  const verificationQuery = useVerificationStatus(
+    shouldLoadIdeationData ? attachedSessionId ?? undefined : undefined,
+  );
+  const dependencyQuery = useDependencyGraph(
+    shouldLoadIdeationData ? attachedSessionId ?? "" : "",
+  );
   const verificationData =
     attachedSessionId && verificationQuery.data?.sessionId === attachedSessionId
       ? verificationQuery.data
@@ -159,9 +173,6 @@ export function AgentsArtifactPane({
     verificationData?.status ?? sessionData?.session.verificationStatus ?? "unverified";
   const verificationInProgress =
     verificationData?.inProgress ?? sessionData?.session.verificationInProgress ?? false;
-  const showIdeationTabs = workspace?.mode === "ideation";
-  const showPublishTab =
-    workspace?.mode === "edit" && !workspace.linkedIdeationSessionId && !workspace.linkedPlanBranchId;
   const visibleTabs = useMemo(
     () => [
       ...(showIdeationTabs ? ARTIFACT_TABS : []),

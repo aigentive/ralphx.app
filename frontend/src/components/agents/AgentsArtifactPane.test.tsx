@@ -14,6 +14,10 @@ const {
   listPublicationEventsMock,
   getWorkspaceFreshnessMock,
   updateWorkspaceFromBaseMock,
+  getIdeationSessionMock,
+  useConversationMock,
+  useDependencyGraphMock,
+  useVerificationStatusMock,
   openUrlMock,
 } = vi.hoisted(() => ({
   getWorkspaceChangesMock: vi.fn(),
@@ -21,6 +25,10 @@ const {
   listPublicationEventsMock: vi.fn(),
   getWorkspaceFreshnessMock: vi.fn(),
   updateWorkspaceFromBaseMock: vi.fn(),
+  getIdeationSessionMock: vi.fn(),
+  useConversationMock: vi.fn(),
+  useDependencyGraphMock: vi.fn(),
+  useVerificationStatusMock: vi.fn(),
   openUrlMock: vi.fn(),
 }));
 
@@ -47,6 +55,36 @@ vi.mock("@/api/diff", () => ({
     getAgentConversationWorkspaceFileDiff: (...args: unknown[]) =>
       getWorkspaceDiffMock(...args),
   },
+}));
+
+vi.mock("@/api/ideation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/ideation")>();
+  return {
+    ...actual,
+    ideationApi: {
+      ...actual.ideationApi,
+      sessions: {
+        ...actual.ideationApi.sessions,
+        getWithData: (...args: unknown[]) => getIdeationSessionMock(...args),
+      },
+    },
+  };
+});
+
+vi.mock("@/hooks/useChat", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/hooks/useChat")>();
+  return {
+    ...actual,
+    useConversation: (...args: unknown[]) => useConversationMock(...args),
+  };
+});
+
+vi.mock("@/hooks/useDependencyGraph", () => ({
+  useDependencyGraph: (...args: unknown[]) => useDependencyGraphMock(...args),
+}));
+
+vi.mock("@/hooks/useVerificationStatus", () => ({
+  useVerificationStatus: (...args: unknown[]) => useVerificationStatusMock(...args),
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -77,11 +115,30 @@ const workspace = (
   ...overrides,
 });
 
+const conversation = () => ({
+  id: "conversation-1",
+  contextType: "project" as const,
+  contextId: "project-1",
+  projectId: "project-1",
+  ideationSessionId: null,
+  claudeSessionId: null,
+  providerSessionId: null,
+  providerHarness: "codex",
+  agentMode: "edit" as const,
+  title: "Agent conversation",
+  messageCount: 1,
+  lastMessageAt: "2026-04-23T09:00:00Z",
+  createdAt: "2026-04-23T09:00:00Z",
+  updatedAt: "2026-04-23T09:00:00Z",
+  archivedAt: null,
+});
+
 function renderPane(
   activeTab: AgentArtifactTab = "tasks",
   paneWorkspace = workspace(),
   onPublishWorkspace = vi.fn(),
   isPublishingWorkspace = false,
+  paneConversation = null,
 ) {
   const queryClient = createTestQueryClient();
 
@@ -90,7 +147,7 @@ function renderPane(
       <TooltipProvider>
         <div className="h-[480px]">
           <AgentsArtifactPane
-            conversation={null}
+            conversation={paneConversation}
             workspace={paneWorkspace}
             activeTab={activeTab}
             taskMode="graph"
@@ -133,6 +190,19 @@ describe("AgentsArtifactPane", () => {
       targetRef: "origin/main",
       baseCommit: "base-sha",
     });
+    getIdeationSessionMock.mockResolvedValue(null);
+    useConversationMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+    });
+    useDependencyGraphMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+    });
+    useVerificationStatusMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+    });
     openUrlMock.mockResolvedValue(undefined);
   });
 
@@ -164,6 +234,27 @@ describe("AgentsArtifactPane", () => {
     expect(screen.queryByTestId("agents-artifact-tab-verification")).not.toBeInTheDocument();
     expect(screen.queryByTestId("agents-artifact-tab-proposal")).not.toBeInTheDocument();
     expect(screen.queryByTestId("agents-artifact-tab-tasks")).not.toBeInTheDocument();
+  });
+
+  it("does not start ideation queries for edit workspace publish panes", async () => {
+    renderPane(
+      "publish",
+      workspace({ mode: "edit" }),
+      vi.fn(),
+      false,
+      conversation(),
+    );
+
+    expect(screen.getByTestId("agents-publish-pane")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(getWorkspaceChangesMock).toHaveBeenCalledWith("conversation-1")
+    );
+    expect(useConversationMock).toHaveBeenCalledWith("conversation-1", {
+      enabled: false,
+    });
+    expect(getIdeationSessionMock).not.toHaveBeenCalled();
+    expect(useDependencyGraphMock).toHaveBeenCalledWith("");
+    expect(useVerificationStatusMock).toHaveBeenCalledWith(undefined);
   });
 
   it("confirms publish from the publish pane", () => {
