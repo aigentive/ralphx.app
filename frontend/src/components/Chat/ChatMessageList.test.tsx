@@ -437,13 +437,12 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(screen.queryByText(/Scroll to bottom/i)).not.toBeInTheDocument();
     });
 
-    it("hides scroll-to-bottom button with ≤5 messages", () => {
+    it("shows scroll-to-bottom button with <=5 messages when scrolled up", () => {
       mockIsAtBottom = false;
 
       render(<ChatMessageList {...defaultProps} messages={createMessages(5)} />);
 
-      // Button should not be visible for short conversations
-      expect(screen.queryByText(/Scroll to bottom/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/Scroll to bottom/i)).toBeInTheDocument();
     });
 
     it("provides scroll-to-bottom functionality via hook", () => {
@@ -746,12 +745,12 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(screen.queryByText(/Scroll to bottom/i)).not.toBeInTheDocument();
     });
 
-    it("should hide scroll button with <=5 messages even when scrolled up", () => {
+    it("should show scroll button with <=5 messages when scrolled up", () => {
       mockIsAtBottom = false;
 
       render(<ChatMessageList {...defaultProps} messages={createMessages(3)} />);
 
-      expect(screen.queryByText(/Scroll to bottom/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/Scroll to bottom/i)).toBeInTheDocument();
     });
 
     it("should call scrollToBottom when button is clicked", async () => {

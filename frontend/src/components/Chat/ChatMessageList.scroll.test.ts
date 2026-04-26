@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getTrueBottomScrollTop,
   isScrollElementVisuallyAtBottom,
+  shouldShowScrollToBottomControl,
   VISUAL_BOTTOM_EPSILON_PX,
 } from "./ChatMessageList.scroll";
 
@@ -86,5 +87,75 @@ describe("ChatMessageList scroll math", () => {
         })
       )
     ).toBe(0);
+  });
+
+  it("shows the scroll-to-bottom control when Virtuoso range is above the last item even if bottom state is stale", () => {
+    expect(
+      shouldShowScrollToBottomControl({
+        hasScrollerElement: true,
+        hasScrollableOverflow: true,
+        isAtBottom: true,
+        isLastItemVisible: false,
+        isVisuallyAtBottom: true,
+        scrollToTimestamp: null,
+        timelineLength: 10,
+      })
+    ).toBe(true);
+  });
+
+  it("hides the scroll-to-bottom control at the visual bottom", () => {
+    expect(
+      shouldShowScrollToBottomControl({
+        hasScrollerElement: true,
+        hasScrollableOverflow: true,
+        isAtBottom: true,
+        isLastItemVisible: true,
+        isVisuallyAtBottom: true,
+        scrollToTimestamp: null,
+        timelineLength: 10,
+      })
+    ).toBe(false);
+  });
+
+  it("keeps existing non-scroller fallback visibility behavior", () => {
+    expect(
+      shouldShowScrollToBottomControl({
+        hasScrollerElement: false,
+        hasScrollableOverflow: false,
+        isAtBottom: false,
+        isLastItemVisible: null,
+        isVisuallyAtBottom: true,
+        scrollToTimestamp: null,
+        timelineLength: 10,
+      })
+    ).toBe(true);
+  });
+
+  it("shows the scroll-to-bottom control for a short timeline when content overflows and is not at bottom", () => {
+    expect(
+      shouldShowScrollToBottomControl({
+        hasScrollerElement: true,
+        hasScrollableOverflow: true,
+        isAtBottom: true,
+        isLastItemVisible: true,
+        isVisuallyAtBottom: false,
+        scrollToTimestamp: null,
+        timelineLength: 2,
+      })
+    ).toBe(true);
+  });
+
+  it("hides the scroll-to-bottom control when the scroller has no overflow", () => {
+    expect(
+      shouldShowScrollToBottomControl({
+        hasScrollerElement: true,
+        hasScrollableOverflow: false,
+        isAtBottom: false,
+        isLastItemVisible: true,
+        isVisuallyAtBottom: false,
+        scrollToTimestamp: null,
+        timelineLength: 2,
+      })
+    ).toBe(false);
   });
 });
