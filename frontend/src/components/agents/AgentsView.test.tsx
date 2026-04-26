@@ -36,6 +36,8 @@ const {
   getWorkspaceDiffMock,
   toastErrorMock,
   toastSuccessMock,
+  terminalDrawerMountMock,
+  terminalDrawerUnmountMock,
 } = vi.hoisted(() => ({
   useProjectsMock: vi.fn(),
   useProjectAgentConversationsMock: vi.fn(),
@@ -59,6 +61,8 @@ const {
   getWorkspaceDiffMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
+  terminalDrawerMountMock: vi.fn(),
+  terminalDrawerUnmountMock: vi.fn(),
 }));
 
 vi.mock("@/hooks/useProjects", () => ({
@@ -86,29 +90,47 @@ vi.mock("./useProjectAgentConversations", () => ({
   ) => useProjectAgentConversationsMock(projectId, includeArchived, options),
 }));
 
-vi.mock("./AgentTerminalDrawer", () => ({
-  AgentTerminalDrawer: ({
-    placement,
-    onPlacementChange,
-  }: {
-    placement: string;
-    onPlacementChange: (placement: "auto" | "chat" | "panel") => void;
-  }) => (
-    <div data-testid="agent-terminal-drawer" data-placement={placement}>
-      <button
-        type="button"
-        data-testid="agent-terminal-placement"
-        onClick={() =>
-          onPlacementChange(
-            placement === "auto" ? "panel" : placement === "panel" ? "chat" : "auto"
-          )
-        }
-      >
-        {placement}
-      </button>
-    </div>
-  ),
-}));
+vi.mock("./AgentTerminalDrawer", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  const ReactDom = await vi.importActual<typeof import("react-dom")>("react-dom");
+
+  return {
+    AgentTerminalDrawer: ({
+      placement,
+      onPlacementChange,
+      dockElement,
+    }: {
+      placement: string;
+      onPlacementChange: (placement: "auto" | "chat" | "panel") => void;
+      dockElement: HTMLElement | null;
+    }) => {
+      React.useEffect(() => {
+        terminalDrawerMountMock();
+        return () => {
+          terminalDrawerUnmountMock();
+        };
+      }, []);
+
+      const drawer = (
+        <div data-testid="agent-terminal-drawer" data-placement={placement}>
+          <button
+            type="button"
+            data-testid="agent-terminal-placement"
+            onClick={() =>
+              onPlacementChange(
+                placement === "auto" ? "panel" : placement === "panel" ? "chat" : "auto"
+              )
+            }
+          >
+            {placement}
+          </button>
+        </div>
+      );
+
+      return dockElement ? ReactDom.createPortal(drawer, dockElement) : drawer;
+    },
+  };
+});
 
 vi.mock("@/hooks/useChat", () => ({
   chatKeys: {
@@ -761,6 +783,8 @@ describe("AgentsView", () => {
     getWorkspaceDiffMock.mockReset();
     toastErrorMock.mockReset();
     toastSuccessMock.mockReset();
+    terminalDrawerMountMock.mockReset();
+    terminalDrawerUnmountMock.mockReset();
 
     sendAgentMessageMock.mockResolvedValue({
       conversationId: "conversation-2",
@@ -1355,6 +1379,40 @@ describe("AgentsView", () => {
     expect(screen.getByTestId("agents-artifact-resizable-pane")).toContainElement(
       screen.getByTestId("agent-terminal-drawer")
     );
+  });
+
+  it("keeps the terminal drawer mounted while moving it between chat and panel docks", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+    resetAgentSessionState({
+      selectedProjectId: "project-1",
+      selectedConversationId: "conversation-1",
+    });
+    useAgentTerminalStore.setState({
+      openByConversationId: { "conversation-1": true },
+      heightByConversationId: {},
+      activeTerminalByConversationId: {},
+      placement: "auto",
+    });
+
+    renderAgentsView();
+
+    const drawer = await screen.findByTestId("agent-terminal-drawer");
+    await waitFor(() => expect(terminalDrawerMountMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("agent-terminal-host-chat")).toContainElement(drawer);
+
+    fireEvent.click(screen.getByTestId("agent-terminal-placement"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-artifact-resizable-pane")).toBeInTheDocument()
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("agent-terminal-host-panel")).toContainElement(
+        screen.getByTestId("agent-terminal-drawer")
+      )
+    );
+    expect(terminalDrawerMountMock).toHaveBeenCalledTimes(1);
+    expect(terminalDrawerUnmountMock).not.toHaveBeenCalled();
   });
 
   it("deselects the selected agent when its row is clicked again", async () => {

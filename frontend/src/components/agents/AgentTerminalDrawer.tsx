@@ -1,12 +1,14 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import type { FitAddon } from "@xterm/addon-fit";
 import type {
@@ -56,6 +58,7 @@ interface AgentTerminalDrawerProps {
   onClose: () => void;
   placement: AgentTerminalPlacement;
   onPlacementChange: (placement: AgentTerminalPlacement) => void;
+  dockElement: HTMLElement | null;
 }
 
 const TERMINAL_MIN_COLS = 80;
@@ -69,8 +72,15 @@ export function AgentTerminalDrawer({
   onClose,
   placement,
   onPlacementChange,
+  dockElement,
 }: AgentTerminalDrawerProps) {
   const terminalId = DEFAULT_AGENT_TERMINAL_ID;
+  const [portalRoot] = useState(() => {
+    const element = document.createElement("div");
+    element.style.width = "100%";
+    return element;
+  });
+  const [hasDocked, setHasDocked] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XTermTerminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -95,6 +105,21 @@ export function AgentTerminalDrawer({
   const displayCwd = useMemo(() => compactTerminalPath(cwd), [cwd]);
 
   const terminalTheme = useMemo(() => readTerminalTheme(), []);
+
+  useLayoutEffect(() => {
+    if (!dockElement) {
+      return;
+    }
+
+    dockElement.appendChild(portalRoot);
+    setHasDocked(true);
+
+    return () => {
+      if (portalRoot.parentElement === dockElement) {
+        dockElement.removeChild(portalRoot);
+      }
+    };
+  }, [dockElement, portalRoot]);
 
   const fitTerminal = useCallback(() => {
     const terminal = terminalRef.current;
@@ -476,7 +501,11 @@ export function AgentTerminalDrawer({
     [height, onHeightChange],
   );
 
-  return (
+  if (!hasDocked) {
+    return null;
+  }
+
+  return createPortal(
     <div
       className={cn(
         "relative shrink-0 overflow-hidden border-t",
@@ -569,7 +598,8 @@ export function AgentTerminalDrawer({
           aria-label={`Terminal for ${branchLabel}`}
         />
       </div>
-    </div>
+    </div>,
+    portalRoot,
   );
 }
 

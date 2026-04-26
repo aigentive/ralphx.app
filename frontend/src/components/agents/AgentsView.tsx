@@ -217,6 +217,10 @@ export function AgentsView({
   const toggleTerminalOpen = useAgentTerminalStore((s) => s.toggleOpen);
   const setTerminalHeight = useAgentTerminalStore((s) => s.setHeight);
   const setTerminalPlacement = useAgentTerminalStore((s) => s.setPlacement);
+  const [terminalChatDockElement, setTerminalChatDockElement] =
+    useState<HTMLDivElement | null>(null);
+  const [terminalPanelDockElement, setTerminalPanelDockElement] =
+    useState<HTMLDivElement | null>(null);
   const artifactWidthCss = artifactPanelWidth
     ? `${artifactPanelWidth}px`
     : AGENTS_ARTIFACT_DEFAULT_WIDTH;
@@ -562,6 +566,10 @@ export function AgentsView({
     (terminalPlacement === "panel" || terminalPlacement === "auto")
       ? "panel"
       : "chat";
+  const terminalDockElement =
+    terminalDockTarget === "panel"
+      ? terminalPanelDockElement
+      : terminalChatDockElement;
   const handleTerminalPlacementChange = useCallback(
     (nextPlacement: AgentTerminalPlacement) => {
       setTerminalPlacement(nextPlacement);
@@ -583,6 +591,7 @@ export function AgentsView({
         onClose={() => setTerminalOpen(selectedConversationId, false)}
         placement={terminalPlacement}
         onPlacementChange={handleTerminalPlacementChange}
+        dockElement={terminalDockElement}
       />
     ) : null;
 
@@ -1471,7 +1480,13 @@ export function AgentsView({
                   emptyState={<div />}
                 />
               </div>
-              {terminalDockTarget === "chat" && terminalDrawer}
+              {shouldRenderTerminal && terminalDockTarget === "chat" ? (
+                <div
+                  ref={setTerminalChatDockElement}
+                  className="shrink-0"
+                  data-testid="agent-terminal-host-chat"
+                />
+              ) : null}
             </div>
           ) : (
             <div className="flex-1 min-w-0 h-full">
@@ -1546,11 +1561,18 @@ export function AgentsView({
                       />
                     </Suspense>
                   </div>
-                  {terminalDockTarget === "panel" && terminalDrawer}
+                  {shouldRenderTerminal && terminalDockTarget === "panel" ? (
+                    <div
+                      ref={setTerminalPanelDockElement}
+                      className="shrink-0"
+                      data-testid="agent-terminal-host-panel"
+                    />
+                  ) : null}
                 </div>
               </div>
             </>
           )}
+          {terminalDrawer}
         </div>
 
       </section>
