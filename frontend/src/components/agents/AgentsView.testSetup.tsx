@@ -38,6 +38,9 @@ const agentsViewTestMocks = vi.hoisted(() => ({
   listIdeationSessionsMock: vi.fn(),
   getWorkspaceChangesMock: vi.fn(),
   getWorkspaceDiffMock: vi.fn(),
+  getWorkspaceCommitsMock: vi.fn(),
+  getWorkspaceCommitChangesMock: vi.fn(),
+  getWorkspaceCommitDiffMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   integratedChatPanelRenderMock: vi.fn(),
@@ -70,6 +73,9 @@ const {
   listIdeationSessionsMock,
   getWorkspaceChangesMock,
   getWorkspaceDiffMock,
+  getWorkspaceCommitsMock,
+  getWorkspaceCommitChangesMock,
+  getWorkspaceCommitDiffMock,
   toastErrorMock,
   toastSuccessMock,
   integratedChatPanelRenderMock,
@@ -238,6 +244,12 @@ vi.mock("@/api/diff", () => ({
       getWorkspaceChangesMock(...args),
     getAgentConversationWorkspaceFileDiff: (...args: unknown[]) =>
       getWorkspaceDiffMock(...args),
+    getAgentConversationWorkspaceCommits: (...args: unknown[]) =>
+      getWorkspaceCommitsMock(...args),
+    getAgentConversationWorkspaceCommitFileChanges: (...args: unknown[]) =>
+      getWorkspaceCommitChangesMock(...args),
+    getAgentConversationWorkspaceCommitFileDiff: (...args: unknown[]) =>
+      getWorkspaceCommitDiffMock(...args),
   },
 }));
 
@@ -467,6 +479,9 @@ export function setupAgentsViewTest() {
   listIdeationSessionsMock.mockReset();
   getWorkspaceChangesMock.mockReset();
   getWorkspaceDiffMock.mockReset();
+  getWorkspaceCommitsMock.mockReset();
+  getWorkspaceCommitChangesMock.mockReset();
+  getWorkspaceCommitDiffMock.mockReset();
   toastErrorMock.mockReset();
   toastSuccessMock.mockReset();
   integratedChatPanelRenderMock.mockReset();
@@ -501,6 +516,9 @@ export function setupAgentsViewTest() {
   listIdeationSessionsMock.mockResolvedValue([]);
   getWorkspaceChangesMock.mockResolvedValue([]);
   getWorkspaceDiffMock.mockResolvedValue("");
+  getWorkspaceCommitsMock.mockResolvedValue([]);
+  getWorkspaceCommitChangesMock.mockResolvedValue([]);
+  getWorkspaceCommitDiffMock.mockResolvedValue("");
   publishAgentConversationWorkspaceMock.mockResolvedValue({
     workspace: {
       conversationId: "conversation-2",

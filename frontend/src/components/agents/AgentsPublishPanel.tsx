@@ -16,7 +16,10 @@ import {
   chatApi,
   type AgentConversationWorkspace,
 } from "@/api/chat";
-import type { FileChange as DiffViewerFileChange } from "@/components/diff";
+import type {
+  Commit as DiffViewerCommit,
+  FileChange as DiffViewerFileChange,
+} from "@/components/diff";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
@@ -41,6 +44,7 @@ export function AgentPublishPanel({
   const queryClient = useQueryClient();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [commitFiles, setCommitFiles] = useState<DiffViewerFileChange[]>([]);
+  const [isLoadingCommitFiles, setIsLoadingCommitFiles] = useState(false);
   const conversationId = workspace?.conversationId ?? null;
   const canHydratePublishFacts = useDeferredAgentHydration(conversationId);
   const changesQuery = useQuery({
@@ -56,6 +60,25 @@ export function AgentPublishPanel({
     enabled: canHydratePublishFacts && !!conversationId,
     staleTime: 0,
     refetchInterval: isPublishingWorkspace ? 1_500 : false,
+  });
+  const commitsQuery = useQuery({
+    queryKey: ["agents", "workspace-commits", conversationId],
+    queryFn: async (): Promise<DiffViewerCommit[]> => {
+      const commits = await diffApi.getAgentConversationWorkspaceCommits(
+        conversationId!,
+      );
+      return commits
+        .map((commit) => ({
+          sha: commit.sha,
+          shortSha: commit.shortSha,
+          message: commit.message,
+          author: commit.author,
+          date: commit.date,
+        }))
+        .reverse();
+    },
+    enabled: canHydratePublishFacts && !!conversationId && reviewOpen,
+    staleTime: 2_000,
   });
   const freshnessQuery = useQuery({
     queryKey: ["agents", "conversation-workspace-freshness", conversationId],
@@ -87,6 +110,9 @@ export function AgentPublishPanel({
         queryClient.invalidateQueries({
           queryKey: ["agents", "workspace-diff", result.workspace.conversationId],
         }),
+        queryClient.invalidateQueries({
+          queryKey: ["agents", "workspace-commits", result.workspace.conversationId],
+        }),
       ]);
       toast.success(
         result.updated
@@ -114,6 +140,7 @@ export function AgentPublishPanel({
     },
   });
   const changes = changesQuery.data ?? [];
+  const commits = commitsQuery.data ?? [];
   const publicationEvents = publicationEventsQuery.data ?? [];
   const isChangesLoading =
     Boolean(conversationId) && (!canHydratePublishFacts || changesQuery.isLoading);
@@ -323,16 +350,22 @@ export function AgentPublishPanel({
             <Suspense fallback={<EmptyArtifactState title="Loading workspace diff..." />}>
               <LazyDiffViewer
                 changes={changes}
-                commits={[]}
+                commits={commits}
                 commitFiles={commitFiles}
-                onFetchDiff={async (filePath) => {
+                onFetchDiff={async (filePath, commitSha) => {
                   if (!conversationId) {
                     return null;
                   }
-                  const diff = await diffApi.getAgentConversationWorkspaceFileDiff(
-                    conversationId,
-                    filePath,
-                  );
+                  const diff = commitSha
+                    ? await diffApi.getAgentConversationWorkspaceCommitFileDiff(
+                        conversationId,
+                        commitSha,
+                        filePath,
+                      )
+                    : await diffApi.getAgentConversationWorkspaceFileDiff(
+                        conversationId,
+                        filePath,
+                      );
                   return {
                     filePath: diff.filePath,
                     oldContent: diff.oldContent,
@@ -341,8 +374,29 @@ export function AgentPublishPanel({
                     language: diff.language,
                   };
                 }}
-                onFetchCommitFiles={async () => setCommitFiles([])}
+                onFetchCommitFiles={async (commitSha) => {
+                  if (!conversationId) {
+                    setCommitFiles([]);
+                    return;
+                  }
+                  setIsLoadingCommitFiles(true);
+                  setCommitFiles([]);
+                  try {
+                    setCommitFiles(
+                      await diffApi.getAgentConversationWorkspaceCommitFileChanges(
+                        conversationId,
+                        commitSha,
+                      ),
+                    );
+                  } catch {
+                    setCommitFiles([]);
+                  } finally {
+                    setIsLoadingCommitFiles(false);
+                  }
+                }}
                 isLoadingChanges={changesQuery.isLoading}
+                isLoadingHistory={commitsQuery.isLoading}
+                isLoadingCommitFiles={isLoadingCommitFiles}
                 changesLabel="Workspace Changes"
                 changesEmptyTitle="No workspace changes"
                 changesEmptySubtitle="There are no changed files to review for this agent branch."

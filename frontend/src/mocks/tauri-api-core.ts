@@ -123,6 +123,16 @@ const mockWorkspaceFileChanges = [
   },
 ] as const;
 
+const mockWorkspaceCommits = [
+  {
+    sha: "abc123def4567890abc123def4567890abc123de",
+    short_sha: "abc123d",
+    message: "Update agent workspace",
+    author: "Agent",
+    timestamp: "2026-04-26T09:00:00Z",
+  },
+] as const;
+
 function mockWorkspaceFileDiff(filePath: string) {
   const language = filePath.endsWith(".tsx")
     ? "tsx"
@@ -393,6 +403,13 @@ const commandHandlers: Record<
   get_agent_conversation_workspace_file_changes: async () =>
     mockWorkspaceFileChanges.map((change) => ({ ...change })),
   get_agent_conversation_workspace_file_diff: async (args) =>
+    mockWorkspaceFileDiff(args.filePath as string),
+  get_agent_conversation_workspace_commits: async () => ({
+    commits: mockWorkspaceCommits.map((commit) => ({ ...commit })),
+  }),
+  get_agent_conversation_workspace_commit_file_changes: async () =>
+    mockWorkspaceFileChanges.map((change) => ({ ...change })),
+  get_agent_conversation_workspace_commit_file_diff: async (args) =>
     mockWorkspaceFileDiff(args.filePath as string),
   create_agent_conversation: async (args) => {
     const input = args.input as {

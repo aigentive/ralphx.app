@@ -146,4 +146,37 @@ export const diffApi = {
       FileDiffSchema,
       transformFileDiff
     ),
+
+  getAgentConversationWorkspaceCommits: (
+    conversationId: string
+  ): Promise<CommitInfo[]> =>
+    typedInvokeWithTransform(
+      "get_agent_conversation_workspace_commits",
+      { conversationId },
+      TaskCommitsResponseSchema,
+      (response) => response.commits.map(transformCommitInfo)
+    ),
+
+  getAgentConversationWorkspaceCommitFileChanges: (
+    conversationId: string,
+    commitSha: string
+  ): Promise<FileChange[]> =>
+    typedInvokeWithTransform(
+      "get_agent_conversation_workspace_commit_file_changes",
+      { conversationId, commitSha },
+      FileChangesResponseSchema,
+      (changes) => changes.map(transformFileChange)
+    ),
+
+  getAgentConversationWorkspaceCommitFileDiff: (
+    conversationId: string,
+    commitSha: string,
+    filePath: string
+  ): Promise<FileDiff> =>
+    typedInvokeWithTransform(
+      "get_agent_conversation_workspace_commit_file_diff",
+      { conversationId, commitSha, filePath },
+      FileDiffSchema,
+      transformFileDiff
+    ),
 } as const;

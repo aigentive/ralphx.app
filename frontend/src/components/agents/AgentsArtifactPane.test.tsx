@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +12,9 @@ import { AgentsArtifactPane } from "./AgentsArtifactPane";
 const {
   getWorkspaceChangesMock,
   getWorkspaceDiffMock,
+  getWorkspaceCommitsMock,
+  getWorkspaceCommitChangesMock,
+  getWorkspaceCommitDiffMock,
   listPublicationEventsMock,
   getWorkspaceFreshnessMock,
   updateWorkspaceFromBaseMock,
@@ -22,6 +26,9 @@ const {
 } = vi.hoisted(() => ({
   getWorkspaceChangesMock: vi.fn(),
   getWorkspaceDiffMock: vi.fn(),
+  getWorkspaceCommitsMock: vi.fn(),
+  getWorkspaceCommitChangesMock: vi.fn(),
+  getWorkspaceCommitDiffMock: vi.fn(),
   listPublicationEventsMock: vi.fn(),
   getWorkspaceFreshnessMock: vi.fn(),
   updateWorkspaceFromBaseMock: vi.fn(),
@@ -54,6 +61,12 @@ vi.mock("@/api/diff", () => ({
       getWorkspaceChangesMock(...args),
     getAgentConversationWorkspaceFileDiff: (...args: unknown[]) =>
       getWorkspaceDiffMock(...args),
+    getAgentConversationWorkspaceCommits: (...args: unknown[]) =>
+      getWorkspaceCommitsMock(...args),
+    getAgentConversationWorkspaceCommitFileChanges: (...args: unknown[]) =>
+      getWorkspaceCommitChangesMock(...args),
+    getAgentConversationWorkspaceCommitFileDiff: (...args: unknown[]) =>
+      getWorkspaceCommitDiffMock(...args),
   },
 }));
 
@@ -169,6 +182,16 @@ describe("AgentsArtifactPane", () => {
       { path: "frontend/src/App.tsx", status: "modified", additions: 4, deletions: 1 },
     ]);
     getWorkspaceDiffMock.mockResolvedValue({
+      filePath: "frontend/src/App.tsx",
+      oldContent: "old",
+      newContent: "new",
+      language: "typescript",
+    });
+    getWorkspaceCommitsMock.mockResolvedValue([]);
+    getWorkspaceCommitChangesMock.mockResolvedValue([
+      { path: "frontend/src/App.tsx", status: "modified", additions: 4, deletions: 1 },
+    ]);
+    getWorkspaceCommitDiffMock.mockResolvedValue({
       filePath: "frontend/src/App.tsx",
       oldContent: "old",
       newContent: "new",
@@ -437,6 +460,31 @@ describe("AgentsArtifactPane", () => {
 
     await waitFor(() => expect(screen.getByTestId("agents-review-changes")).toBeEnabled());
     expect(getWorkspaceChangesMock).toHaveBeenCalledWith("conversation-1");
+  });
+
+  it("shows workspace branch commits in the review dialog history tab", async () => {
+    const user = userEvent.setup();
+    getWorkspaceCommitsMock.mockResolvedValue([
+      {
+        sha: "abc123def456",
+        shortSha: "abc123d",
+        message: "Update Codex model catalog",
+        author: "Agent",
+        date: new Date("2026-04-26T09:00:00Z"),
+      },
+    ]);
+    renderPane("publish", workspace({ mode: "edit" }));
+
+    await waitFor(() => expect(screen.getByTestId("agents-review-changes")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("agents-review-changes"));
+    await waitFor(() =>
+      expect(getWorkspaceCommitsMock).toHaveBeenCalledWith("conversation-1")
+    );
+    await user.click(await screen.findByTestId("tab-history"));
+
+    expect(await screen.findByTestId("commit-abc123d")).toHaveTextContent(
+      "Update Codex model catalog"
+    );
   });
 
   it("shows workspace publish pipeline status only during active publishing", () => {
