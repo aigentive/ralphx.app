@@ -31,7 +31,6 @@ import {
   AGENT_MODEL_OPTIONS,
   AGENT_PROVIDER_OPTIONS,
 } from "./agentOptions";
-import { useResolvedAgentArtifactState } from "./agentArtifactState";
 import { AgentsTerminalDockHost } from "./AgentsTerminalRegion";
 import type { IdeationArtifactTab } from "./agentArtifactTabs";
 import {
@@ -120,14 +119,8 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
     focusedChatSessionId ??
     (activeConversation.contextType === "ideation" ? activeConversation.contextId : undefined);
   const isFocusedChildChat = chatFocus.type !== "workspace";
-  const { artifactState, artifactPaneOpen } = useResolvedAgentArtifactState(
-    activeConversation.id,
-    hasAutoOpenArtifacts,
-  );
   const showWorkspaceStatus =
-    Boolean(activeWorkspace) &&
-    !isFocusedChildChat &&
-    !(artifactPaneOpen && artifactState.activeTab === "publish");
+    Boolean(activeWorkspace) && !isFocusedChildChat;
   const panelStoreKeyOverride = useMemo(() => {
     if (focusedChatSessionId) {
       return buildStoreKey("ideation", focusedChatSessionId);

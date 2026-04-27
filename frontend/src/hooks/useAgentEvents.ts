@@ -8,10 +8,13 @@
  */
 
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
-import type { ChatMessageResponse } from "@/api/chat";
+import type {
+  ChatMessageResponse,
+  ConversationMessagesPageResponse,
+} from "@/api/chat";
 import {
   mergeConversationProviderMetadata,
   type ChatConversation,
@@ -32,12 +35,58 @@ import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
 import {
   chatKeys,
   invalidateConversationDataQueries,
-  type ConversationHistoryWindowData,
 } from "./useChat";
 import { ideationKeys } from "./useIdeation";
 import { conversationStatsKey } from "./useConversationStats";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
+
+type ConversationHistoryCacheData = InfiniteData<ConversationMessagesPageResponse>;
+
+function isConversationHistoryCacheData(
+  data: ConversationHistoryCacheData | undefined
+): data is ConversationHistoryCacheData {
+  return Boolean(data && Array.isArray(data.pages));
+}
+
+function updateConversationHistoryConversation(
+  data: ConversationHistoryCacheData | undefined,
+  updateConversation: (conversation: ChatConversation) => ChatConversation
+): ConversationHistoryCacheData | undefined {
+  if (!isConversationHistoryCacheData(data)) {
+    return data;
+  }
+
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      conversation: updateConversation(page.conversation),
+    })),
+  };
+}
+
+function appendMessageToConversationHistory(
+  data: ConversationHistoryCacheData | undefined,
+  message: ChatMessageResponse
+): ConversationHistoryCacheData | undefined {
+  if (!isConversationHistoryCacheData(data) || data.pages.length === 0) {
+    return data;
+  }
+
+  if (data.pages.some((page) => page.messages.some((item) => item.id === message.id))) {
+    return data;
+  }
+
+  return {
+    ...data,
+    pages: data.pages.map((page, index) => ({
+      ...page,
+      messages: index === 0 ? [...page.messages, message] : page.messages,
+      totalMessageCount: page.totalMessageCount + 1,
+    })),
+  };
+}
 
 /**
  * Hook to manage agent event listeners
@@ -107,15 +156,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         }
       );
 
-      queryClient.setQueryData<ConversationHistoryWindowData>(
+      queryClient.setQueryData<ConversationHistoryCacheData>(
         chatKeys.conversationHistory(conversationId),
-        (oldData) => {
-          if (!oldData) return oldData;
-          return {
-            ...oldData,
-            conversation: mergeConversation(oldData.conversation),
-          };
-        }
+        (oldData) => updateConversationHistoryConversation(oldData, mergeConversation)
       );
 
       queryClient.setQueryData<ChatConversation[]>(
@@ -301,6 +344,22 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         // This handles both lead and teammate conversations — teammate messages
         // have their own conversation_id that won't match activeConversationId.
         if (role === "user" && conversation_id === activeConversationId) {
+          const newMessage: ChatMessageResponse = {
+            id: message_id,
+            conversationId: conversation_id,
+            sessionId: null,
+            projectId: null,
+            taskId: null,
+            role: role as "user" | "assistant" | "system",
+            content: content || "",
+            metadata: payload.metadata ?? null,
+            parentMessageId: null,
+            createdAt: created_at ?? new Date().toISOString(),
+            toolCalls: null,
+            contentBlocks: null,
+            sender: null,
+          };
+
           // Optimistic append for user messages in the active conversation only
           queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
             chatKeys.conversation(activeConversationId),
@@ -311,55 +370,12 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
                 return oldData;
               }
 
-              const newMessage: ChatMessageResponse = {
-                id: message_id,
-                conversationId: conversation_id,
-                sessionId: null,
-                projectId: null,
-                taskId: null,
-                role: role as "user" | "assistant" | "system",
-                content: content || "",
-                metadata: payload.metadata ?? null,
-                parentMessageId: null,
-                createdAt: created_at ?? new Date().toISOString(),
-                toolCalls: null,
-                contentBlocks: null,
-                sender: null,
-              };
               return { ...oldData, messages: [...existingMessages, newMessage] };
             }
           );
-          queryClient.setQueryData<ConversationHistoryWindowData>(
+          queryClient.setQueryData<ConversationHistoryCacheData>(
             chatKeys.conversationHistory(activeConversationId),
-            (oldData) => {
-              if (!oldData) return oldData;
-              const existingMessages = oldData.messages ?? [];
-              if (existingMessages.some((message) => message.id === message_id)) {
-                return oldData;
-              }
-
-              const newMessage: ChatMessageResponse = {
-                id: message_id,
-                conversationId: conversation_id,
-                sessionId: null,
-                projectId: null,
-                taskId: null,
-                role: role as "user" | "assistant" | "system",
-                content: content || "",
-                metadata: payload.metadata ?? null,
-                parentMessageId: null,
-                createdAt: created_at ?? new Date().toISOString(),
-                toolCalls: null,
-                contentBlocks: null,
-                sender: null,
-              };
-
-              return {
-                ...oldData,
-                messages: [...existingMessages, newMessage],
-                totalMessageCount: (oldData.totalMessageCount ?? existingMessages.length) + 1,
-              };
-            }
+            (oldData) => appendMessageToConversationHistory(oldData, newMessage)
           );
         } else if (conversation_id !== activeConversationId) {
           // Non-active conversation (e.g. teammate messages): invalidate to refetch from DB.

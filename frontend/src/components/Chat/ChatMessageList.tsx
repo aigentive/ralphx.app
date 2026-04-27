@@ -187,7 +187,8 @@ export interface ChatMessageData {
 type TimelineItem =
   | { kind: "message"; data: ChatMessageData; sortTime: number }
   | { kind: "hook"; data: HookEvent | HookStartedEvent; sortTime: number }
-  | { kind: "team_event"; data: TeamMessage; sortTime: number };
+  | { kind: "team_event"; data: TeamMessage; sortTime: number }
+  | { kind: "streaming"; sortTime: number };
 
 function parseMessageMetadata(metadata: string | null | undefined): Record<string, unknown> | null {
   if (!metadata) return null;
@@ -240,6 +241,102 @@ function renderSystemCard(
   }
 
   return null;
+}
+
+function isMessageAtOrAfter(candidate: ChatMessageData, marker: ChatMessageData) {
+  const candidateTime = new Date(candidate.createdAt).getTime();
+  const markerTime = new Date(marker.createdAt).getTime();
+  return candidateTime > markerTime || (candidateTime === markerTime && candidate.id >= marker.id);
+}
+
+function latestMessageByCreatedAt(
+  messages: ChatMessageData[],
+  predicate: (message: ChatMessageData) => boolean,
+) {
+  let latest: ChatMessageData | null = null;
+  let latestTime = -Infinity;
+
+  for (const message of messages) {
+    if (!predicate(message)) {
+      continue;
+    }
+    const time = new Date(message.createdAt).getTime();
+    if (
+      latest === null ||
+      time > latestTime ||
+      (time === latestTime && message.id > latest.id)
+    ) {
+      latest = message;
+      latestTime = time;
+    }
+  }
+
+  return latest;
+}
+
+function hasRenderablePersistedContent(message: ChatMessageData) {
+  if (message.content.trim().length > 0) {
+    return true;
+  }
+  if ((message.toolCalls?.length ?? 0) > 0) {
+    return true;
+  }
+  return (message.contentBlocks?.length ?? 0) > 0;
+}
+
+function getCurrentTurnProviderMessageId(
+  messages: ChatMessageData[],
+  {
+    hasActiveStreaming,
+    isAgentRunning,
+    isFinalizing,
+  }: {
+    hasActiveStreaming: boolean;
+    isAgentRunning: boolean;
+    isFinalizing: boolean;
+  },
+) {
+  const shouldSuppressActiveTurnSnapshot = hasActiveStreaming || isFinalizing;
+  const shouldSuppressEmptyCurrentTurnSnapshot = isAgentRunning;
+  if (!shouldSuppressActiveTurnSnapshot && !shouldSuppressEmptyCurrentTurnSnapshot) {
+    return null;
+  }
+
+  const latestUserMessage = latestMessageByCreatedAt(
+    messages,
+    (message) => message.role === "user",
+  );
+  const latestProviderMessage = latestMessageByCreatedAt(
+    messages,
+    (message) => {
+      if (!isProviderRole(message.role)) {
+        return false;
+      }
+      if (!latestUserMessage) {
+        return true;
+      }
+      return isMessageAtOrAfter(message, latestUserMessage);
+    },
+  );
+
+  if (!latestProviderMessage) {
+    return null;
+  }
+
+  const isEmptySnapshot = !hasRenderablePersistedContent(latestProviderMessage);
+  const belongsToCurrentTurn = latestUserMessage
+    ? isMessageAtOrAfter(latestProviderMessage, latestUserMessage)
+    : isEmptySnapshot;
+
+  if (!belongsToCurrentTurn) {
+    return null;
+  }
+
+  if (shouldSuppressActiveTurnSnapshot) {
+    return latestProviderMessage.id;
+  }
+
+  return isEmptySnapshot ? latestProviderMessage.id : null;
 }
 
 interface ChatMessageListProps {
@@ -502,6 +599,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       [normalizedStreamingContentBlocks, streamingTasks],
     );
 
+    const shouldShowActiveTypingIndicator = isSending || isAgentRunning;
     const shouldShowFooterFallback = (isSending || isAgentRunning) && !hasRenderableStreamingBlocks;
     const hasFooterStreamingContent = hasRenderableStreamingBlocks || shouldShowFooterFallback;
 
@@ -877,8 +975,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const hasHookEvents = hookEvents.length > 0 || activeHooks.length > 0;
 
     // Filter logic: during active streaming OR when conversation is finalizing (between
-    // message_created clearing state and query refetch completing), exclude the last
-    // assistant message from DB to prevent duplication with streamingContentBlocks.
+    // message_created clearing state and query refetch completing), exclude only the
+    // provider snapshot for the current turn to prevent duplication with live content.
     //
     // isFinalizing is set to true (in the same React batch as clearing streaming state)
     // by useChatEvents on agent:message_created, and reset to false after 500ms. This
@@ -889,51 +987,32 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // between DB empty-message creation and the first streaming event), filter the last
     // assistant message if its content is empty/whitespace — prevents the empty "pill" flash.
     const hasActiveStreaming = normalizedStreamingContentBlocks.length > 0 ||
-                              (streamingTasks && streamingTasks.size > 0);
-    const shouldFilterLastProviderMessage = hasActiveStreaming || isFinalizing;
+                              Boolean(streamingTasks && streamingTasks.size > 0);
+    const suppressedProviderMessageId = useMemo(
+      () => getCurrentTurnProviderMessageId(messages, {
+        hasActiveStreaming,
+        isAgentRunning,
+        isFinalizing,
+      }),
+      [hasActiveStreaming, isAgentRunning, isFinalizing, messages],
+    );
+    const shouldFilterCurrentProviderMessage = suppressedProviderMessageId !== null;
 
     // When filter clears (streaming/finalizing ends), scroll to bottom so the newly
     // revealed finalized assistant message is visible.
     useEffect(() => {
       if (scrollToTimestamp) return; // Don't auto-scroll in history mode
-      if (prevShouldFilterRef.current && !shouldFilterLastProviderMessage) {
+      if (prevShouldFilterRef.current && !shouldFilterCurrentProviderMessage) {
         scheduleBottomPin("finalized provider message revealed");
       }
-      prevShouldFilterRef.current = shouldFilterLastProviderMessage;
-    }, [scheduleBottomPin, shouldFilterLastProviderMessage, scrollToTimestamp]);
+      prevShouldFilterRef.current = shouldFilterCurrentProviderMessage;
+    }, [scheduleBottomPin, shouldFilterCurrentProviderMessage, scrollToTimestamp]);
 
     const timeline = useMemo((): TimelineItem[] => {
       const items: TimelineItem[] = [];
 
-      // Exclude the streaming assistant message from DB when active streaming/finalizing —
-      // it's being rendered live in streamingContentBlocks. Do NOT filter based solely on
-      // isAgentRunning: during team sessions the lead runs for extended periods, and filtering
-      // without active streaming blocks hides historical assistant messages between turns.
-      //
-      // Use ID-based filtering: find the assistant message with the most recent createdAt
-      // (with id as tiebreaker) so filtering is stable regardless of array order.
-      const filteredMessages = shouldFilterLastProviderMessage
-        ? (() => {
-            // Find the most recently created provider message by timestamp (stable, not index)
-            let latestProviderMessageId: string | null = null;
-            let latestProviderMessageTime = -Infinity;
-            for (const msg of messages) {
-              if (isProviderRole(msg.role)) {
-                const t = new Date(msg.createdAt).getTime();
-                if (
-                  t > latestProviderMessageTime ||
-                  (t === latestProviderMessageTime && msg.id > (latestProviderMessageId ?? ""))
-                ) {
-                  latestProviderMessageTime = t;
-                  latestProviderMessageId = msg.id;
-                }
-              }
-            }
-            if (latestProviderMessageId !== null) {
-              return messages.filter((msg) => msg.id !== latestProviderMessageId);
-            }
-            return messages;
-          })()
+      const filteredMessages = suppressedProviderMessageId
+        ? messages.filter((msg) => msg.id !== suppressedProviderMessageId)
         : messages;
 
       // Team filter: each tab (lead/teammate) loads its own conversation's messages via
@@ -985,13 +1064,20 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         }
       }
 
+      if (hasFooterStreamingContent) {
+        items.push({
+          kind: "streaming",
+          sortTime: Number.MAX_SAFE_INTEGER,
+        });
+      }
+
       // Sort if we interleaved any non-message items
-      if (hasHookEvents || teamMessages.length > 0) {
+      if (hasHookEvents || teamMessages.length > 0 || hasFooterStreamingContent) {
         items.sort((a, b) => a.sortTime - b.sortTime);
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastProviderMessage, attachmentsMap, teamFilter, teamMessages]);
+    }, [messages, suppressedProviderMessageId, hookEvents, activeHooks, hasHookEvents, attachmentsMap, teamFilter, teamMessages, hasFooterStreamingContent]);
 
     const lastItemIndex = firstItemIndex + timeline.length - 1;
     const startReachedHandler =
@@ -1178,6 +1264,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             );
           })}
 
+          {shouldShowActiveTypingIndicator && hasRenderableStreamingBlocks && (
+            <TypingIndicator />
+          )}
+
           {/* Fallback when agent is running but no content blocks yet:
               - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
               - No tool calls either → show TypingIndicator (agent thinking) */}
@@ -1202,9 +1292,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       );
     }, [
       hasFooterStreamingContent,
+      hasRenderableStreamingBlocks,
       normalizedStreamingContentBlocks,
       providerHarness,
       providerSessionId,
+      shouldShowActiveTypingIndicator,
       shouldShowFooterFallback,
       streamingTasks,
       streamingToolCalls,
@@ -1212,7 +1304,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
-    // to re-mount Header/Footer → layout change → atBottomStateChange → re-render → loop.
+    // to re-mount Header → layout change → atBottomStateChange → re-render → loop.
     const virtuosoComponents = useMemo(() => ({
       Header: () => (
         <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
@@ -1227,22 +1319,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           </ContentShell>
         </div>
       ),
-      Footer: () => {
-        if (!footerContent) {
-          return null;
-        }
-        return (
-          <div ref={handleFooterRef} className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
-            <ContentShell className={contentWidthClassName}>
-              {footerContent}
-            </ContentShell>
-          </div>
-        );
-      },
     }), [
       contentWidthClassName,
       failedRun, onDismissFailedRun,
-      footerContent, handleFooterRef,
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
@@ -1287,6 +1366,18 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                 content={teamMsg.content}
                 timestamp={teamMsg.timestamp}
               />
+            </ContentShell>
+          </div>
+        );
+      }
+      if (item.kind === "streaming") {
+        if (!footerContent) {
+          return null;
+        }
+        return (
+          <div ref={handleFooterRef} className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
+            <ContentShell className={contentWidthClassName}>
+              {footerContent}
             </ContentShell>
           </div>
         );
@@ -1341,7 +1432,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           </ContentShell>
         </div>
       );
-    }, [contentWidthClassName, getTeammateInfo, providerHarness, providerSessionId, timeline.length]);
+    }, [contentWidthClassName, footerContent, getTeammateInfo, handleFooterRef, providerHarness, providerSessionId, timeline.length]);
 
     if (isTestEnv) {
       return (
@@ -1401,6 +1492,19 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                 </div>
               );
             }
+            if (item.kind === "streaming") {
+              if (!footerContent) {
+                return null;
+              }
+              return (
+                <div key="streaming-live" ref={handleFooterRef} className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
+                  <ContentShell className={contentWidthClassName}>
+                    {footerContent}
+                    <div ref={messagesEndRef} />
+                  </ContentShell>
+                </div>
+              );
+            }
             const msg = item.data;
 
             const systemCard = renderSystemCard(
@@ -1452,14 +1556,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             );
           })}
 
-          {footerContent && (
-            <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
-              <ContentShell className={contentWidthClassName}>
-                {footerContent}
-                <div ref={messagesEndRef} />
-              </ContentShell>
-            </div>
-          )}
           <ScrollToBottomControl
             visible={shouldShowScrollToBottom}
             onClick={handleScrollToBottomClick}

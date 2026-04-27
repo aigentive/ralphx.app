@@ -353,6 +353,48 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(screen.queryByText("Persisted orchestrator message")).not.toBeInTheDocument();
     });
 
+    it("does not hide previous-turn provider rows before the current streaming row is persisted", () => {
+      const messages: ChatMessageData[] = [
+        {
+          id: "msg-user-1",
+          role: "user",
+          content: "first request",
+          createdAt: new Date(2026, 0, 1, 12, 0).toISOString(),
+          toolCalls: null,
+          contentBlocks: null,
+        },
+        {
+          id: "msg-assistant-1",
+          role: "assistant",
+          content: "previous answer",
+          createdAt: new Date(2026, 0, 1, 12, 1).toISOString(),
+          toolCalls: null,
+          contentBlocks: null,
+        },
+        {
+          id: "msg-user-2",
+          role: "user",
+          content: "second request",
+          createdAt: new Date(2026, 0, 1, 12, 2).toISOString(),
+          toolCalls: null,
+          contentBlocks: null,
+        },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isSending={true}
+          streamingContentBlocks={[{ type: "text", text: "Live current answer" }]}
+        />
+      );
+
+      expect(screen.getByText("previous answer")).toBeInTheDocument();
+      expect(screen.getByText("second request")).toBeInTheDocument();
+      expect(screen.getByText("Live current answer")).toBeInTheDocument();
+    });
+
     it("keeps the latest orchestrator provider row hidden while finalizing after streaming", () => {
       const messages: ChatMessageData[] = [
         {
@@ -1144,7 +1186,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(spinner).not.toBeInTheDocument();
     });
 
-    it("does not render TypingIndicator when content blocks are present", () => {
+    it("keeps TypingIndicator at the bottom while active content blocks are present", () => {
       const blocks: StreamingContentBlock[] = [
         {
           type: "tool_use",
@@ -1161,7 +1203,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
         />
       );
 
-      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-typing-indicator")).toBeInTheDocument();
     });
 
     it("renders multiple non-diff tool calls in order", () => {
@@ -2051,7 +2093,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(screen.getByTestId("chat-typing-indicator")).toBeInTheDocument();
     });
 
-    it("(3) agent running + content blocks → neither fallback shown (content blocks render loop handles display)", () => {
+    it("(3) agent running + content blocks → content blocks render and typing remains visible", () => {
       const blocks: StreamingContentBlock[] = [
         { type: "text", text: "I am working on it..." },
       ];
@@ -2065,9 +2107,10 @@ describe("ChatMessageList - Scroll Behavior", () => {
         />
       );
 
-      // Content blocks are rendered; the fallback section is skipped entirely
+      // Content blocks render through the live timeline, with a typing indicator
+      // pinned beneath them while the agent is still active.
       expect(screen.getByText(/I am working on it/)).toBeInTheDocument();
-      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-typing-indicator")).toBeInTheDocument();
     });
 
     it("shows ToolCallIndicator fallback and typing indicator when tool calls exist but content blocks is empty array", () => {

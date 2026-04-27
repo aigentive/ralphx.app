@@ -12,13 +12,17 @@
 import { renderHook, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
 import { useAgentEvents } from "./useAgentEvents";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { ChatConversation } from "@/types/chat-conversation";
+import type {
+  ChatMessageResponse,
+  ConversationMessagesPageResponse,
+} from "@/api/chat";
 
 // ============================================================================
 // Mock EventBus
@@ -110,6 +114,25 @@ function makeConversation(overrides: Partial<ChatConversation> = {}): ChatConver
     lastMessageAt: null,
     createdAt: "2026-04-07T10:00:00.000Z",
     updatedAt: "2026-04-07T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeMessage(overrides: Partial<ChatMessageResponse> = {}): ChatMessageResponse {
+  return {
+    id: "msg-1",
+    conversationId: "conv-1",
+    sessionId: null,
+    projectId: null,
+    taskId: null,
+    role: "user",
+    content: "Hello",
+    metadata: null,
+    parentMessageId: null,
+    createdAt: "2026-04-07T10:01:00.000Z",
+    toolCalls: null,
+    contentBlocks: null,
+    sender: null,
     ...overrides,
   };
 }
@@ -265,6 +288,49 @@ describe("useAgentEvents", () => {
       expect(listQuery?.[0]?.providerSessionId).toBe("thread-7");
     });
 
+    it("merges provider metadata into cached infinite conversation history pages", () => {
+      const { queryClient, wrapper } = createWrapperWithClient();
+      const conversation = makeConversation();
+      queryClient.setQueryData<InfiniteData<ConversationMessagesPageResponse>>(
+        ["chat", "conversation", "conv-1", "history"],
+        {
+          pages: [
+            {
+              conversation,
+              messages: [],
+              limit: 40,
+              offset: 0,
+              totalMessageCount: 0,
+              hasOlder: false,
+            },
+          ],
+          pageParams: [0],
+        }
+      );
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          provider_harness: "codex",
+          provider_session_id: "thread-7",
+        });
+      });
+
+      const historyQuery = queryClient.getQueryData<
+        InfiniteData<ConversationMessagesPageResponse>
+      >(["chat", "conversation", "conv-1", "history"]);
+
+      expect(historyQuery?.pages[0]?.conversation.providerHarness).toBe("codex");
+      expect(historyQuery?.pages[0]?.conversation.providerSessionId).toBe("thread-7");
+      expect((historyQuery as unknown as { conversation?: unknown }).conversation).toBeUndefined();
+      expect((historyQuery as unknown as { messages?: unknown }).messages).toBeUndefined();
+    });
+
     it("clears stale claude alias when provider metadata switches to codex", () => {
       const { queryClient, wrapper } = createWrapperWithClient();
       const conversation: ChatConversation = {
@@ -304,6 +370,60 @@ describe("useAgentEvents", () => {
       expect(conversationQuery?.conversation.providerHarness).toBe("codex");
       expect(conversationQuery?.conversation.providerSessionId).toBe("thread-9");
       expect(conversationQuery?.conversation.claudeSessionId).toBeNull();
+    });
+  });
+
+  describe("agent:message_created cache updates", () => {
+    it("appends optimistic user messages to the infinite conversation history shape", () => {
+      const { queryClient, wrapper } = createWrapperWithClient();
+      const conversation = makeConversation();
+      const existingMessage = makeMessage({
+        id: "msg-existing",
+        content: "Existing",
+        createdAt: "2026-04-07T10:00:00.000Z",
+      });
+
+      queryClient.setQueryData<InfiniteData<ConversationMessagesPageResponse>>(
+        ["chat", "conversation", "conv-1", "history"],
+        {
+          pages: [
+            {
+              conversation,
+              messages: [existingMessage],
+              limit: 40,
+              offset: 0,
+              totalMessageCount: 1,
+              hasOlder: false,
+            },
+          ],
+          pageParams: [0],
+        }
+      );
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:message_created", {
+          context_type: "project",
+          context_id: "project-1",
+          conversation_id: "conv-1",
+          message_id: "msg-new",
+          role: "user",
+          content: "New message",
+          created_at: "2026-04-07T10:02:00.000Z",
+        });
+      });
+
+      const historyQuery = queryClient.getQueryData<
+        InfiniteData<ConversationMessagesPageResponse>
+      >(["chat", "conversation", "conv-1", "history"]);
+
+      expect(historyQuery?.pages[0]?.messages.map((message) => message.id)).toEqual([
+        "msg-existing",
+        "msg-new",
+      ]);
+      expect(historyQuery?.pages[0]?.totalMessageCount).toBe(2);
+      expect((historyQuery as unknown as { messages?: unknown }).messages).toBeUndefined();
     });
   });
 

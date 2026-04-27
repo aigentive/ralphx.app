@@ -904,7 +904,6 @@ export function useChatEvents({
       }>("agent:usage_updated", (payload) => {
         if (!isRelevant(payload)) return;
 
-        invalidateConversationDataQueries(queryClient, payload.conversation_id);
         queryClient.invalidateQueries({
           queryKey: conversationStatsKey(payload.conversation_id),
         });
