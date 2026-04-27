@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use tracing::info;
 
+use crate::application::agent_workspace_bridge::AgentWorkspaceBridgeDeps;
 use crate::application::runtime_factory::{ChatRuntimeFactoryDeps, RuntimeFactoryDeps};
 use crate::application::startup_runtime_builders::{
     build_startup_chat_resumption_runner, build_startup_reconciliation_runner,
@@ -377,6 +378,20 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         )
         .await;
     }
+
+    startup_background::spawn_agent_workspace_bridge_dispatcher(
+        AgentWorkspaceBridgeDeps {
+            project_repo: Arc::clone(&project_repo),
+            chat_conversation_repo: Arc::clone(&conversation_repo),
+            chat_message_repo: Arc::clone(&chat_message_repo),
+            agent_conversation_workspace_repo: Arc::clone(&agent_conversation_workspace_repo),
+            external_events_repo: Arc::clone(&external_events_repo),
+            message_queue: Arc::clone(&message_queue),
+        },
+        recovery_chat_service_deps.clone(),
+        Arc::clone(&execution_state),
+        app_handle.clone(),
+    );
 
     startup_background::spawn_cleanup_loops(
         Arc::clone(&external_events_repo),

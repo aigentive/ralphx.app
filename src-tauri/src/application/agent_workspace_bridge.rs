@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -7,14 +8,42 @@ use serde_json::{json, Map as JsonMap, Value as JsonValue};
 use crate::application::chat_service::{ChatService, SendCallerContext, SendMessageOptions};
 use crate::application::AppState;
 use crate::domain::entities::{
-    AgentConversationWorkspace, ChatContextType, ChatConversationId, ChatMessage,
+    AgentConversationWorkspace, AgentConversationWorkspaceStatus, ChatContextType,
+    ChatConversationId, ChatMessage,
 };
-use crate::domain::repositories::external_events_repository::ExternalEventRecord;
+use crate::domain::repositories::{
+    external_events_repository::ExternalEventRecord, AgentConversationWorkspaceRepository,
+    ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository, ProjectRepository,
+};
+use crate::domain::services::MessageQueue;
 use crate::error::{AppError, AppResult};
 
 const LEGACY_BRIDGE_SOURCE: &str = "project_agent_ideation_bridge";
 const WAKEUP_SOURCE: &str = "project_agent_workspace_bridge_wakeup";
 const MAX_BRIDGE_EVENT_REPLAY: i64 = 10_000;
+
+#[derive(Clone)]
+pub struct AgentWorkspaceBridgeDeps {
+    pub project_repo: Arc<dyn ProjectRepository>,
+    pub chat_conversation_repo: Arc<dyn ChatConversationRepository>,
+    pub chat_message_repo: Arc<dyn ChatMessageRepository>,
+    pub agent_conversation_workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    pub external_events_repo: Arc<dyn ExternalEventsRepository>,
+    pub message_queue: Arc<MessageQueue>,
+}
+
+impl AgentWorkspaceBridgeDeps {
+    pub fn from_app_state(state: &AppState) -> Self {
+        Self {
+            project_repo: Arc::clone(&state.project_repo),
+            chat_conversation_repo: Arc::clone(&state.chat_conversation_repo),
+            chat_message_repo: Arc::clone(&state.chat_message_repo),
+            agent_conversation_workspace_repo: Arc::clone(&state.agent_conversation_workspace_repo),
+            external_events_repo: Arc::clone(&state.external_events_repo),
+            message_queue: Arc::clone(&state.message_queue),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AgentWorkspaceBridgeEvent {
@@ -44,12 +73,95 @@ pub struct AgentWorkspaceBridgeWakeUpResult {
     pub event_count: usize,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct AgentWorkspaceBridgeDispatchSummary {
+    pub project_count: usize,
+    pub workspace_count: usize,
+    pub wake_up_count: usize,
+    pub queued_wake_up_count: usize,
+    pub error_count: usize,
+}
+
+pub async fn dispatch_agent_workspace_bridge_events_once<S: ChatService + ?Sized>(
+    state: &AppState,
+    chat_service: &S,
+) -> AppResult<AgentWorkspaceBridgeDispatchSummary> {
+    let deps = AgentWorkspaceBridgeDeps::from_app_state(state);
+    dispatch_agent_workspace_bridge_events_once_with_deps(&deps, chat_service).await
+}
+
+pub async fn dispatch_agent_workspace_bridge_events_once_with_deps<S: ChatService + ?Sized>(
+    deps: &AgentWorkspaceBridgeDeps,
+    chat_service: &S,
+) -> AppResult<AgentWorkspaceBridgeDispatchSummary> {
+    let mut summary = AgentWorkspaceBridgeDispatchSummary::default();
+    let projects = deps.project_repo.get_all().await?;
+    summary.project_count = projects.len();
+
+    for project in projects {
+        let workspaces = deps
+            .agent_conversation_workspace_repo
+            .get_by_project_id(&project.id)
+            .await?;
+
+        for workspace in workspaces {
+            if !workspace_should_receive_bridge_events(&workspace) {
+                continue;
+            }
+            summary.workspace_count += 1;
+
+            match wake_agent_workspace_for_bridge_events_with_deps(
+                deps,
+                chat_service,
+                &workspace.conversation_id,
+            )
+            .await
+            {
+                Ok(Some(result)) => {
+                    summary.wake_up_count += 1;
+                    if result.was_queued {
+                        summary.queued_wake_up_count += 1;
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    summary.error_count += 1;
+                    tracing::warn!(
+                        project_id = %project.id,
+                        conversation_id = %workspace.conversation_id,
+                        error = %error,
+                        "Agent workspace bridge dispatch failed for linked workspace"
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(summary)
+}
+
+fn workspace_should_receive_bridge_events(workspace: &AgentConversationWorkspace) -> bool {
+    workspace.status == AgentConversationWorkspaceStatus::Active
+        && workspace.linked_ideation_session_id.is_some()
+}
+
 pub async fn wake_agent_workspace_for_bridge_events<S: ChatService + ?Sized>(
     state: &AppState,
     chat_service: &S,
     conversation_id: &ChatConversationId,
 ) -> AppResult<Option<AgentWorkspaceBridgeWakeUpResult>> {
-    let Some(wake_up) = prepare_agent_workspace_bridge_wakeup(state, conversation_id).await? else {
+    let deps = AgentWorkspaceBridgeDeps::from_app_state(state);
+    wake_agent_workspace_for_bridge_events_with_deps(&deps, chat_service, conversation_id).await
+}
+
+pub async fn wake_agent_workspace_for_bridge_events_with_deps<S: ChatService + ?Sized>(
+    deps: &AgentWorkspaceBridgeDeps,
+    chat_service: &S,
+    conversation_id: &ChatConversationId,
+) -> AppResult<Option<AgentWorkspaceBridgeWakeUpResult>> {
+    let Some(wake_up) =
+        prepare_agent_workspace_bridge_wakeup_with_deps(deps, conversation_id).await?
+    else {
         return Ok(None);
     };
     let event_count = wake_up.event_keys.len();
@@ -81,7 +193,15 @@ pub async fn prepare_agent_workspace_bridge_wakeup(
     state: &AppState,
     conversation_id: &ChatConversationId,
 ) -> AppResult<Option<AgentWorkspaceBridgeWakeUp>> {
-    let Some(conversation) = state
+    let deps = AgentWorkspaceBridgeDeps::from_app_state(state);
+    prepare_agent_workspace_bridge_wakeup_with_deps(&deps, conversation_id).await
+}
+
+pub async fn prepare_agent_workspace_bridge_wakeup_with_deps(
+    deps: &AgentWorkspaceBridgeDeps,
+    conversation_id: &ChatConversationId,
+) -> AppResult<Option<AgentWorkspaceBridgeWakeUp>> {
+    let Some(conversation) = deps
         .chat_conversation_repo
         .get_by_id(conversation_id)
         .await?
@@ -92,7 +212,7 @@ pub async fn prepare_agent_workspace_bridge_wakeup(
         return Ok(None);
     }
 
-    let Some(workspace) = state
+    let Some(workspace) = deps
         .agent_conversation_workspace_repo
         .get_by_conversation_id(conversation_id)
         .await?
@@ -100,22 +220,22 @@ pub async fn prepare_agent_workspace_bridge_wakeup(
         return Ok(None);
     };
 
-    let existing_messages = state
+    let existing_messages = deps
         .chat_message_repo
         .get_by_conversation(conversation_id)
         .await?;
     let (mut delivered_event_keys, removed_invalid_count) =
-        reconcile_legacy_bridge_messages(state, conversation_id, &workspace, existing_messages)
+        reconcile_legacy_bridge_messages(deps, conversation_id, &workspace, existing_messages)
             .await?;
     if removed_invalid_count > 0 {
-        refresh_conversation_stats(state, conversation_id).await?;
+        refresh_conversation_stats(deps, conversation_id).await?;
     }
-    collect_queued_bridge_event_keys(state, conversation_id, &mut delivered_event_keys);
+    collect_queued_bridge_event_keys(deps, conversation_id, &mut delivered_event_keys);
 
     let Some(session_id) = workspace.linked_ideation_session_id.as_ref() else {
         return Ok(None);
     };
-    let events = state
+    let events = deps
         .external_events_repo
         .get_events_after_cursor(
             &[workspace.project_id.as_str().to_string()],
@@ -143,7 +263,7 @@ pub async fn prepare_agent_workspace_bridge_wakeup(
 }
 
 async fn reconcile_legacy_bridge_messages(
-    state: &AppState,
+    deps: &AgentWorkspaceBridgeDeps,
     conversation_id: &ChatConversationId,
     workspace: &AgentConversationWorkspace,
     messages: Vec<ChatMessage>,
@@ -175,7 +295,7 @@ async fn reconcile_legacy_bridge_messages(
             .and_then(JsonValue::as_str);
         let is_valid_owner = expected_session_id.as_deref() == source_session_id;
         if !is_valid_owner {
-            state.chat_message_repo.delete(&message.id).await?;
+            deps.chat_message_repo.delete(&message.id).await?;
             removed += 1;
             continue;
         }
@@ -201,12 +321,12 @@ async fn reconcile_legacy_bridge_messages(
 }
 
 fn collect_queued_bridge_event_keys(
-    state: &AppState,
+    deps: &AgentWorkspaceBridgeDeps,
     conversation_id: &ChatConversationId,
     delivered_event_keys: &mut HashSet<String>,
 ) {
     let queue_context_id = conversation_id.as_str();
-    for queued in state
+    for queued in deps
         .message_queue
         .get_queued(ChatContextType::Project, &queue_context_id)
     {
@@ -241,16 +361,15 @@ fn collect_wakeup_event_keys(
 }
 
 async fn refresh_conversation_stats(
-    state: &AppState,
+    deps: &AgentWorkspaceBridgeDeps,
     conversation_id: &ChatConversationId,
 ) -> AppResult<()> {
-    let messages = state
+    let messages = deps
         .chat_message_repo
         .get_by_conversation(conversation_id)
         .await?;
     if let Some(last_message) = messages.last() {
-        state
-            .chat_conversation_repo
+        deps.chat_conversation_repo
             .update_message_stats(
                 conversation_id,
                 messages.len() as i64,
@@ -424,7 +543,7 @@ mod tests {
     use crate::application::AppState;
     use crate::domain::entities::{
         AgentConversationWorkspaceMode, ChatConversation, IdeationAnalysisBaseRefKind,
-        IdeationSessionId, ProjectId,
+        IdeationSessionId, Project, ProjectId,
     };
 
     fn event(id: i64, event_type: &str, payload: JsonValue) -> ExternalEventRecord {
@@ -477,6 +596,12 @@ mod tests {
         conversation_id
     }
 
+    async fn create_project(state: &AppState, project_id: &ProjectId) {
+        let mut project = Project::new("Project".to_string(), "/tmp/project".to_string());
+        project.id = project_id.clone();
+        state.project_repo.create(project).await.unwrap();
+    }
+
     #[test]
     fn maps_external_events_to_backend_bridge_event_keys() {
         let event = bridge_event_from_external_event(
@@ -500,6 +625,7 @@ mod tests {
     async fn prepares_one_workspace_agent_wakeup_for_linked_events() {
         let state = AppState::new_test();
         let project_id = ProjectId::from_string("project-1".to_string());
+        create_project(&state, &project_id).await;
         let conversation_id = create_workspace(
             &state,
             project_id.clone(),
@@ -568,6 +694,7 @@ mod tests {
     async fn skips_events_already_persisted_as_workspace_wakeups() {
         let state = AppState::new_test();
         let project_id = ProjectId::from_string("project-1".to_string());
+        create_project(&state, &project_id).await;
         let conversation_id = create_workspace(
             &state,
             project_id.clone(),
@@ -691,5 +818,47 @@ mod tests {
 
         assert!(wakeup.is_none());
         assert!(messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn dispatches_new_events_to_linked_workspace_agent() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::from_string("project-1".to_string());
+        create_project(&state, &project_id).await;
+        let conversation_id = create_workspace(
+            &state,
+            project_id.clone(),
+            "Linked workspace",
+            Some("session-1"),
+        )
+        .await;
+        state
+            .external_events_repo
+            .insert_event(
+                "ideation:verified",
+                project_id.as_str(),
+                &json!({ "session_id": "session-1", "gap_score": 1 }).to_string(),
+            )
+            .await
+            .unwrap();
+        let chat_service = crate::application::MockChatService::new();
+
+        let summary = dispatch_agent_workspace_bridge_events_once(&state, &chat_service)
+            .await
+            .unwrap();
+
+        assert_eq!(summary.workspace_count, 1);
+        assert_eq!(summary.wake_up_count, 1);
+        assert_eq!(chat_service.call_count(), 1);
+        let sent = chat_service.get_sent_messages().await;
+        assert_eq!(sent.len(), 1);
+        assert!(sent[0].contains("RalphX workflow event arrived"));
+        assert!(sent[0].contains("\"gap_score\": 1"));
+        let options = chat_service.get_sent_options().await;
+        assert_eq!(
+            options[0].conversation_id_override,
+            Some(conversation_id),
+            "dispatcher must send to the explicit linked workspace conversation"
+        );
     }
 }
