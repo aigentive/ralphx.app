@@ -1049,6 +1049,35 @@ function AppContent() {
                 <AgentsView
                   projectId={currentProjectId}
                   onCreateProject={handleOpenProjectWizard}
+                  footer={
+                    <ExecutionControlBar
+                      projectId={currentProjectId}
+                      runningCount={executionStatus.runningCount}
+                      maxConcurrent={executionStatus.maxConcurrent}
+                      queuedCount={executionStatus.queuedCount}
+                      queuedMessageCount={executionStatus.queuedMessageCount ?? 0}
+                      pausedCount={pausedCount}
+                      pausedTasks={pausedTasks}
+                      ideationActive={executionStatus.ideationActive}
+                      ideationMax={executionStatus.ideationMaxProject}
+                      ideationWaiting={executionStatus.ideationWaiting}
+                      mergingCount={mergingCount}
+                      mergeAttentionCount={mergeAttentionCount}
+                      hasAttentionMerges={hasAttentionMerges}
+                      mergePipelineData={mergePipelineData ?? null}
+                      isPaused={executionStatus.isPaused}
+                      haltMode={executionStatus.haltMode}
+                      isLoading={isExecutionLoading}
+                      onPauseToggle={handlePauseToggle}
+                      onStop={handleStop}
+                      runningProcesses={runningProcessesData?.processes ?? []}
+                      ideationSessions={runningProcessesData?.ideationSessions ?? []}
+                      onPauseProcess={handlePauseProcess}
+                      onStopProcess={handleStopProcess}
+                      onOpenSettings={handleOpenSettings}
+                      onNavigateToSession={handleNavigateToSession}
+                    />
+                  }
                 />
               )}
               {currentView === "extensibility" && (

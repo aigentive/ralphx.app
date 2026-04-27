@@ -10,6 +10,7 @@ type AgentsSidebarShellProps = Omit<ComponentProps<typeof AgentsSidebar>, "onCol
 
 interface AgentsShellLayoutProps {
   children: ReactNode;
+  footer?: ReactNode;
   isSidebarCollapsed: boolean;
   isSidebarOverlayOpen: boolean;
   onCloseSidebarOverlay: () => void;
@@ -22,6 +23,7 @@ interface AgentsShellLayoutProps {
 
 export function AgentsShellLayout({
   children,
+  footer,
   isSidebarCollapsed,
   isSidebarOverlayOpen,
   onCloseSidebarOverlay,
@@ -120,10 +122,17 @@ export function AgentsShellLayout({
 
         <div
           ref={splitContainerRef}
-          className="relative flex-1 min-w-0 h-full flex overflow-hidden"
+          className="relative flex-1 min-w-0 h-full flex flex-col overflow-hidden"
           data-testid="agents-split-container"
         >
-          {children}
+          <div className="flex-1 min-h-0 flex overflow-hidden">
+            {children}
+          </div>
+          {footer && (
+            <div className="flex-shrink-0" data-testid="agents-footer">
+              {footer}
+            </div>
+          )}
         </div>
       </section>
     </TooltipProvider>
