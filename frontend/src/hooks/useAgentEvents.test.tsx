@@ -508,6 +508,25 @@ describe("useAgentEvents", () => {
       const state = useChatStore.getState();
       expect(state.activeConversationIds["task_execution:task-123"]).toBe("conv-existing");
     });
+
+    it("does not write another project conversation into a scoped Agents workspace slot", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null, "project:conv-selected"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "project",
+          context_id: "project-1",
+          conversation_id: "conv-other",
+        });
+      });
+
+      const state = useChatStore.getState();
+      expect(state.agentStatus["project:conv-other"]).toBe("generating");
+      expect(state.activeConversationIds["project:conv-selected"]).toBeUndefined();
+      expect(state.activeConversationIds["project:conv-other"]).toBeUndefined();
+    });
   });
 
   describe("agent:run_completed", () => {

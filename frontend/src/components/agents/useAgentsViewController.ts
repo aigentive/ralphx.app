@@ -5,7 +5,6 @@ import { ideationApi } from "@/api/ideation";
 import { useProjects } from "@/hooks/useProjects";
 import { useAgentArtifactController } from "./useAgentArtifactController";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
-import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
 import { useAgentArtifactResize } from "./useAgentArtifactResize";
 import { useAgentsSelectionModel } from "./useAgentsSelectionModel";
 import { useAgentsWorkspaceModel } from "./useAgentsWorkspaceModel";
@@ -178,11 +177,6 @@ export function useAgentsViewController({
     activeWorkspace,
     invalidateProjectConversations,
     selectedConversationMessages,
-  });
-  useProjectAgentBridgeEvents({
-    conversation: activeConversation,
-    attachedIdeationSessionId,
-    projectId: activeProjectId,
   });
   const knownFocusIdeationSessionId =
     focusedArtifactIdeationSessionId ?? attachedIdeationSessionId ?? null;

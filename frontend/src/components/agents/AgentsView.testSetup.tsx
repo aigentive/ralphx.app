@@ -399,10 +399,6 @@ vi.mock("./AgentsArtifactPane", () => {
   };
 });
 
-vi.mock("./useProjectAgentBridgeEvents", () => ({
-  useProjectAgentBridgeEvents: () => undefined,
-}));
-
 vi.mock("./useAgentConversationTitleEvents", () => ({
   useAgentConversationTitleEvents: () => undefined,
 }));

@@ -22,9 +22,8 @@ use crate::application::agent_conversation_workspace::{
     agent_name_for_workspace_mode, prepare_agent_conversation_workspace,
     resolve_valid_agent_conversation_workspace_path, AgentConversationWorkspaceBaseSelection,
 };
-use crate::application::chat_service::{
-    create_assistant_message, AgentConversationCreatedPayload, SendMessageOptions,
-};
+use crate::application::agent_workspace_bridge::reconcile_agent_workspace_bridge_messages;
+use crate::application::chat_service::{AgentConversationCreatedPayload, SendMessageOptions};
 use crate::application::git_service::GitService;
 use crate::application::publish_resilience::{
     classify_publish_failure, count_publish_reviewable_commits, count_unpublished_publish_commits,
@@ -32,9 +31,7 @@ use crate::application::publish_resilience::{
     publish_push_status_for_failure, push_publish_branch, review_base_for_publish,
     PublishBranchFreshnessOutcome, PublishBranchFreshnessStatus, PublishFailureClass,
 };
-use crate::application::{
-    AgentMessageCreatedPayload, AppChatService, AppState, ChatService, ChatServiceError, SendResult,
-};
+use crate::application::{AppChatService, AppState, ChatService, ChatServiceError, SendResult};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
 use crate::domain::entities::{
@@ -392,6 +389,7 @@ pub struct AgentConversationMessagesPageResponse {
 #[derive(Debug, Serialize)]
 pub struct AgentMessageResponse {
     pub id: String,
+    pub conversation_id: Option<String>,
     pub role: String,
     pub content: String,
     pub metadata: Option<String>,
@@ -425,23 +423,6 @@ pub struct AgentRunStatusResponse {
     pub error_message: Option<String>,
     pub model_id: Option<String>,
     pub model_label: Option<String>,
-}
-
-/// Input for append_agent_bridge_message.
-///
-/// Used by the project-agent UI bridge to persist child workflow milestones
-/// (ideation verification, proposals, task execution) into the parent project
-/// conversation without spawning another model turn.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AppendAgentBridgeMessageInput {
-    pub conversation_id: String,
-    pub source_session_id: String,
-    pub event_type: String,
-    pub event_key: String,
-    pub content: String,
-    #[serde(default)]
-    pub metadata: Option<JsonValue>,
 }
 
 #[derive(Debug, Clone)]
@@ -2604,145 +2585,6 @@ fn publication_event_summary_for_push_status(push_status: &str) -> &'static str 
     }
 }
 
-/// Persist a child workflow milestone into a parent project-agent conversation.
-///
-/// This command is intentionally not an agent send path: it does not touch queue
-/// or capacity state and only records bridge/status messages that the UI derives
-/// from authoritative orchestration events. `event_key` is used for idempotency
-/// so replayed event-table polls and live Tauri events can converge safely.
-#[tauri::command]
-pub async fn append_agent_bridge_message(
-    input: AppendAgentBridgeMessageInput,
-    state: State<'_, AppState>,
-    app: tauri::AppHandle,
-) -> Result<Option<AgentMessageResponse>, String> {
-    let conversation_id = ChatConversationId::from_string(&input.conversation_id);
-    let content = input.content.trim().to_string();
-    if content.is_empty() {
-        return Err("Bridge message content cannot be empty".to_string());
-    }
-    if input.event_key.trim().is_empty() {
-        return Err("Bridge event key cannot be empty".to_string());
-    }
-
-    let conversation = state
-        .chat_conversation_repo
-        .get_by_id(&conversation_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Conversation not found".to_string())?;
-
-    if conversation.context_type != ChatContextType::Project {
-        return Err("Bridge messages can only be appended to project conversations".to_string());
-    }
-
-    let existing_messages = state
-        .chat_message_repo
-        .get_by_conversation(&conversation_id)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for message in existing_messages {
-        let Some(metadata) = message.metadata.as_deref() else {
-            continue;
-        };
-        let Ok(parsed) = serde_json::from_str::<JsonValue>(metadata) else {
-            continue;
-        };
-        let existing_key = parsed
-            .get("bridge_event_key")
-            .or_else(|| parsed.get("bridgeEventKey"))
-            .and_then(JsonValue::as_str);
-        if existing_key == Some(input.event_key.as_str()) {
-            return Ok(None);
-        }
-    }
-
-    let mut metadata = JsonMap::new();
-    metadata.insert(
-        "source".to_string(),
-        JsonValue::String("project_agent_ideation_bridge".to_string()),
-    );
-    metadata.insert(
-        "bridge_event_key".to_string(),
-        JsonValue::String(input.event_key.clone()),
-    );
-    metadata.insert(
-        "bridge_event_type".to_string(),
-        JsonValue::String(input.event_type.clone()),
-    );
-    metadata.insert(
-        "source_session_id".to_string(),
-        JsonValue::String(input.source_session_id.clone()),
-    );
-    if let Some(payload) = input.metadata {
-        metadata.insert("payload".to_string(), payload);
-    }
-
-    let mut bridge_message = create_assistant_message(
-        conversation.context_type,
-        &conversation.context_id,
-        &content,
-        conversation_id.clone(),
-        &[],
-        &[],
-    );
-    bridge_message.metadata = Some(JsonValue::Object(metadata).to_string());
-
-    let created = state
-        .chat_message_repo
-        .create(bridge_message)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let metadata = created.metadata.clone();
-    let created_response = AgentMessageResponse {
-        id: created.id.as_str().to_string(),
-        role: created.role.to_string(),
-        content: created.content.clone(),
-        metadata: metadata.clone(),
-        tool_calls: None,
-        content_blocks: None,
-        attribution_source: created.attribution_source.clone(),
-        provider_harness: created
-            .provider_harness
-            .as_ref()
-            .map(|value| value.to_string()),
-        provider_session_id: created.provider_session_id.clone(),
-        upstream_provider: created.upstream_provider.clone(),
-        provider_profile: created.provider_profile.clone(),
-        logical_model: created.logical_model.clone(),
-        effective_model_id: created.effective_model_id.clone(),
-        logical_effort: created
-            .logical_effort
-            .as_ref()
-            .map(|value| value.to_string()),
-        effective_effort: created.effective_effort.clone(),
-        input_tokens: created.input_tokens,
-        output_tokens: created.output_tokens,
-        cache_creation_tokens: created.cache_creation_tokens,
-        cache_read_tokens: created.cache_read_tokens,
-        estimated_usd: created.estimated_usd,
-        created_at: created.created_at.to_rfc3339(),
-    };
-
-    let _ = app.emit(
-        "agent:message_created",
-        AgentMessageCreatedPayload {
-            message_id: created.id.as_str().to_string(),
-            conversation_id: conversation_id.as_str().to_string(),
-            context_type: conversation.context_type.to_string(),
-            context_id: conversation.context_id,
-            role: created.role.to_string(),
-            content: created.content,
-            created_at: Some(created.created_at.to_rfc3339()),
-            metadata,
-        },
-    );
-
-    Ok(Some(created_response))
-}
-
 /// Get a conversation with all its messages
 #[tauri::command]
 pub async fn get_agent_conversation(
@@ -2754,6 +2596,10 @@ pub async fn get_agent_conversation(
     use crate::domain::entities::ChatConversationId;
 
     let conversation_id = ChatConversationId::from_string(&conversation_id);
+
+    reconcile_agent_workspace_bridge_messages(&state, &conversation_id, Some(&app))
+        .await
+        .map_err(|e| e.to_string())?;
 
     let service = create_chat_service(&state, app, &execution_state, None);
 
@@ -2777,6 +2623,10 @@ pub async fn get_agent_conversation(
 
         messages.push(AgentMessageResponse {
             id: message.id.as_str().to_string(),
+            conversation_id: message
+                .conversation_id
+                .as_ref()
+                .map(|id| id.as_str().to_string()),
             role: message.role.to_string(),
             content: message.content,
             metadata: message.metadata,
@@ -2814,12 +2664,17 @@ pub async fn get_agent_conversation_messages_page(
     limit: Option<u32>,
     offset: Option<u32>,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Option<AgentConversationMessagesPageResponse>, String> {
     use crate::domain::entities::ChatConversationId;
 
     let conversation_id = ChatConversationId::from_string(&conversation_id);
     let limit = limit.unwrap_or(40).clamp(1, 200);
     let offset = offset.unwrap_or(0);
+
+    reconcile_agent_workspace_bridge_messages(&state, &conversation_id, Some(&app))
+        .await
+        .map_err(|e| e.to_string())?;
 
     let Some(conversation) = state
         .chat_conversation_repo
@@ -2847,6 +2702,10 @@ pub async fn get_agent_conversation_messages_page(
 
         messages.push(AgentMessageResponse {
             id: message.id.as_str().to_string(),
+            conversation_id: message
+                .conversation_id
+                .as_ref()
+                .map(|id| id.as_str().to_string()),
             role: message.role.to_string(),
             content: message.content,
             metadata: message.metadata,

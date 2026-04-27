@@ -289,6 +289,7 @@ describe("chat api", () => {
       messages: [
         {
           id: "m1",
+          conversation_id: "c1",
           role: "user",
           content: "Hello",
           metadata: "{\"verification_result\":true}",
@@ -318,6 +319,7 @@ describe("chat api", () => {
     expect(mockInvoke).toHaveBeenCalledWith("get_agent_conversation", { conversationId: "c1" });
     expect(result.messages[0]).toMatchObject({
       id: "m1",
+      conversationId: "c1",
       createdAt: "2026-01-24T10:00:00Z",
       metadata: "{\"verification_result\":true}",
       attributionSource: "native",
@@ -349,6 +351,7 @@ describe("chat api", () => {
       messages: [
         {
           id: "m2",
+          conversation_id: "c1",
           role: "user",
           content: "Latest tail message",
           metadata: null,
@@ -392,10 +395,57 @@ describe("chat api", () => {
     });
     expect(result.messages[0]).toMatchObject({
       id: "m2",
+      conversationId: "c1",
       providerHarness: "codex",
       providerSessionId: "thread-2",
       effectiveModelId: "gpt-5.4",
     });
+  });
+
+  it("falls back to the page conversation id when legacy messages omit conversation_id", async () => {
+    mockInvoke.mockResolvedValue({
+      conversation: {
+        id: "c-legacy",
+        context_type: "project",
+        context_id: "p1",
+        claude_session_id: null,
+        provider_session_id: null,
+        provider_harness: null,
+        title: null,
+        message_count: 1,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+      },
+      messages: [
+        {
+          id: "m-legacy",
+          role: "assistant",
+          content: "Legacy row",
+          metadata: null,
+          tool_calls: null,
+          content_blocks: null,
+          attribution_source: null,
+          provider_harness: null,
+          provider_session_id: null,
+          upstream_provider: null,
+          provider_profile: null,
+          logical_model: null,
+          effective_model_id: null,
+          logical_effort: null,
+          effective_effort: null,
+          created_at: "2026-01-24T10:00:01Z",
+        },
+      ],
+      limit: 40,
+      offset: 0,
+      total_message_count: 1,
+      has_older: false,
+    });
+
+    const result = await getConversationMessagesPage("c-legacy", 40, 0);
+
+    expect(result.messages[0]?.conversationId).toBe("c-legacy");
   });
 
   it("gets conversation stats with camelCase totals and buckets", async () => {

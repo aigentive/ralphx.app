@@ -66,15 +66,6 @@ export interface ChatMessageResponse {
   createdAt: string;
 }
 
-export interface AppendAgentBridgeMessageInput {
-  conversationId: string;
-  sourceSessionId: string;
-  eventType: string;
-  eventKey: string;
-  content: string;
-  metadata?: unknown;
-}
-
 // ============================================================================
 // Parsing Utilities
 // ============================================================================
@@ -707,6 +698,7 @@ function transformAgentRun(raw: RawAgentRun): AgentRun {
 // Schema for AgentMessageResponse from unified_chat_commands (snake_case)
 const AgentMessageSchema = z.object({
   id: z.string(),
+  conversation_id: z.string().nullable().optional(),
   role: z.string(),
   content: z.string(),
   metadata: z.string().nullable().optional(),
@@ -745,7 +737,10 @@ type RawConversationMessagesPage = z.infer<
   typeof ConversationMessagesPageResponseSchema
 >;
 
-function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
+function transformAgentMessage(
+  raw: RawAgentMessage,
+  fallbackConversationId?: string
+): ChatMessageResponse {
   return {
     id: raw.id,
     sessionId: null,
@@ -770,7 +765,7 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
     content: raw.content,
     metadata: raw.metadata ?? null,
     parentMessageId: null,
-    conversationId: null,
+    conversationId: raw.conversation_id ?? fallbackConversationId ?? null,
     // Parse at API layer to avoid redundant parsing in components
     toolCalls: parseToolCalls(raw.tool_calls),
     contentBlocks: parseContentBlocks(raw.content_blocks),
@@ -781,9 +776,10 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
 function transformConversationMessagesPage(
   raw: RawConversationMessagesPage
 ): ConversationMessagesPageResponse {
+  const conversationId = raw.conversation.id;
   return {
     conversation: transformConversation(raw.conversation),
-    messages: raw.messages.map(transformAgentMessage),
+    messages: raw.messages.map((message) => transformAgentMessage(message, conversationId)),
     limit: raw.limit,
     offset: raw.offset,
     totalMessageCount: raw.total_message_count,
@@ -858,7 +854,7 @@ export async function getConversation(
 
   return {
     conversation: transformConversation(raw.conversation),
-    messages: raw.messages.map(transformAgentMessage),
+    messages: raw.messages.map((message) => transformAgentMessage(message, raw.conversation.id)),
   };
 }
 
@@ -963,17 +959,6 @@ export async function restoreConversation(
   return transformConversation(raw);
 }
 
-export async function appendAgentBridgeMessage(
-  input: AppendAgentBridgeMessageInput
-): Promise<ChatMessageResponse | null> {
-  const raw = await typedInvoke(
-    "append_agent_bridge_message",
-    { input },
-    AgentMessageSchema.nullable()
-  );
-  return raw ? transformAgentMessage(raw) : null;
-}
-
 /**
  * Get the current agent run status for a conversation
  * @param conversationId The conversation ID
@@ -1031,7 +1016,6 @@ export const chatApi = {
   spawnConversationSessionNamer,
   archiveConversation,
   restoreConversation,
-  appendAgentBridgeMessage,
   getAgentConversationWorkspace,
   listAgentConversationWorkspacesByProject,
   listAgentConversationWorkspacePublicationEvents,

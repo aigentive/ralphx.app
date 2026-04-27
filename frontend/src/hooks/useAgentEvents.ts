@@ -88,6 +88,35 @@ function appendMessageToConversationHistory(
   };
 }
 
+function shouldRouteRunStartSelectionToCallerStoreKey(
+  callerStoreKey: string | undefined,
+  eventStoreKey: string,
+  eventContextId: string
+): boolean {
+  if (!callerStoreKey) {
+    return false;
+  }
+  if (callerStoreKey === eventStoreKey) {
+    return true;
+  }
+
+  const parsedCallerStoreKey = parseStoreKey(callerStoreKey);
+  if (!parsedCallerStoreKey) {
+    return false;
+  }
+
+  // Project store keys are conversation-scoped. A different project key means a
+  // different Agents workspace conversation and must not be overwritten by a
+  // run_started event from another workspace.
+  if (parsedCallerStoreKey.contextType === "project") {
+    return false;
+  }
+
+  // Task detail panels can intentionally bridge related task/task_execution
+  // slots for the same task id.
+  return parsedCallerStoreKey.contextId === eventContextId;
+}
+
 /**
  * Hook to manage agent event listeners
  *
@@ -96,9 +125,8 @@ function appendMessageToConversationHistory(
  *
  * @param activeConversationId - The currently active conversation ID to filter events
  * @param storeKey - Caller-provided store key for scoped setActiveConversation writes.
- *   When provided, agent:run_started uses this key instead of the event-derived key.
- *   Callers know which panel slot to write to; cross-context events are handled
- *   separately by IntegratedChatPanel's own bus.subscribe handler.
+ *   agent:run_started may use this key only when it targets the same slot or a
+ *   compatible task slot; unrelated project conversation events stay isolated.
  */
 export function useAgentEvents(activeConversationId: string | null, storeKey?: string) {
   const bus = useEventBus();
@@ -308,10 +336,25 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         // If no active conversation is set, set it to this one
         // This handles the case where a new conversation was just created by the backend.
-        // Use caller-provided storeKey when available — the caller knows which panel slot to
-        // write to. Cross-context events are handled by IntegratedChatPanel's bus.subscribe.
+        // When a caller provides a storeKey, only write to it if the event targets that
+        // same slot or a compatible task slot. Project keys are conversation-scoped, so
+        // blindly writing another project conversation here can poison Agents workspace
+        // selection and render the wrong transcript.
         if (!activeConversationId && conversation_id) {
-          setActiveConversation(storeKeyRef.current ?? eventContextKey, conversation_id);
+          const callerStoreKey = storeKeyRef.current;
+          const activeSelectionStoreKey = callerStoreKey
+            ? shouldRouteRunStartSelectionToCallerStoreKey(
+                callerStoreKey,
+                eventContextKey,
+                eventContextId
+              )
+              ? callerStoreKey
+              : null
+            : eventContextKey;
+
+          if (activeSelectionStoreKey) {
+            setActiveConversation(activeSelectionStoreKey, conversation_id);
+          }
         }
       })
     );
