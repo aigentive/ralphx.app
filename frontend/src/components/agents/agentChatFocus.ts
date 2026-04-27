@@ -3,6 +3,7 @@ export type AgentsChatFocus =
   | { type: "ideation"; sessionId: string }
   | { type: "verification"; parentSessionId: string; childSessionId: string };
 
+export type AgentsChatFocusType = AgentsChatFocus["type"];
 export type AgentsChatFocusTone = "accent" | "warning";
 
 export interface AgentsChatFocusDisplay {
@@ -10,6 +11,13 @@ export interface AgentsChatFocusDisplay {
   label: string;
   description: string;
   tone: AgentsChatFocusTone;
+}
+
+export interface AgentsChatFocusSwitchOption {
+  type: AgentsChatFocusType;
+  label: string;
+  description: string;
+  tone?: AgentsChatFocusTone;
 }
 
 export function getFocusedArtifactIdeationSessionId(

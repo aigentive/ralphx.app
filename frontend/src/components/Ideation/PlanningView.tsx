@@ -365,22 +365,20 @@ export function PlanningView({
   } | null>(null);
 
   // Poll status for verification child and direct child session views to detect pending_initial_prompt
-  // Eagerly fetch verification child sessions so lastVerificationChildId is populated
-  // before the user clicks the Verification tab (eliminates cold-start flash of parent chat)
-  const { data: verificationChildren } = useQuery({
-    queryKey: ["childSessions", session?.id, "verification"],
-    queryFn: () => ideationApi.sessions.getChildren(session!.id, "verification"),
+  // Eagerly fetch the latest verification child id so chat routing is ready without
+  // hydrating the full child-session history before the Verification tab needs it.
+  const { data: latestVerificationChild } = useQuery({
+    queryKey: ["childSessionId", session?.id, "verification", "latest"],
+    queryFn: () =>
+      ideationApi.sessions.getLatestChildSessionId(session!.id, "verification", {
+        includeArchived: true,
+      }),
     enabled: !!session?.id && session?.sessionPurpose !== "verification",
     staleTime: 30_000,
   });
 
-  const latestVerificationChildId = useMemo(() => {
-    if (!verificationChildren?.length) return null;
-    const sorted = [...verificationChildren].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-    return sorted[0]?.id ?? null;
-  }, [verificationChildren]);
+  const latestVerificationChildId =
+    latestVerificationChild?.latestChildSessionId ?? null;
 
   const verificationChatSessionId =
     displayedVerificationChildId ??
@@ -397,14 +395,16 @@ export function PlanningView({
   // Pre-populate lastVerificationChildId from eager query result.
   // Only sets if store field is null (avoids overwriting event-driven updates).
   useEffect(() => {
-    if (!session?.id || !verificationChildren?.length) return;
+    if (!session?.id || !latestVerificationChildId) return;
     if (lastVerificationChildId) return;
 
-    const latestId = latestVerificationChildId;
-    if (latestId) {
-      setLastVerificationChildId(session.id, latestId);
-    }
-  }, [session?.id, verificationChildren?.length, latestVerificationChildId, lastVerificationChildId, setLastVerificationChildId]);
+    setLastVerificationChildId(session.id, latestVerificationChildId);
+  }, [
+    session?.id,
+    latestVerificationChildId,
+    lastVerificationChildId,
+    setLastVerificationChildId,
+  ]);
 
   // Reset to plan tab when switching sessions
   const prevSessionIdRef = useRef<string | null>(null);
@@ -708,25 +708,22 @@ export function PlanningView({
     // But allow refetch when verification is actively running (state may have changed)
     if (verificationChatSessionId && !isVerificationActive) return;
 
-    // Fetch the latest verification child session
+    // Fetch the latest verification child id without hydrating the full history list.
     try {
-      const children = await ideationApi.sessions.getChildren(session.id, 'verification');
-      if (children.length > 0) {
-        // Sort by createdAt descending, take the most recent
-        const sorted = [...children].sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        const latest = sorted[0];
-        if (latest) {
-          // Only set activeVerificationChildId if not already populated (fresh hydration only)
-          if (!activeVerificationChildId) {
-            setActiveVerificationChildId(session.id, latest.id);
-          }
-          setLastVerificationChildId(session.id, latest.id);
+      const latest = await ideationApi.sessions.getLatestChildSessionId(
+        session.id,
+        'verification',
+        { includeArchived: true },
+      );
+      if (latest.latestChildSessionId) {
+        // Only set activeVerificationChildId if not already populated (fresh hydration only)
+        if (!activeVerificationChildId) {
+          setActiveVerificationChildId(session.id, latest.latestChildSessionId);
         }
+        setLastVerificationChildId(session.id, latest.latestChildSessionId);
       }
     } catch (err) {
-      console.error('Verification tab: failed to fetch child sessions', err);
+      console.error('Verification tab: failed to fetch latest child session id', err);
       // Tab switches regardless — child panel stays hidden until child exists
     }
   }, [

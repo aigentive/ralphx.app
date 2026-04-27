@@ -110,6 +110,8 @@ interface IntegratedChatPanelProps {
   inputContainerClassName?: string;
   /** Custom header content to replace default context indicator */
   headerContent?: React.ReactNode;
+  /** Optional secondary row rendered below the primary chat header. */
+  headerSubContent?: React.ReactNode;
   /** Hide provider/model/stat chips and conversation switcher in the header. */
   hideHeaderSessionControls?: boolean;
   /** Hide the secondary session toolbar below the header. */
@@ -178,6 +180,7 @@ export function IntegratedChatPanel({
   showHelperTextAlways = false,
   inputContainerClassName,
   headerContent,
+  headerSubContent,
   hideHeaderSessionControls = false,
   hideSessionToolbar = false,
   surfaceBackground,
@@ -1120,6 +1123,7 @@ export function IntegratedChatPanel({
               </div>
             )}
           </div>
+          {headerSubContent}
 
           {/* Session Toolbar — houses StatusActivityBadge + optional back
               action. Provider-context chips are now rendered inline in

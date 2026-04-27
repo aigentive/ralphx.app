@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ElementType } from "react";
 import {
-  ArrowLeft,
   CheckCircle2,
   ClipboardList,
   FileText,
@@ -8,6 +7,7 @@ import {
   GitPullRequestArrow,
   Lightbulb,
   Loader2,
+  MessageSquare,
   PanelRightClose,
   PanelRightOpen,
   ShieldCheck,
@@ -35,10 +35,10 @@ import {
   type AgentConversation,
 } from "./agentConversations";
 import {
-  getAgentsChatFocusDisplay,
   type AgentsChatFocus,
-  type AgentsChatFocusDisplay,
+  type AgentsChatFocusSwitchOption,
   type AgentsChatFocusTone,
+  type AgentsChatFocusType,
 } from "./agentChatFocus";
 import type { IdeationArtifactTab } from "./agentArtifactTabs";
 import { resolveConversationAgentMode } from "./agentConversationMode";
@@ -81,8 +81,6 @@ export interface AgentsChatHeaderProps {
   chatFocus?: AgentsChatFocus | undefined;
   modelDisplay?: ModelDisplay | undefined;
   availableArtifactTabs?: readonly IdeationArtifactTab[] | undefined;
-  focusReturnLabel?: string | undefined;
-  onReturnToWorkspaceChat?: (() => void) | undefined;
   artifactOpen: boolean;
   activeArtifactTab: AgentArtifactTab;
   terminalOpen?: boolean;
@@ -99,28 +97,86 @@ export interface AgentsChatHeaderProps {
   onSelectArtifact: (tab: AgentArtifactTab) => void;
 }
 
-const AgentsChatFocusBadge = memo(function AgentsChatFocusBadge({
-  focusDisplay,
+export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
+  activeType,
+  options,
+  onSelectFocus,
 }: {
-  focusDisplay: AgentsChatFocusDisplay;
+  activeType: AgentsChatFocusType;
+  options: readonly AgentsChatFocusSwitchOption[];
+  onSelectFocus: (type: AgentsChatFocusType) => void;
 }) {
-  const Icon = FOCUS_TONE_ICONS[focusDisplay.tone];
-  const style = FOCUS_TONE_STYLES[focusDisplay.tone];
-
   return (
     <div
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-semibold"
+      className="flex h-9 shrink-0 items-center gap-2 overflow-hidden border-b px-3"
       style={{
-        color: style.color,
-        background: style.background,
-        borderColor: style.border,
+        backgroundColor: "color-mix(in srgb, var(--text-primary) 1.5%, transparent)",
+        borderBottomColor: "var(--border-subtle)",
       }}
-      data-testid="agents-chat-focus-badge"
-      data-focus-tone={focusDisplay.tone}
-      aria-label={`Focused chat: ${focusDisplay.label}`}
+      data-testid="agents-chat-focus-bar"
     >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
-      <span>{focusDisplay.label}</span>
+      <span
+        className="shrink-0 text-[11px] font-medium uppercase tracking-[0.08em]"
+        style={{ color: "var(--text-muted)" }}
+      >
+        Chat
+      </span>
+      <div
+        role="tablist"
+        aria-label="Chat focus"
+        className="flex min-w-0 items-center gap-1 overflow-x-auto"
+      >
+        {options.map((option) => {
+          const active = option.type === activeType;
+          const toneStyle = option.tone ? FOCUS_TONE_STYLES[option.tone] : null;
+          const Icon =
+            option.type === "workspace"
+              ? MessageSquare
+              : option.tone
+                ? FOCUS_TONE_ICONS[option.tone]
+                : null;
+
+          return (
+            <button
+              key={option.type}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-label={option.description}
+              data-testid={
+                option.type === "workspace"
+                  ? "agents-chat-focus-return"
+                  : `agents-chat-focus-option-${option.type}`
+              }
+              data-active={active ? "true" : "false"}
+              className="inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1.5 rounded-full border px-2 text-[12px] font-medium transition-colors"
+              style={
+                active
+                  ? toneStyle
+                    ? {
+                        color: toneStyle.color,
+                        background: toneStyle.background,
+                        borderColor: toneStyle.border,
+                      }
+                    : {
+                        color: "var(--text-primary)",
+                        background: "var(--overlay-weak)",
+                        borderColor: "var(--overlay-moderate)",
+                      }
+                  : {
+                      color: "var(--text-muted)",
+                      background: "transparent",
+                      borderColor: "transparent",
+                    }
+              }
+              onClick={() => onSelectFocus(option.type)}
+            >
+              {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" /> : null}
+              <span className="truncate">{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 });
@@ -131,8 +187,6 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   chatFocus = { type: "workspace" },
   modelDisplay,
   availableArtifactTabs = [],
-  focusReturnLabel,
-  onReturnToWorkspaceChat,
   artifactOpen,
   activeArtifactTab,
   terminalOpen = false,
@@ -152,7 +206,6 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   const conversationMode = conversation
     ? resolveConversationAgentMode(conversation, workspace)
     : null;
-  const focusDisplay = getAgentsChatFocusDisplay(chatFocus);
   const visibleHeaderArtifactTabs = useMemo(
     () =>
       HEADER_ARTIFACT_TABS.filter((tab) =>
@@ -214,37 +267,9 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
       data-focus-type={chatFocus.type}
     >
       <div
-        className={cn(
-          "flex min-w-0 flex-1 items-center gap-2 overflow-hidden",
-          focusDisplay && "rounded-md border-l-2 pl-2",
-        )}
-        style={
-          focusDisplay
-            ? { borderLeftColor: FOCUS_TONE_STYLES[focusDisplay.tone].color }
-            : undefined
-        }
+        className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden"
+        data-testid="agents-chat-title-group"
       >
-        {onReturnToWorkspaceChat ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs"
-                onClick={onReturnToWorkspaceChat}
-                data-testid="agents-chat-focus-return"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>{focusReturnLabel ?? "Workspace chat"}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">
-              Return to workspace chat
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-        {focusDisplay ? <AgentsChatFocusBadge focusDisplay={focusDisplay} /> : null}
         <div className="min-w-0 flex-1">
           {isEditing ? (
             <Input

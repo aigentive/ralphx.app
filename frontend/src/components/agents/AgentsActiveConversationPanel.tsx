@@ -20,6 +20,9 @@ import {
 } from "./agentConversations";
 import { AgentComposerProjectLine, AgentComposerSurface } from "./AgentComposerSurface";
 import { AgentConversationBaseLine } from "./AgentConversationBaseLine";
+import {
+  AgentsChatFocusBar,
+} from "./AgentsChatHeader";
 import { AgentsChatHeaderController } from "./AgentsChatHeaderController";
 import {
   AGENT_CONVERSATION_MODE_OPTIONS,
@@ -33,6 +36,8 @@ import type { IdeationArtifactTab } from "./agentArtifactTabs";
 import {
   getFocusedChatSessionId,
   type AgentsChatFocus,
+  type AgentsChatFocusSwitchOption,
+  type AgentsChatFocusType,
 } from "./agentChatFocus";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
@@ -53,6 +58,7 @@ interface AgentsActiveConversationPanelProps {
   attachedIdeationSessionId: string | null;
   availableArtifactTabs: readonly IdeationArtifactTab[];
   chatFocus: AgentsChatFocus;
+  chatFocusOptions: readonly AgentsChatFocusSwitchOption[];
   hasAutoOpenArtifacts: boolean;
   normalizedActiveRuntime: AgentRuntimeSelection;
   onActiveConversationModeChange: (mode: AgentConversationWorkspaceMode) => void;
@@ -68,7 +74,7 @@ interface AgentsActiveConversationPanelProps {
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
   onSelectArtifact: (tab: AgentArtifactTab) => void;
   onToggleArtifacts: (conversationId: string) => void;
-  onReturnToWorkspaceChat: () => void;
+  onSelectChatFocus: (type: AgentsChatFocusType) => void;
   publishShortcutLabel: string;
   publishingConversationId: string | null;
   selectedConversationId: string;
@@ -87,6 +93,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
   attachedIdeationSessionId,
   availableArtifactTabs,
   chatFocus,
+  chatFocusOptions,
   hasAutoOpenArtifacts,
   normalizedActiveRuntime,
   onActiveConversationModeChange,
@@ -99,7 +106,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
   onRenameConversation,
   onSelectArtifact,
   onToggleArtifacts,
-  onReturnToWorkspaceChat,
+  onSelectChatFocus,
   publishShortcutLabel,
   publishingConversationId,
   selectedConversationId,
@@ -249,12 +256,6 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                 id: normalizedActiveRuntime.modelId,
                 label: normalizedActiveRuntime.modelId,
               }}
-              {...(isFocusedChildChat
-                ? {
-                    focusReturnLabel: "Workspace chat",
-                    onReturnToWorkspaceChat,
-                  }
-                : {})}
               hasAutoOpenArtifacts={hasAutoOpenArtifacts}
               terminalUnavailableReason={terminalUnavailableReason}
               onRenameConversation={onRenameConversation}
@@ -267,6 +268,17 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
               onSelectArtifact={onSelectArtifact}
             />
           }
+          {...(chatFocusOptions.length > 1
+            ? {
+                headerSubContent: (
+                  <AgentsChatFocusBar
+                    activeType={chatFocus.type}
+                    options={chatFocusOptions}
+                    onSelectFocus={onSelectChatFocus}
+                  />
+                ),
+              }
+            : {})}
           emptyState={<div />}
         />
       </div>

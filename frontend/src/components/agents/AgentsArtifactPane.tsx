@@ -39,13 +39,13 @@ import type { Artifact } from "@/types/artifact";
 import type { IdeationSession, TaskProposal, VerificationStatus } from "@/types/ideation";
 import type {
   DependencyGraphResponse,
-  IdeationSessionResponse,
 } from "@/api/ideation.types";
 import type { AgentConversation } from "./agentConversations";
 import {
   getVisibleIdeationArtifactTabs,
   type IdeationArtifactTab,
 } from "./agentArtifactTabs";
+import { getLatestIdeationChildId } from "./agentIdeationChildren";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 import { EmptyArtifactState } from "./AgentsArtifactEmptyState";
 import { AgentPublishPanel } from "./AgentsPublishPanel";
@@ -490,18 +490,6 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
     </aside>
   );
 });
-
-function getLatestIdeationChildId(
-  children: IdeationSessionResponse[] | undefined,
-): string | null {
-  if (!children?.length) {
-    return null;
-  }
-  const sorted = [...children].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
-  return sorted[0]?.id ?? null;
-}
 
 type ArtifactContentProps = {
   activeTab: AgentArtifactTab;

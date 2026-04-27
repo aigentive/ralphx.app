@@ -15,6 +15,7 @@ import type {
   UpdateProposalInput,
   ApplyProposalsInput,
   CreateChildSessionResponse,
+  LatestChildSessionIdResponse,
   ParentSessionContextResponse,
   CreateChildSessionInput,
 } from "@/api/ideation.types";
@@ -271,6 +272,31 @@ export const mockIdeationApi = {
         if (purpose !== undefined) return s.sessionPurpose === purpose;
         return true;
       });
+    },
+
+    getLatestChildSessionId: async (
+      sessionId: string,
+      purpose?: "general" | "verification",
+      options: { includeArchived?: boolean } = {}
+    ): Promise<LatestChildSessionIdResponse> => {
+      ensureMockData();
+      const includeArchived = options.includeArchived ?? true;
+      const latest = Array.from(mockSessions.values())
+        .filter((session) => {
+          if (session.parentSessionId !== sessionId) return false;
+          if (purpose !== undefined && session.sessionPurpose !== purpose) return false;
+          if (!includeArchived && session.status === "archived") return false;
+          return true;
+        })
+        .sort(
+          (left, right) =>
+            new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+        )[0];
+      return {
+        sessionId,
+        purpose: purpose ?? null,
+        latestChildSessionId: latest?.id ?? null,
+      };
     },
   },
 

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { ideationApi } from "@/api/ideation";
 import { useProjects } from "@/hooks/useProjects";
 import { useAgentArtifactController } from "./useAgentArtifactController";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
@@ -27,6 +28,8 @@ import { useAgentsSidebarProps } from "./useAgentsSidebarProps";
 import {
   getFocusedArtifactIdeationSessionId,
   type AgentsChatFocus,
+  type AgentsChatFocusSwitchOption,
+  type AgentsChatFocusType,
 } from "./agentChatFocus";
 
 interface UseAgentsViewControllerParams {
@@ -40,6 +43,10 @@ export function useAgentsViewController({
 }: UseAgentsViewControllerParams) {
   const queryClient = useQueryClient();
   const [chatFocus, setChatFocus] = useState<AgentsChatFocus>({ type: "workspace" });
+  const [lastVerificationFocus, setLastVerificationFocus] = useState<Extract<
+    AgentsChatFocus,
+    { type: "verification" }
+  > | null>(null);
   const {
     closeSidebarOverlay,
     isSidebarCollapsed,
@@ -107,6 +114,7 @@ export function useAgentsViewController({
   });
   useEffect(() => {
     setChatFocus({ type: "workspace" });
+    setLastVerificationFocus(null);
   }, [selectedConversationId]);
   const focusedArtifactIdeationSessionId =
     getFocusedArtifactIdeationSessionId(chatFocus);
@@ -119,12 +127,18 @@ export function useAgentsViewController({
   }, []);
   const handleFocusVerificationSession = useCallback(
     (parentSessionId: string, childSessionId: string) => {
+      const nextFocus: Extract<AgentsChatFocus, { type: "verification" }> = {
+        type: "verification",
+        parentSessionId,
+        childSessionId,
+      };
+      setLastVerificationFocus(nextFocus);
       setChatFocus((current) =>
         current.type === "verification" &&
         current.parentSessionId === parentSessionId &&
         current.childSessionId === childSessionId
           ? current
-          : { type: "verification", parentSessionId, childSessionId },
+          : nextFocus,
       );
     },
     [],
@@ -170,6 +184,116 @@ export function useAgentsViewController({
     attachedIdeationSessionId,
     projectId: activeProjectId,
   });
+  const knownFocusIdeationSessionId =
+    focusedArtifactIdeationSessionId ?? attachedIdeationSessionId ?? null;
+  const latestVerificationChildQuery = useQuery({
+    queryKey: [
+      "agents",
+      "chat-focus",
+      "latest-child-session-id",
+      knownFocusIdeationSessionId,
+      "verification",
+    ],
+    queryFn: () =>
+      ideationApi.sessions.getLatestChildSessionId(
+        knownFocusIdeationSessionId!,
+        "verification",
+        { includeArchived: true },
+      ),
+    enabled: Boolean(knownFocusIdeationSessionId),
+    staleTime: 5_000,
+  });
+  const latestVerificationChildSessionId =
+    latestVerificationChildQuery.data?.latestChildSessionId ?? null;
+  useEffect(() => {
+    if (!knownFocusIdeationSessionId || !latestVerificationChildQuery.isSuccess) {
+      return;
+    }
+    if (!latestVerificationChildSessionId) {
+      setLastVerificationFocus((current) =>
+        current?.parentSessionId === knownFocusIdeationSessionId ? null : current,
+      );
+      return;
+    }
+    const nextFocus: Extract<AgentsChatFocus, { type: "verification" }> = {
+      type: "verification",
+      parentSessionId: knownFocusIdeationSessionId,
+      childSessionId: latestVerificationChildSessionId,
+    };
+    setLastVerificationFocus((current) =>
+      current?.parentSessionId === nextFocus.parentSessionId &&
+      current.childSessionId === nextFocus.childSessionId
+        ? current
+        : nextFocus,
+    );
+  }, [
+    knownFocusIdeationSessionId,
+    latestVerificationChildQuery.isSuccess,
+    latestVerificationChildSessionId,
+  ]);
+  const focusSwitcherIdeationSessionId =
+    knownFocusIdeationSessionId ??
+    lastVerificationFocus?.parentSessionId ??
+    null;
+  const verificationFocusTarget =
+    lastVerificationFocus &&
+    lastVerificationFocus.parentSessionId === focusSwitcherIdeationSessionId
+      ? lastVerificationFocus
+      : null;
+  const chatFocusOptions = useMemo(() => {
+    const options: AgentsChatFocusSwitchOption[] = [
+      {
+        type: "workspace" as const,
+        label: "Workspace",
+        description: "Show the workspace agent chat",
+      },
+    ];
+
+    if (focusSwitcherIdeationSessionId) {
+      options.push({
+        type: "ideation" as const,
+        label: "Ideation",
+        description: "Show the attached ideation chat",
+        tone: "accent" as const,
+      });
+    }
+
+    if (verificationFocusTarget) {
+      options.push({
+        type: "verification" as const,
+        label: "Verification",
+        description: "Show the verification agent chat",
+        tone: "warning" as const,
+      });
+    }
+
+    return options;
+  }, [focusSwitcherIdeationSessionId, verificationFocusTarget]);
+  const handleSelectChatFocus = useCallback(
+    (type: AgentsChatFocusType) => {
+      if (type === "workspace") {
+        handleReturnToWorkspaceChat();
+        return;
+      }
+
+      if (type === "ideation") {
+        if (focusSwitcherIdeationSessionId) {
+          handleFocusIdeationSession(focusSwitcherIdeationSessionId);
+        }
+        return;
+      }
+
+      if (verificationFocusTarget) {
+        setChatFocus(verificationFocusTarget);
+      }
+    },
+    [
+      focusSwitcherIdeationSessionId,
+      handleFocusIdeationSession,
+      handleReturnToWorkspaceChat,
+      verificationFocusTarget,
+    ],
+  );
   const {
     openArtifactTab,
     scheduleArtifactPanePreload,
@@ -326,6 +450,7 @@ export function useAgentsViewController({
       attachedIdeationSessionId,
       availableArtifactTabs,
       chatFocus,
+      chatFocusOptions,
       defaultProjectId,
       defaultRuntime,
       hasAutoOpenArtifacts,
@@ -343,7 +468,7 @@ export function useAgentsViewController({
       onSelectArtifact: handleSelectArtifactWithChatFocus,
       onStartAgentConversation: handleStartAgentConversation,
       onToggleArtifacts: toggleArtifactPaneVisibility,
-      onReturnToWorkspaceChat: handleReturnToWorkspaceChat,
+      onSelectChatFocus: handleSelectChatFocus,
       projects,
       publishShortcutLabel,
       publishingConversationId,

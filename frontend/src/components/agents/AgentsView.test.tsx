@@ -19,6 +19,7 @@ import {
 } from "./agentsTestFixtures";
 const {
   getAgentConversationWorkspaceMock,
+  getLatestChildSessionIdMock,
   useConversationMock,
 } = getAgentsViewTestMocks();
 
@@ -147,6 +148,7 @@ describe("AgentsView", () => {
       "data-send-conversation-id",
       "",
     );
+    expect(screen.getByTestId("agents-chat-focus-bar")).toBeInTheDocument();
     expect(screen.getByTestId("agents-chat-focus-return")).toBeInTheDocument();
     expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
 
@@ -159,6 +161,59 @@ describe("AgentsView", () => {
       );
     });
     expect(await screen.findByTestId("agents-workspace-status")).toBeInTheDocument();
+  });
+
+  it("shows the chat focus switcher on workspace chat when an ideation child is known", async () => {
+    mockAgentViewData();
+    getAgentConversationWorkspaceMock.mockResolvedValue(
+      conversationWorkspace({ mode: "ideation", linkedIdeationSessionId: "session-1" })
+    );
+    mockSessionWithData({ id: "session-1", planArtifactId: "plan-1" });
+    getLatestChildSessionIdMock.mockResolvedValue({
+      sessionId: "session-1",
+      purpose: "verification",
+      latestChildSessionId: "verification-child",
+    });
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    expect(await screen.findByTestId("agents-chat-focus-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-chat-focus-return")).toHaveTextContent(
+      "Workspace",
+    );
+    expect(screen.getByTestId("agents-chat-focus-return")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    expect(screen.getByTestId("agents-chat-focus-option-ideation")).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+    await waitFor(() => {
+      expect(getLatestChildSessionIdMock).toHaveBeenCalledWith(
+        "session-1",
+        "verification",
+        { includeArchived: true },
+      );
+    });
+    expect(screen.getByTestId("agents-chat-focus-option-verification")).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+
+    fireEvent.click(screen.getByTestId("agents-chat-focus-option-verification"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+        "data-ideation-session-id",
+        "verification-child",
+      );
+    });
+    expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+      "data-conversation-id-override",
+      "",
+    );
   });
 
   it("focuses the main chat on the attached ideation run when the Plan artifact tab is selected", async () => {
@@ -196,8 +251,10 @@ describe("AgentsView", () => {
       "data-conversation-id-override",
       "",
     );
-    expect(screen.getByTestId("agents-chat-focus-badge")).toHaveTextContent(
-      "Ideation",
+    expect(screen.getByTestId("agents-chat-focus-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-chat-focus-option-ideation")).toHaveAttribute(
+      "data-active",
+      "true",
     );
     expect(screen.getByTestId("agents-chat-header")).toHaveAttribute(
       "data-focus-type",
@@ -243,6 +300,22 @@ describe("AgentsView", () => {
     expect(screen.getByTestId("agents-artifact-pane")).toHaveAttribute(
       "data-focused-ideation-session-id",
       "session-parent",
+    );
+    expect(screen.getByTestId("agents-chat-focus-option-verification")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    fireEvent.click(screen.getByTestId("agents-chat-focus-option-ideation"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+        "data-ideation-session-id",
+        "session-parent",
+      );
+    });
+    expect(screen.getByTestId("agents-chat-focus-option-ideation")).toHaveAttribute(
+      "data-active",
+      "true",
     );
     expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
   });

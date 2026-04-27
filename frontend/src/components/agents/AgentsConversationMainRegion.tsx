@@ -16,6 +16,7 @@ interface AgentsConversationMainRegionProps {
   attachedIdeationSessionId: ActiveConversationPanelProps["attachedIdeationSessionId"];
   availableArtifactTabs: ActiveConversationPanelProps["availableArtifactTabs"];
   chatFocus: ActiveConversationPanelProps["chatFocus"];
+  chatFocusOptions: ActiveConversationPanelProps["chatFocusOptions"];
   defaultProjectId: StartConversationPanelProps["defaultProjectId"];
   defaultRuntime: StartConversationPanelProps["defaultRuntime"];
   hasAutoOpenArtifacts: ActiveConversationPanelProps["hasAutoOpenArtifacts"];
@@ -33,7 +34,7 @@ interface AgentsConversationMainRegionProps {
   onSelectArtifact: ActiveConversationPanelProps["onSelectArtifact"];
   onStartAgentConversation: StartConversationPanelProps["onStartAgentConversation"];
   onToggleArtifacts: ActiveConversationPanelProps["onToggleArtifacts"];
-  onReturnToWorkspaceChat: ActiveConversationPanelProps["onReturnToWorkspaceChat"];
+  onSelectChatFocus: ActiveConversationPanelProps["onSelectChatFocus"];
   projects: StartConversationPanelProps["projects"];
   publishShortcutLabel: ActiveConversationPanelProps["publishShortcutLabel"];
   publishingConversationId: ActiveConversationPanelProps["publishingConversationId"];
@@ -53,6 +54,7 @@ export const AgentsConversationMainRegion = memo(function AgentsConversationMain
   attachedIdeationSessionId,
   availableArtifactTabs,
   chatFocus,
+  chatFocusOptions,
   defaultProjectId,
   defaultRuntime,
   hasAutoOpenArtifacts,
@@ -70,7 +72,7 @@ export const AgentsConversationMainRegion = memo(function AgentsConversationMain
   onSelectArtifact,
   onStartAgentConversation,
   onToggleArtifacts,
-  onReturnToWorkspaceChat,
+  onSelectChatFocus,
   projects,
   publishShortcutLabel,
   publishingConversationId,
@@ -91,6 +93,7 @@ export const AgentsConversationMainRegion = memo(function AgentsConversationMain
         attachedIdeationSessionId={attachedIdeationSessionId}
         availableArtifactTabs={availableArtifactTabs}
         chatFocus={chatFocus}
+        chatFocusOptions={chatFocusOptions}
         hasAutoOpenArtifacts={hasAutoOpenArtifacts}
         normalizedActiveRuntime={normalizedActiveRuntime}
         onActiveConversationModeChange={onActiveConversationModeChange}
@@ -103,7 +106,7 @@ export const AgentsConversationMainRegion = memo(function AgentsConversationMain
         onRenameConversation={onRenameConversation}
         onSelectArtifact={onSelectArtifact}
         onToggleArtifacts={onToggleArtifacts}
-        onReturnToWorkspaceChat={onReturnToWorkspaceChat}
+        onSelectChatFocus={onSelectChatFocus}
         publishShortcutLabel={publishShortcutLabel}
         publishingConversationId={publishingConversationId}
         selectedConversationId={selectedConversationId}

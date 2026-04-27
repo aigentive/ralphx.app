@@ -12,6 +12,7 @@ import {
   DependencyGraphResponseSchema,
   ApplyProposalsResultResponseSchema,
   CreateChildSessionResponseSchema,
+  LatestChildSessionIdResponseSchema,
   ParentSessionContextResponseSchema,
   VerificationResponseSchema,
   SessionListResponseSchema,
@@ -45,6 +46,7 @@ import type {
   ApplyProposalsInput,
   IdeationAnalysisBaseSelection,
   CreateChildSessionResponse,
+  LatestChildSessionIdResponse,
   ParentSessionContextResponse,
   CreateChildSessionInput,
   VerificationStatusResponse,
@@ -66,6 +68,7 @@ export type {
   ApplyProposalsInput,
   IdeationAnalysisBaseSelection,
   CreateChildSessionResponse,
+  LatestChildSessionIdResponse,
   ParentSessionContextResponse,
   CreateChildSessionInput,
   VerificationStatusResponse,
@@ -330,6 +333,27 @@ export const ideationApi = {
         z.array(IdeationSessionResponseSchema)
       );
       return raw.map(transformSession);
+    },
+
+    getLatestChildSessionId: async (
+      sessionId: string,
+      purpose?: "general" | "verification",
+      options: { includeArchived?: boolean } = {}
+    ): Promise<LatestChildSessionIdResponse> => {
+      const raw = await typedInvoke(
+        "get_latest_child_session_id",
+        {
+          sessionId,
+          purpose: purpose ?? null,
+          includeArchived: options.includeArchived ?? true,
+        },
+        LatestChildSessionIdResponseSchema
+      );
+      return {
+        sessionId: raw.session_id,
+        purpose: raw.purpose ?? null,
+        latestChildSessionId: raw.latest_child_session_id,
+      };
     },
   },
 

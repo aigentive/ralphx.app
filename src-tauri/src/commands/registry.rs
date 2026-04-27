@@ -135,6 +135,7 @@ macro_rules! register_tauri_commands {
             commands::ideation_commands::update_ideation_session_title,
             commands::ideation_commands::spawn_session_namer,
             commands::ideation_commands::get_child_sessions,
+            commands::ideation_commands::get_latest_child_session_id,
             // Task proposal commands
             commands::ideation_commands::create_task_proposal,
             commands::ideation_commands::get_task_proposal,
