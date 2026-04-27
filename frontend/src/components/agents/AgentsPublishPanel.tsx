@@ -166,6 +166,7 @@ export function AgentPublishPanel({
   const isBranchUpdateNeeded = Boolean(freshness?.isBaseAhead);
   const isUpdatingFromBase = updateFromBaseMutation.isPending;
   const effectivePublishing = isPublishingWorkspace || isUpdatingFromBase;
+  const isRepairPending = workspace.publicationPushStatus === "needs_agent";
   const pipelineStatus = isUpdatingFromBase
     ? "refreshing"
     : isPublishingWorkspace &&
@@ -176,7 +177,10 @@ export function AgentPublishPanel({
       : workspace.publicationPushStatus;
   const baseActionLabel = workspace.baseRef || base;
   const publishDisabled =
-    !onPublishWorkspace || effectivePublishing || workspace.status === "missing";
+    !onPublishWorkspace ||
+    effectivePublishing ||
+    isRepairPending ||
+    workspace.status === "missing";
 
   return (
     <div className="min-h-full p-4" data-testid="agents-publish-pane">
@@ -303,7 +307,11 @@ export function AgentPublishPanel({
                   type="button"
                   className="h-9 gap-2 px-3 text-xs"
                   onClick={() => updateFromBaseMutation.mutate()}
-                  disabled={isUpdatingFromBase || workspace.status === "missing"}
+                  disabled={
+                    effectivePublishing ||
+                    isRepairPending ||
+                    workspace.status === "missing"
+                  }
                   data-testid="agents-update-from-base"
                 >
                   {isUpdatingFromBase ? (

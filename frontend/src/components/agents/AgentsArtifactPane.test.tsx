@@ -455,6 +455,37 @@ describe("AgentsArtifactPane", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it("locks the base update action while agent repair is pending", async () => {
+    getWorkspaceFreshnessMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      baseRef: "feature/agent-screen",
+      baseDisplayName: "Current branch (feature/agent-screen)",
+      targetRef: "origin/feature/agent-screen",
+      capturedBaseCommit: "old-base",
+      targetBaseCommit: "new-base",
+      isBaseAhead: true,
+    });
+
+    renderPane(
+      "publish",
+      workspace({
+        mode: "edit",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+        baseCommit: "old-base",
+        publicationPushStatus: "needs_agent",
+      }),
+    );
+
+    const updateButton = await screen.findByTestId("agents-update-from-base");
+    expect(updateButton).toBeDisabled();
+
+    updateWorkspaceFromBaseMock.mockClear();
+    fireEvent.click(updateButton);
+
+    expect(updateWorkspaceFromBaseMock).not.toHaveBeenCalled();
+  });
+
   it("loads workspace changes for review before publishing", async () => {
     renderPane("publish", workspace({ mode: "edit" }));
 

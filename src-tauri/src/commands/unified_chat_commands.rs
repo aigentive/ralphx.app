@@ -28,9 +28,9 @@ use crate::application::chat_service::{
 use crate::application::git_service::GitService;
 use crate::application::publish_resilience::{
     classify_publish_failure, count_publish_reviewable_commits, ensure_publish_branch_fresh,
-    inspect_publish_branch_freshness, publish_push_status_for_failure, push_publish_branch,
-    review_base_for_publish, PublishBranchFreshnessOutcome, PublishBranchFreshnessStatus,
-    PublishFailureClass,
+    inspect_publish_branch_freshness_for_source, publish_push_status_for_failure,
+    push_publish_branch, review_base_for_publish, PublishBranchFreshnessOutcome,
+    PublishBranchFreshnessStatus, PublishFailureClass,
 };
 use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, ChatServiceError, SendResult,
@@ -1697,7 +1697,7 @@ pub async fn get_agent_conversation_workspace_freshness(
     state: State<'_, AppState>,
 ) -> Result<AgentConversationWorkspaceFreshnessResponse, String> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
-    let workspace = state
+    let mut workspace = state
         .agent_conversation_workspace_repo
         .get_by_conversation_id(&conversation_id)
         .await
@@ -1725,13 +1725,57 @@ pub async fn get_agent_conversation_workspace_freshness(
     let worktree_path = resolve_valid_agent_conversation_workspace_path(&project, &workspace)
         .await
         .map_err(|e| e.to_string())?;
-    let status = inspect_publish_branch_freshness(
+    let status = inspect_publish_branch_freshness_for_source(
         &worktree_path,
         &workspace.base_ref,
+        &workspace.branch_name,
         workspace.base_commit.as_deref(),
     )
     .await
     .map_err(|e| e.to_string())?;
+
+    let captured_base_is_stale = matches!(
+        workspace.base_commit.as_deref(),
+        Some(captured_base_commit) if captured_base_commit != status.target_base_commit.as_str()
+    );
+    if workspace.publication_push_status.as_deref() == Some("needs_agent")
+        && !status.is_base_ahead
+        && captured_base_is_stale
+    {
+        workspace.base_commit = Some(status.target_base_commit.clone());
+        workspace = state
+            .agent_conversation_workspace_repo
+            .create_or_update(workspace)
+            .await
+            .map_err(|e| e.to_string())?;
+        state
+            .agent_conversation_workspace_repo
+            .update_publication(
+                &workspace.conversation_id,
+                workspace.publication_pr_number,
+                workspace.publication_pr_url.as_deref(),
+                workspace.publication_pr_status.as_deref(),
+                Some("refreshed"),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        append_agent_workspace_publication_event(
+            &state,
+            &workspace.conversation_id,
+            "repair_resolved",
+            "succeeded",
+            "Workspace agent repair resolved the base branch update",
+            Some("agent_fixable".to_string()),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        workspace = state
+            .agent_conversation_workspace_repo
+            .get_by_conversation_id(&workspace.conversation_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .unwrap_or(workspace);
+    }
 
     Ok(AgentConversationWorkspaceFreshnessResponse::from_workspace_status(&workspace, status))
 }

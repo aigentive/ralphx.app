@@ -142,6 +142,18 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
       queryClient.invalidateQueries({ queryKey: conversationStatsKey(conversationId) });
     }
 
+    function invalidateAgentWorkspacePublishQueries(conversationId: string) {
+      queryClient.invalidateQueries({
+        queryKey: ["agents", "conversation-workspace", conversationId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["agents", "conversation-workspace-freshness", conversationId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
+      });
+    }
+
     // Reverse lookup: when a child verification session terminates, find any parent that has
     // it as activeVerificationChildId and clean up parent's synthetic generating state.
     // Called in all three termination handlers (run_completed, error, stopped).
@@ -388,6 +400,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
         handleChildTerminationReverseLink(eventContextId);
+        if (context_type === "project") {
+          invalidateAgentWorkspacePublishQueries(conversation_id);
+        }
 
         // NOTE: Queue processing is now handled by the BACKEND
         // The backend automatically processes queued messages via --resume
@@ -521,6 +536,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
         handleChildTerminationReverseLink(eventContextId);
+        if (context_type === "project") {
+          invalidateAgentWorkspacePublishQueries(conversation_id);
+        }
       })
     );
 
@@ -547,6 +565,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
         handleChildTerminationReverseLink(eventContextId);
+        if (context_type === "project") {
+          invalidateAgentWorkspacePublishQueries(conversation_id);
+        }
 
         // Show error toast for agent failures in execution contexts
         if (["task_execution", "review", "merge"].includes(context_type)) {

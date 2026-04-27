@@ -173,6 +173,26 @@ pub async fn inspect_publish_branch_freshness(
     ))
 }
 
+pub async fn inspect_publish_branch_freshness_for_source(
+    repo_path: &Path,
+    base_ref: &str,
+    source_branch: &str,
+    captured_base_commit: Option<&str>,
+) -> AppResult<PublishBranchFreshnessStatus> {
+    GitService::fetch_origin(repo_path).await?;
+    let target_ref = resolve_publish_freshness_target(repo_path, base_ref).await;
+    let target_sha = GitService::get_branch_sha(repo_path, &target_ref).await?;
+    let source_contains_target =
+        GitService::is_ancestor(repo_path, &target_sha, source_branch).await?;
+
+    Ok(publish_branch_freshness_status_from_commits_and_branch(
+        captured_base_commit,
+        &target_ref,
+        &target_sha,
+        source_contains_target,
+    ))
+}
+
 pub fn publish_branch_freshness_status_from_commits(
     captured_base_commit: Option<&str>,
     target_ref: &str,
@@ -193,6 +213,28 @@ pub fn publish_branch_freshness_status_from_commits(
         target_base_commit: target_base_commit.to_string(),
         is_base_ahead,
     }
+}
+
+pub fn publish_branch_freshness_status_from_commits_and_branch(
+    captured_base_commit: Option<&str>,
+    target_ref: &str,
+    target_base_commit: &str,
+    source_contains_target_base: bool,
+) -> PublishBranchFreshnessStatus {
+    if source_contains_target_base {
+        return PublishBranchFreshnessStatus {
+            target_ref: target_ref.to_string(),
+            captured_base_commit: Some(target_base_commit.to_string()),
+            target_base_commit: target_base_commit.to_string(),
+            is_base_ahead: false,
+        };
+    }
+
+    publish_branch_freshness_status_from_commits(
+        captured_base_commit,
+        target_ref,
+        target_base_commit,
+    )
 }
 
 pub(crate) fn publish_branch_freshness_outcome_from_source_update(

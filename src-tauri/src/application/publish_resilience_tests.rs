@@ -1,7 +1,8 @@
 use super::publish_resilience::review_base_for_publish;
 use super::publish_resilience::{
     classify_publish_failure, publish_branch_freshness_outcome_from_source_update,
-    publish_branch_freshness_status_from_commits, remote_tracking_ref_for_publish,
+    publish_branch_freshness_status_from_commits,
+    publish_branch_freshness_status_from_commits_and_branch, remote_tracking_ref_for_publish,
     PublishBranchFreshnessOutcome, PublishFailureClass,
 };
 use crate::domain::state_machine::transition_handler::SourceUpdateResult;
@@ -138,6 +139,34 @@ fn reports_publish_base_as_current_when_captured_commit_matches_target() {
 fn reports_publish_base_as_ahead_when_target_commit_changed() {
     let status =
         publish_branch_freshness_status_from_commits(Some("old-base"), "origin/main", "new-base");
+
+    assert_eq!(status.captured_base_commit.as_deref(), Some("old-base"));
+    assert_eq!(status.target_base_commit, "new-base");
+    assert!(status.is_base_ahead);
+}
+
+#[test]
+fn reports_publish_base_as_current_when_source_branch_contains_target_commit() {
+    let status = publish_branch_freshness_status_from_commits_and_branch(
+        Some("old-base"),
+        "origin/main",
+        "new-base",
+        true,
+    );
+
+    assert_eq!(status.captured_base_commit.as_deref(), Some("new-base"));
+    assert_eq!(status.target_base_commit, "new-base");
+    assert!(!status.is_base_ahead);
+}
+
+#[test]
+fn keeps_publish_base_ahead_when_source_branch_does_not_contain_target_commit() {
+    let status = publish_branch_freshness_status_from_commits_and_branch(
+        Some("old-base"),
+        "origin/main",
+        "new-base",
+        false,
+    );
 
     assert_eq!(status.captured_base_commit.as_deref(), Some("old-base"));
     assert_eq!(status.target_base_commit, "new-base");

@@ -416,6 +416,32 @@ describe("useAgentEvents", () => {
       expect(state.agentStatus["task:task-123"]).toBeUndefined();
     });
 
+    it("invalidates agent workspace publish state when a project agent completes", () => {
+      const { queryClient, wrapper } = createWrapperWithClient();
+      const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "project",
+          context_id: "project-1",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["agents", "conversation-workspace", "conv-1"],
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["agents", "conversation-workspace-freshness", "conv-1"],
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["agents", "conversation-workspace-publication-events", "conv-1"],
+      });
+    });
+
     it("clears running state for task_execution on stop/completion", () => {
       const wrapper = createWrapper();
 
