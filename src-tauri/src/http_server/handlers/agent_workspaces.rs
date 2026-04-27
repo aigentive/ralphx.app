@@ -13,6 +13,7 @@ use crate::application::publish_resilience::{
     AgentWorkspaceRepairCompletionCheck,
 };
 use crate::application::GitService;
+use crate::commands::unified_chat_commands::publish_agent_conversation_workspace_for_app_state;
 use crate::domain::entities::{AgentConversationWorkspacePublicationEvent, ChatConversationId};
 
 #[derive(Debug, serde::Deserialize)]
@@ -30,6 +31,10 @@ pub struct CompleteAgentWorkspaceRepairResponse {
     pub new_status: String,
     pub base_commit: String,
     pub repair_commit_sha: String,
+    pub auto_publish_status: Option<String>,
+    pub auto_publish_error: Option<String>,
+    pub pr_number: Option<i64>,
+    pub pr_url: Option<String>,
 }
 
 /// POST /api/agent-workspaces/{conversation_id}/complete-repair
@@ -132,11 +137,96 @@ pub async fn complete_agent_workspace_repair(
         .await
         .map_err(|error| json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), None))?;
 
+    let auto_publish = publish_agent_conversation_workspace_for_app_state(
+        state.app_state.as_ref(),
+        &state.execution_state,
+        Some(state.team_service.clone()),
+        conversation_id,
+        false,
+    )
+    .await;
+
+    let (
+        message,
+        new_status,
+        base_commit,
+        auto_publish_status,
+        auto_publish_error,
+        pr_number,
+        pr_url,
+    ) = match auto_publish {
+        Ok(result) => {
+            let status = result
+                .workspace
+                .publication_push_status
+                .clone()
+                .unwrap_or_else(|| "pushed".to_string());
+            let base_commit = result
+                .workspace
+                .base_commit
+                .clone()
+                .unwrap_or_else(|| freshness.target_base_commit.clone());
+            (
+                "Agent workspace repair verified and published".to_string(),
+                status,
+                base_commit,
+                Some("succeeded".to_string()),
+                None,
+                result.pr_number,
+                result.pr_url,
+            )
+        }
+        Err(error) => {
+            let refreshed = state
+                .app_state
+                .agent_conversation_workspace_repo
+                .get_by_conversation_id(&conversation_id)
+                .await
+                .map_err(|repo_error| {
+                    json_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        repo_error.to_string(),
+                        None,
+                    )
+                })?;
+            let final_status = refreshed
+                .as_ref()
+                .and_then(|workspace| workspace.publication_push_status.clone())
+                .unwrap_or_else(|| "failed".to_string());
+            let final_base_commit = refreshed
+                .as_ref()
+                .and_then(|workspace| workspace.base_commit.clone())
+                .unwrap_or_else(|| freshness.target_base_commit.clone());
+            let publish_status = if final_status == "no_changes" {
+                "skipped"
+            } else {
+                "failed"
+            };
+            (
+                format!("Agent workspace repair verified; automatic publish failed: {error}"),
+                final_status,
+                final_base_commit,
+                Some(publish_status.to_string()),
+                Some(error),
+                refreshed
+                    .as_ref()
+                    .and_then(|workspace| workspace.publication_pr_number),
+                refreshed
+                    .as_ref()
+                    .and_then(|workspace| workspace.publication_pr_url.clone()),
+            )
+        }
+    };
+
     Ok(Json(CompleteAgentWorkspaceRepairResponse {
         success: true,
-        message: "Agent workspace repair verified".to_string(),
-        new_status: "refreshed".to_string(),
-        base_commit: freshness.target_base_commit,
+        message,
+        new_status,
+        base_commit,
         repair_commit_sha: req.repair_commit_sha,
+        auto_publish_status,
+        auto_publish_error,
+        pr_number,
+        pr_url,
     }))
 }

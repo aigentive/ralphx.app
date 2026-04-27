@@ -6,7 +6,7 @@
 export const AGENT_WORKSPACE_TOOLS = [
     {
         name: "complete_agent_workspace_repair",
-        description: "Signal that an agent workspace publish/update repair has been committed and is ready for backend verification. " +
+        description: "Signal that an agent workspace publish/update repair has been committed, then let RalphX verify the repair and automatically retry publishing. " +
             "Call this only after the workspace branch contains the current base, the repair is committed, and the worktree is clean.",
         inputSchema: {
             type: "object",

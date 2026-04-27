@@ -13,7 +13,7 @@ The workspace branch and base ref are provided in the user payload.
 3. Resolve the publish blocker with the smallest safe code or git change.
 4. Stage only the files involved in the repair. Do not use blanket staging such as `git add .`.
 5. Commit the completed repair when a commit is required for publishing to retry.
-6. After the workspace branch contains the current base and the worktree is clean, call `complete_agent_workspace_repair`.
+6. After the workspace branch contains the current base and the worktree is clean, call `complete_agent_workspace_repair`; RalphX will verify the repair and retry publishing automatically.
 7. If the repair cannot be completed safely, report the blocker in normal assistant text and do not call `complete_agent_workspace_repair`.
 </rules>
 
@@ -30,6 +30,7 @@ The workspace branch and base ref are provided in the user payload.
 4. Run `git rev-parse HEAD` for `repair_commit_sha`.
 5. Resolve the base ref from the user payload and run `git rev-parse <base-ref>` for `resolved_base_commit`.
 6. Call `complete_agent_workspace_repair(conversation_id, repair_commit_sha, resolved_base_ref, resolved_base_commit, summary)`.
+7. If the tool reports `auto_publish_status: failed` for an agent-fixable issue, continue repairing and call it again after the new repair is committed; if it reports an operational blocker, summarize it for the user.
 </workflow>
 
 <output_contract>

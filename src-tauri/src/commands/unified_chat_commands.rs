@@ -1958,9 +1958,27 @@ pub async fn publish_agent_conversation_workspace(
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
     team_service: State<'_, std::sync::Arc<crate::application::TeamService>>,
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
 ) -> Result<PublishAgentConversationWorkspaceResponse, String> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
+    publish_agent_conversation_workspace_for_app_state(
+        state.inner(),
+        execution_state.inner(),
+        Some(team_service.inner().clone()),
+        conversation_id,
+        true,
+    )
+    .await
+}
+
+#[doc(hidden)]
+pub async fn publish_agent_conversation_workspace_for_app_state(
+    state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    team_service: Option<Arc<crate::application::TeamService>>,
+    conversation_id: ChatConversationId,
+    route_fixable_failures_to_agent: bool,
+) -> Result<PublishAgentConversationWorkspaceResponse, String> {
     let mut workspace = state
         .agent_conversation_workspace_repo
         .get_by_conversation_id(&conversation_id)
@@ -2001,12 +2019,11 @@ pub async fn publish_agent_conversation_workspace(
         ));
     }
 
-    let repair_service = create_chat_service(
-        &state,
-        app,
-        &execution_state,
-        Some(team_service.inner().clone()),
-    );
+    let mut repair_service =
+        state.build_chat_service_with_execution_state(Arc::clone(execution_state));
+    if let Some(team_service) = team_service {
+        repair_service = repair_service.with_team_service(team_service);
+    }
 
     let project = state
         .project_repo
@@ -2038,13 +2055,20 @@ pub async fn publish_agent_conversation_workspace(
         Some(github) => github,
         None => {
             let error = "GitHub integration is not available".to_string();
-            mark_agent_workspace_publish_failure(&state, &workspace, &error, None, &repair_service)
-                .await;
+            mark_agent_workspace_publish_failure_with_routing(
+                state,
+                &workspace,
+                &error,
+                None,
+                &repair_service,
+                route_fixable_failures_to_agent,
+            )
+            .await;
             return Err(error);
         }
     };
 
-    mark_agent_workspace_publish_status(&state, &workspace, "checking")
+    mark_agent_workspace_publish_status(state, &workspace, "checking")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -2052,14 +2076,21 @@ pub async fn publish_agent_conversation_workspace(
         Ok(has_changes) => has_changes,
         Err(error) => {
             let error = error.to_string();
-            mark_agent_workspace_publish_failure(&state, &workspace, &error, None, &repair_service)
-                .await;
+            mark_agent_workspace_publish_failure_with_routing(
+                state,
+                &workspace,
+                &error,
+                None,
+                &repair_service,
+                route_fixable_failures_to_agent,
+            )
+            .await;
             return Err(error);
         }
     };
 
     let commit_sha = if has_uncommitted_changes {
-        mark_agent_workspace_publish_status(&state, &workspace, "committing")
+        mark_agent_workspace_publish_status(state, &workspace, "committing")
             .await
             .map_err(|e| e.to_string())?;
         let message = build_agent_workspace_commit_message(&conversation);
@@ -2067,12 +2098,13 @@ pub async fn publish_agent_conversation_workspace(
             Ok(commit_sha) => commit_sha,
             Err(error) => {
                 let error = error.to_string();
-                mark_agent_workspace_publish_failure(
-                    &state,
+                mark_agent_workspace_publish_failure_with_routing(
+                    state,
                     &workspace,
                     &error,
                     None,
                     &repair_service,
+                    route_fixable_failures_to_agent,
                 )
                 .await;
                 return Err(error);
@@ -2085,12 +2117,19 @@ pub async fn publish_agent_conversation_workspace(
     if let Err(error) =
         review_base_for_publish(workspace.base_commit.as_deref(), &workspace.base_ref)
     {
-        mark_agent_workspace_publish_failure(&state, &workspace, &error, None, &repair_service)
-            .await;
+        mark_agent_workspace_publish_failure_with_routing(
+            state,
+            &workspace,
+            &error,
+            None,
+            &repair_service,
+            route_fixable_failures_to_agent,
+        )
+        .await;
         return Err(error);
     }
 
-    mark_agent_workspace_publish_status(&state, &workspace, "refreshing")
+    mark_agent_workspace_publish_status(state, &workspace, "refreshing")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -2109,23 +2148,25 @@ pub async fn publish_agent_conversation_workspace(
         PublishBranchFreshnessOutcome::AlreadyFresh { base_commit, .. }
         | PublishBranchFreshnessOutcome::Updated { base_commit, .. } => base_commit,
         PublishBranchFreshnessOutcome::NeedsAgent { message, .. } => {
-            mark_agent_workspace_publish_failure(
-                &state,
+            mark_agent_workspace_publish_failure_with_routing(
+                state,
                 &workspace,
                 &message,
                 None,
                 &repair_service,
+                route_fixable_failures_to_agent,
             )
             .await;
             return Err(message);
         }
         PublishBranchFreshnessOutcome::OperationalError { message } => {
-            mark_agent_workspace_publish_failure(
-                &state,
+            mark_agent_workspace_publish_failure_with_routing(
+                state,
                 &workspace,
                 &message,
                 None,
                 &repair_service,
+                route_fixable_failures_to_agent,
             )
             .await;
             return Err(message);
@@ -2145,19 +2186,20 @@ pub async fn publish_agent_conversation_workspace(
         match review_base_for_publish(workspace.base_commit.as_deref(), &workspace.base_ref) {
             Ok(review_base) => review_base,
             Err(error) => {
-                mark_agent_workspace_publish_failure(
-                    &state,
+                mark_agent_workspace_publish_failure_with_routing(
+                    state,
                     &workspace,
                     &error,
                     None,
                     &repair_service,
+                    route_fixable_failures_to_agent,
                 )
                 .await;
                 return Err(error);
             }
         };
 
-    mark_agent_workspace_publish_status(&state, &workspace, "checking")
+    mark_agent_workspace_publish_status(state, &workspace, "checking")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -2168,34 +2210,42 @@ pub async fn publish_agent_conversation_workspace(
             Ok(count) => count,
             Err(error) => {
                 let error = error.to_string();
-                mark_agent_workspace_publish_failure(
-                    &state,
+                mark_agent_workspace_publish_failure_with_routing(
+                    state,
                     &workspace,
                     &error,
                     None,
                     &repair_service,
+                    route_fixable_failures_to_agent,
                 )
                 .await;
                 return Err(error);
             }
         };
     if reviewable_commit_count == 0 {
-        let _ = mark_agent_workspace_publish_status(&state, &workspace, "no_changes").await;
+        let _ = mark_agent_workspace_publish_status(state, &workspace, "no_changes").await;
         return Err("No committed changes to publish on this agent branch".to_string());
     }
 
-    mark_agent_workspace_publish_status(&state, &workspace, "pushing")
+    mark_agent_workspace_publish_status(state, &workspace, "pushing")
         .await
         .map_err(|e| e.to_string())?;
 
     if let Err(error) = push_publish_branch(github, &worktree_path, &workspace.branch_name).await {
         let error = error.to_string();
-        mark_agent_workspace_publish_failure(&state, &workspace, &error, None, &repair_service)
-            .await;
+        mark_agent_workspace_publish_failure_with_routing(
+            state,
+            &workspace,
+            &error,
+            None,
+            &repair_service,
+            route_fixable_failures_to_agent,
+        )
+        .await;
         return Err(error);
     }
 
-    mark_agent_workspace_publish_status(&state, &workspace, "pushed")
+    mark_agent_workspace_publish_status(state, &workspace, "pushed")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -2207,12 +2257,13 @@ pub async fn publish_agent_conversation_workspace(
         Ok(result) => result,
         Err(error) => {
             let error = error.to_string();
-            mark_agent_workspace_publish_failure(
-                &state,
+            mark_agent_workspace_publish_failure_with_routing(
+                state,
                 &workspace,
                 &error,
                 Some("failed"),
                 &repair_service,
+                route_fixable_failures_to_agent,
             )
             .await;
             return Err(error);
@@ -2231,7 +2282,7 @@ pub async fn publish_agent_conversation_workspace(
         .await
         .map_err(|e| e.to_string())?;
     append_agent_workspace_publication_event(
-        &state,
+        state,
         &workspace.conversation_id,
         "published",
         "succeeded",
@@ -2396,6 +2447,27 @@ pub async fn mark_agent_workspace_publish_failure<S>(
 ) where
     S: ChatService + ?Sized,
 {
+    mark_agent_workspace_publish_failure_with_routing(
+        state,
+        workspace,
+        error,
+        pr_status_override,
+        repair_service,
+        true,
+    )
+    .await;
+}
+
+async fn mark_agent_workspace_publish_failure_with_routing<S>(
+    state: &AppState,
+    workspace: &AgentConversationWorkspace,
+    error: &str,
+    pr_status_override: Option<&str>,
+    repair_service: &S,
+    route_fixable_failures_to_agent: bool,
+) where
+    S: ChatService + ?Sized,
+{
     let push_status = publish_push_status_for_failure(error);
     let failure_class = classify_publish_failure(error);
     let classification = match failure_class {
@@ -2422,7 +2494,9 @@ pub async fn mark_agent_workspace_publish_failure<S>(
     )
     .await;
 
-    if !matches!(failure_class, PublishFailureClass::AgentFixable) {
+    if !route_fixable_failures_to_agent
+        || !matches!(failure_class, PublishFailureClass::AgentFixable)
+    {
         return;
     }
 
