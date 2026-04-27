@@ -6,9 +6,11 @@ import {
   FileText,
   GitBranch,
   GitPullRequestArrow,
+  Lightbulb,
   Loader2,
   PanelRightClose,
   PanelRightOpen,
+  ShieldCheck,
   Terminal as TerminalIcon,
 } from "lucide-react";
 
@@ -32,6 +34,12 @@ import {
   getAgentConversationStoreKey,
   type AgentConversation,
 } from "./agentConversations";
+import {
+  getAgentsChatFocusDisplay,
+  type AgentsChatFocus,
+  type AgentsChatFocusDisplay,
+  type AgentsChatFocusTone,
+} from "./agentChatFocus";
 import type { IdeationArtifactTab } from "./agentArtifactTabs";
 import { resolveConversationAgentMode } from "./agentConversationMode";
 
@@ -46,9 +54,31 @@ const HEADER_ARTIFACT_TABS: Array<{
   { id: "tasks", label: "Tasks", icon: ClipboardList },
 ];
 
+const FOCUS_TONE_STYLES: Record<
+  AgentsChatFocusTone,
+  { color: string; background: string; border: string }
+> = {
+  accent: {
+    color: "var(--accent-primary)",
+    background: "var(--accent-muted)",
+    border: "var(--accent-border)",
+  },
+  warning: {
+    color: "var(--status-warning)",
+    background: "var(--status-warning-muted)",
+    border: "var(--status-warning-border)",
+  },
+};
+
+const FOCUS_TONE_ICONS: Record<AgentsChatFocusTone, ElementType> = {
+  accent: Lightbulb,
+  warning: ShieldCheck,
+};
+
 export interface AgentsChatHeaderProps {
   conversation: AgentConversation | null;
   workspace: AgentConversationWorkspace | null;
+  chatFocus?: AgentsChatFocus | undefined;
   modelDisplay?: ModelDisplay | undefined;
   availableArtifactTabs?: readonly IdeationArtifactTab[] | undefined;
   focusReturnLabel?: string | undefined;
@@ -69,9 +99,36 @@ export interface AgentsChatHeaderProps {
   onSelectArtifact: (tab: AgentArtifactTab) => void;
 }
 
+const AgentsChatFocusBadge = memo(function AgentsChatFocusBadge({
+  focusDisplay,
+}: {
+  focusDisplay: AgentsChatFocusDisplay;
+}) {
+  const Icon = FOCUS_TONE_ICONS[focusDisplay.tone];
+  const style = FOCUS_TONE_STYLES[focusDisplay.tone];
+
+  return (
+    <div
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-semibold"
+      style={{
+        color: style.color,
+        background: style.background,
+        borderColor: style.border,
+      }}
+      data-testid="agents-chat-focus-badge"
+      data-focus-tone={focusDisplay.tone}
+      aria-label={`Focused chat: ${focusDisplay.label}`}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span>{focusDisplay.label}</span>
+    </div>
+  );
+});
+
 export const AgentsChatHeader = memo(function AgentsChatHeader({
   conversation,
   workspace,
+  chatFocus = { type: "workspace" },
   modelDisplay,
   availableArtifactTabs = [],
   focusReturnLabel,
@@ -95,6 +152,7 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   const conversationMode = conversation
     ? resolveConversationAgentMode(conversation, workspace)
     : null;
+  const focusDisplay = getAgentsChatFocusDisplay(chatFocus);
   const visibleHeaderArtifactTabs = useMemo(
     () =>
       HEADER_ARTIFACT_TABS.filter((tab) =>
@@ -150,8 +208,22 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   }, [conversation, draftTitle, onRenameConversation, title]);
 
   return (
-    <div className="flex w-full flex-1 items-center justify-between gap-3 min-w-0">
-      <div className="flex min-w-0 shrink items-center gap-2">
+    <div
+      className="flex w-full flex-1 items-center justify-between gap-3 min-w-0 overflow-hidden"
+      data-testid="agents-chat-header"
+      data-focus-type={chatFocus.type}
+    >
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-2 overflow-hidden",
+          focusDisplay && "rounded-md border-l-2 pl-2",
+        )}
+        style={
+          focusDisplay
+            ? { borderLeftColor: FOCUS_TONE_STYLES[focusDisplay.tone].color }
+            : undefined
+        }
+      >
         {onReturnToWorkspaceChat ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -172,7 +244,8 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
             </TooltipContent>
           </Tooltip>
         ) : null}
-        <div className="min-w-0 shrink">
+        {focusDisplay ? <AgentsChatFocusBadge focusDisplay={focusDisplay} /> : null}
+        <div className="min-w-0 flex-1">
           {isEditing ? (
             <Input
               value={draftTitle}
@@ -196,7 +269,7 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
           ) : (
             <button
               type="button"
-              className="block max-w-[420px] text-left text-sm font-semibold truncate"
+              className="block w-full max-w-full text-left text-sm font-semibold truncate"
               style={{ color: "var(--text-primary)" }}
               onClick={() => conversation && setIsEditing(true)}
               aria-label="Edit agent title"

@@ -143,6 +143,107 @@ describe("AgentsChatHeader", () => {
     expect(screen.queryByText("gpt-5.4")).not.toBeInTheDocument();
   });
 
+  it("keeps the workspace chat header neutral without a focus badge", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation()}
+        workspace={null}
+        chatFocus={{ type: "workspace" }}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId("agents-chat-focus-badge")).not.toBeInTheDocument();
+  });
+
+  it("marks ideation-focused chat with an accent badge", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation()}
+        workspace={null}
+        chatFocus={{ type: "ideation", sessionId: "session-child" }}
+        focusReturnLabel="Workspace chat"
+        onReturnToWorkspaceChat={vi.fn()}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    const badge = screen.getByTestId("agents-chat-focus-badge");
+    expect(badge).toHaveTextContent("Ideation");
+    expect(badge).toHaveAttribute("data-focus-tone", "accent");
+    expect(screen.getByTestId("agents-chat-header")).toHaveAttribute(
+      "data-focus-type",
+      "ideation",
+    );
+  });
+
+  it("marks verification-focused chat with a warning badge", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation()}
+        workspace={null}
+        chatFocus={{
+          type: "verification",
+          parentSessionId: "session-parent",
+          childSessionId: "verification-child",
+        }}
+        focusReturnLabel="Workspace chat"
+        onReturnToWorkspaceChat={vi.fn()}
+        artifactOpen={false}
+        activeArtifactTab="verification"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    const badge = screen.getByTestId("agents-chat-focus-badge");
+    expect(badge).toHaveTextContent("Verification");
+    expect(badge).toHaveAttribute("data-focus-tone", "warning");
+    expect(screen.getByTestId("agents-chat-header")).toHaveAttribute(
+      "data-focus-type",
+      "verification",
+    );
+  });
+
+  it("constrains long focused-chat titles so header controls remain reachable", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({
+          title:
+            "Add execution bar to Agents screen layout with enough words to collide with header buttons",
+        })}
+        workspace={null}
+        chatFocus={{
+          type: "verification",
+          parentSessionId: "session-parent",
+          childSessionId: "verification-child",
+        }}
+        focusReturnLabel="Workspace chat"
+        onReturnToWorkspaceChat={vi.fn()}
+        artifactOpen
+        activeArtifactTab="verification"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("agents-chat-title-button")).toHaveClass(
+      "max-w-full",
+    );
+    expect(screen.getByTestId("agents-terminal-toggle")).toBeInTheDocument();
+    expect(screen.getByLabelText("Close panel")).toBeInTheDocument();
+  });
+
   it("marks conversation stats as pending while the active Agents turn has no usage yet", async () => {
     vi.spyOn(chatApi, "getConversationStats").mockResolvedValue(conversationStats());
     useChatStore

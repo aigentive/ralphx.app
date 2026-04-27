@@ -14,6 +14,7 @@ The main Agents chat has an explicit focus:
 
 Focus changes should not change the selected workspace in the left sidebar. A visible affordance must let the user return to the workspace chat.
 Focused child chats should hide workspace-only branch/status metadata in the chat header; the user is looking at the child run, not the workspace branch.
+Focused child chats show a compact identity badge and accent in the chat header; the workspace chat stays neutral without a focus badge.
 
 ## Attached Ideation Runs
 
@@ -21,6 +22,7 @@ Agent workspaces may attach multiple ideation sessions over time.
 
 - The latest attached ideation session is the default attached run for artifact context.
 - Clicking an `Open Run` action on a specific ideation widget focuses that specific run, even when it is not the latest.
+- Selecting the Agents `Plan` artifact tab focuses the associated ideation run chat.
 - While an ideation run is focused, the artifact panel hydrates plan/verification/proposal/task data from that focused parent session instead of falling back to the workspace's default attached run.
 - A multi-run switcher is optional until real usage proves users need to compare older attached runs frequently.
 

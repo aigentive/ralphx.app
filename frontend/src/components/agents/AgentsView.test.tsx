@@ -1,8 +1,10 @@
 import {
   getAgentsViewTestMocks,
   mockAgentViewData,
+  mockSessionWithData,
   mockSidebarBreakpoint,
   renderAgentsView,
+  resetAgentSessionState,
   selectSidebarConversationRow,
   setupAgentsViewTest,
 } from "./AgentsView.testSetup";
@@ -157,6 +159,50 @@ describe("AgentsView", () => {
       );
     });
     expect(await screen.findByTestId("agents-workspace-status")).toBeInTheDocument();
+  });
+
+  it("focuses the main chat on the attached ideation run when the Plan artifact tab is selected", async () => {
+    mockAgentViewData();
+    getAgentConversationWorkspaceMock.mockResolvedValue(
+      conversationWorkspace({ mode: "ideation", linkedIdeationSessionId: "session-1" })
+    );
+    mockSessionWithData({ id: "session-1", planArtifactId: "plan-1" });
+    resetAgentSessionState({
+      artifactByConversationId: {
+        "conversation-1": {
+          isOpen: false,
+          activeTab: "plan",
+          taskMode: "graph",
+        },
+      },
+    });
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Plan")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Plan"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+        "data-ideation-session-id",
+        "session-1",
+      );
+    });
+    expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+      "data-conversation-id-override",
+      "",
+    );
+    expect(screen.getByTestId("agents-chat-focus-badge")).toHaveTextContent(
+      "Ideation",
+    );
+    expect(screen.getByTestId("agents-chat-header")).toHaveAttribute(
+      "data-focus-type",
+      "ideation",
+    );
   });
 
   it("focuses the main chat on a verification child selected from artifacts", async () => {

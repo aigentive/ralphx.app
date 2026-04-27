@@ -238,6 +238,25 @@ export function useAgentsViewController({
     selectedConversationId,
     setArtifactPaneVisibility,
   });
+  const handleSelectArtifactWithChatFocus = useCallback(
+    (tab: Parameters<typeof handleSelectArtifact>[0]) => {
+      handleSelectArtifact(tab);
+      if (tab !== "plan") {
+        return;
+      }
+      const targetIdeationSessionId =
+        focusedArtifactIdeationSessionId ?? attachedIdeationSessionId;
+      if (targetIdeationSessionId) {
+        handleFocusIdeationSession(targetIdeationSessionId);
+      }
+    },
+    [
+      attachedIdeationSessionId,
+      focusedArtifactIdeationSessionId,
+      handleFocusIdeationSession,
+      handleSelectArtifact,
+    ],
+  );
 
   const handleAgentUserMessageSent = useAgentUserMessageAutoTitle({
     activeProjectId,
@@ -321,7 +340,7 @@ export function useAgentsViewController({
       onPreloadArtifacts: handlePreloadArtifacts,
       onPublishWorkspace: handlePublishWorkspace,
       onRenameConversation: handleRenameConversation,
-      onSelectArtifact: handleSelectArtifact,
+      onSelectArtifact: handleSelectArtifactWithChatFocus,
       onStartAgentConversation: handleStartAgentConversation,
       onToggleArtifacts: toggleArtifactPaneVisibility,
       onReturnToWorkspaceChat: handleReturnToWorkspaceChat,
@@ -363,7 +382,7 @@ export function useAgentsViewController({
       onPublishWorkspace: handlePublishWorkspace,
       onResizeReset: handleArtifactResizeReset,
       onResizeStart: handleArtifactResizeStart,
-      onSelectArtifact: handleSelectArtifact,
+      onSelectArtifact: handleSelectArtifactWithChatFocus,
     },
   };
 }

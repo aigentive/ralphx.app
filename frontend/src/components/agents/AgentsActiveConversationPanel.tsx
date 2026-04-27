@@ -243,6 +243,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
             <AgentsChatHeaderController
               conversation={activeConversation}
               workspace={isFocusedChildChat ? null : activeWorkspace}
+              chatFocus={chatFocus}
               availableArtifactTabs={availableArtifactTabs}
               modelDisplay={{
                 id: normalizedActiveRuntime.modelId,
