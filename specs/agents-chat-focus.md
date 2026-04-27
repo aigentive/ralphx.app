@@ -13,6 +13,7 @@ The main Agents chat has an explicit focus:
 - **Verification run**: selected from the Verification artifact surface once a verification run exists. Shows that verifier chat in the same main chat area.
 
 Focus changes should not change the selected workspace in the left sidebar. A visible affordance must let the user return to the workspace chat.
+Focused child chats should hide workspace-only branch/status metadata in the chat header; the user is looking at the child run, not the workspace branch.
 
 ## Attached Ideation Runs
 
@@ -20,6 +21,7 @@ Agent workspaces may attach multiple ideation sessions over time.
 
 - The latest attached ideation session is the default attached run for artifact context.
 - Clicking an `Open Run` action on a specific ideation widget focuses that specific run, even when it is not the latest.
+- While an ideation run is focused, the artifact panel hydrates plan/verification/proposal/task data from that focused parent session instead of falling back to the workspace's default attached run.
 - A multi-run switcher is optional until real usage proves users need to compare older attached runs frequently.
 
 ## Artifact Panel Contract
@@ -44,9 +46,9 @@ The chat header model/provider chips and stats chip remain independently control
 - Workspace/task-style chats may show provider/model and stats depending on surface needs.
 - Agents chat header shows stats only.
 
-## Verification Follow-up
+## Verification Focus
 
-When the user opens the Verification artifact tab and a verifier conversation exists, the main Agents chat should focus the verifier conversation while the artifact panel continues to show structured verification state. This keeps the transcript interactive without making the artifact panel a second chat surface.
+When the user opens the Verification artifact tab and a verifier conversation exists, the main Agents chat focuses the newest verifier child conversation while the artifact panel continues to show structured verification state for the parent ideation session. This keeps the transcript interactive without making the artifact panel a second chat surface.
 
 ## Non-Goals
 

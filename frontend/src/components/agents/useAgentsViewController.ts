@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useProjects } from "@/hooks/useProjects";
@@ -23,6 +24,10 @@ import { useAgentsOptimisticState } from "./useAgentsOptimisticState";
 import { useAgentsTerminalDocks } from "./useAgentsTerminalDocks";
 import { useAgentsSidebarState } from "./useAgentsSidebarState";
 import { useAgentsSidebarProps } from "./useAgentsSidebarProps";
+import {
+  getFocusedArtifactIdeationSessionId,
+  type AgentsChatFocus,
+} from "./agentChatFocus";
 
 interface UseAgentsViewControllerParams {
   projectId: string;
@@ -34,6 +39,7 @@ export function useAgentsViewController({
   onCreateProject,
 }: UseAgentsViewControllerParams) {
   const queryClient = useQueryClient();
+  const [chatFocus, setChatFocus] = useState<AgentsChatFocus>({ type: "workspace" });
   const {
     closeSidebarOverlay,
     isSidebarCollapsed,
@@ -99,6 +105,33 @@ export function useAgentsViewController({
     showArchived,
     storedSelectedConversationId,
   });
+  useEffect(() => {
+    setChatFocus({ type: "workspace" });
+  }, [selectedConversationId]);
+  const focusedArtifactIdeationSessionId =
+    getFocusedArtifactIdeationSessionId(chatFocus);
+  const handleFocusIdeationSession = useCallback((sessionId: string) => {
+    setChatFocus((current) =>
+      current.type === "ideation" && current.sessionId === sessionId
+        ? current
+        : { type: "ideation", sessionId },
+    );
+  }, []);
+  const handleFocusVerificationSession = useCallback(
+    (parentSessionId: string, childSessionId: string) => {
+      setChatFocus((current) =>
+        current.type === "verification" &&
+        current.parentSessionId === parentSessionId &&
+        current.childSessionId === childSessionId
+          ? current
+          : { type: "verification", parentSessionId, childSessionId },
+      );
+    },
+    [],
+  );
+  const handleReturnToWorkspaceChat = useCallback(() => {
+    setChatFocus({ type: "workspace" });
+  }, []);
   const {
     activeConversationMode,
     activeConversationModeLocked,
@@ -273,6 +306,7 @@ export function useAgentsViewController({
       activeWorkspace,
       attachedIdeationSessionId,
       availableArtifactTabs,
+      chatFocus,
       defaultProjectId,
       defaultRuntime,
       hasAutoOpenArtifacts,
@@ -282,6 +316,7 @@ export function useAgentsViewController({
       onActiveModelChange: handleActiveModelChange,
       onAgentUserMessageSent: handleAgentUserMessageSent,
       onCreateProject,
+      onFocusIdeationSession: handleFocusIdeationSession,
       onOpenPublishPane: handleOpenPublishPane,
       onPreloadArtifacts: handlePreloadArtifacts,
       onPublishWorkspace: handlePublishWorkspace,
@@ -289,6 +324,7 @@ export function useAgentsViewController({
       onSelectArtifact: handleSelectArtifact,
       onStartAgentConversation: handleStartAgentConversation,
       onToggleArtifacts: toggleArtifactPaneVisibility,
+      onReturnToWorkspaceChat: handleReturnToWorkspaceChat,
       projects,
       publishShortcutLabel,
       publishingConversationId,
@@ -312,6 +348,7 @@ export function useAgentsViewController({
       activeWorkspace,
       artifactWidthCss,
       chatDockElement: terminalChatDockElement,
+      focusedIdeationSessionId: focusedArtifactIdeationSessionId,
       hasAutoOpenArtifacts,
       isArtifactResizing,
       openArtifactTab,
@@ -322,6 +359,7 @@ export function useAgentsViewController({
       setArtifactTaskMode,
       setTerminalPanelDockElement,
       terminalUnavailableReason,
+      onFocusVerificationSession: handleFocusVerificationSession,
       onPublishWorkspace: handlePublishWorkspace,
       onResizeReset: handleArtifactResizeReset,
       onResizeStart: handleArtifactResizeStart,

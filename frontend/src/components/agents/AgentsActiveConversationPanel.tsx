@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useMemo } from "react";
 
 import type {
   AgentConversationWorkspace,
@@ -30,6 +30,10 @@ import {
 } from "./agentOptions";
 import { AgentsTerminalDockHost } from "./AgentsTerminalRegion";
 import type { IdeationArtifactTab } from "./agentArtifactTabs";
+import {
+  getFocusedChatSessionId,
+  type AgentsChatFocus,
+} from "./agentChatFocus";
 
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 
@@ -48,6 +52,7 @@ interface AgentsActiveConversationPanelProps {
   activeWorkspace: AgentConversationWorkspace | null;
   attachedIdeationSessionId: string | null;
   availableArtifactTabs: readonly IdeationArtifactTab[];
+  chatFocus: AgentsChatFocus;
   hasAutoOpenArtifacts: boolean;
   normalizedActiveRuntime: AgentRuntimeSelection;
   onActiveConversationModeChange: (mode: AgentConversationWorkspaceMode) => void;
@@ -56,12 +61,14 @@ interface AgentsActiveConversationPanelProps {
     content: string;
     result: { conversationId: string };
   }) => void;
+  onFocusIdeationSession: (sessionId: string) => void;
   onOpenPublishPane: () => void;
   onPreloadArtifacts: () => void;
   onPublishWorkspace: (conversationId: string) => Promise<void>;
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
   onSelectArtifact: (tab: AgentArtifactTab) => void;
   onToggleArtifacts: (conversationId: string) => void;
+  onReturnToWorkspaceChat: () => void;
   publishShortcutLabel: string;
   publishingConversationId: string | null;
   selectedConversationId: string;
@@ -69,10 +76,6 @@ interface AgentsActiveConversationPanelProps {
   switchingConversationModeId: string | null;
   terminalUnavailableReason: string | null;
 }
-
-type AgentsChatFocus =
-  | { type: "workspace" }
-  | { type: "ideation"; sessionId: string };
 
 export const AgentsActiveConversationPanel = memo(function AgentsActiveConversationPanel({
   activeConversation,
@@ -83,17 +86,20 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
   activeWorkspace,
   attachedIdeationSessionId,
   availableArtifactTabs,
+  chatFocus,
   hasAutoOpenArtifacts,
   normalizedActiveRuntime,
   onActiveConversationModeChange,
   onActiveModelChange,
   onAgentUserMessageSent,
+  onFocusIdeationSession,
   onOpenPublishPane,
   onPreloadArtifacts,
   onPublishWorkspace,
   onRenameConversation,
   onSelectArtifact,
   onToggleArtifacts,
+  onReturnToWorkspaceChat,
   publishShortcutLabel,
   publishingConversationId,
   selectedConversationId,
@@ -101,51 +107,36 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
   switchingConversationModeId,
   terminalUnavailableReason,
 }: AgentsActiveConversationPanelProps) {
-  const [chatFocus, setChatFocus] = useState<AgentsChatFocus>({ type: "workspace" });
-
-  useEffect(() => {
-    setChatFocus({ type: "workspace" });
-  }, [selectedConversationId]);
-
-  const handleChildSessionNavigate = useCallback((sessionId: string) => {
-    setChatFocus({ type: "ideation", sessionId });
-  }, []);
-
-  const handleReturnToWorkspaceChat = useCallback(() => {
-    setChatFocus({ type: "workspace" });
-  }, []);
-
-  const focusedIdeationSessionId =
-    chatFocus.type === "ideation" ? chatFocus.sessionId : null;
+  const focusedChatSessionId = getFocusedChatSessionId(chatFocus);
   const panelIdeationSessionId =
-    focusedIdeationSessionId ??
+    focusedChatSessionId ??
     (activeConversation.contextType === "ideation" ? activeConversation.contextId : undefined);
-  const isFocusedChildIdeation = Boolean(focusedIdeationSessionId);
+  const isFocusedChildChat = chatFocus.type !== "workspace";
   const panelStoreKeyOverride = useMemo(() => {
-    if (focusedIdeationSessionId) {
-      return buildStoreKey("ideation", focusedIdeationSessionId);
+    if (focusedChatSessionId) {
+      return buildStoreKey("ideation", focusedChatSessionId);
     }
     return getAgentConversationStoreKey(activeConversation);
-  }, [activeConversation, focusedIdeationSessionId]);
+  }, [activeConversation, focusedChatSessionId]);
 
   return (
     <div className="flex-1 min-w-0 h-full flex flex-col">
       <div className="min-h-0 flex-1">
         <IntegratedChatPanel
-          key={`${selectedConversationId}:${chatFocus.type}:${focusedIdeationSessionId ?? "workspace"}`}
+          key={`${selectedConversationId}:${chatFocus.type}:${focusedChatSessionId ?? "workspace"}`}
           projectId={activeProjectId}
           {...(panelIdeationSessionId
             ? { ideationSessionId: panelIdeationSessionId }
             : {})}
-          {...(!isFocusedChildIdeation
+          {...(!isFocusedChildChat
             ? { conversationIdOverride: selectedConversationId }
             : {})}
           selectedTaskIdOverride={null}
           storeContextKeyOverride={panelStoreKeyOverride}
-          {...(!isFocusedChildIdeation && activeConversation.contextType === "project"
+          {...(!isFocusedChildChat && activeConversation.contextType === "project"
             ? { agentProcessContextIdOverride: selectedConversationId }
             : {})}
-          {...(!isFocusedChildIdeation
+          {...(!isFocusedChildChat
             ? {
                 sendOptions: {
                   conversationId: selectedConversationId,
@@ -155,12 +146,12 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
               }
             : {})}
           onUserMessageSent={onAgentUserMessageSent}
-          onChildSessionNavigate={handleChildSessionNavigate}
+          onChildSessionNavigate={onFocusIdeationSession}
           hideHeaderSessionControls
           hideSessionToolbar
           surfaceBackground="var(--bg-base)"
           contentWidthClassName={AGENTS_CHAT_CONTENT_WIDTH_CLASS}
-          {...(!isFocusedChildIdeation
+          {...(!isFocusedChildChat
             ? {
                 inputContainerClassName:
                   "shrink-0 bg-transparent px-4 pb-4 pt-3",
@@ -245,22 +236,22 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                 ),
               }
             : {})}
-          {...(!isFocusedChildIdeation && activeConversation.contextType === "project" && attachedIdeationSessionId
+          {...(!isFocusedChildChat && activeConversation.contextType === "project" && attachedIdeationSessionId
             ? { additionalQuestionSessionIds: [attachedIdeationSessionId] }
             : {})}
           headerContent={
             <AgentsChatHeaderController
               conversation={activeConversation}
-              workspace={activeWorkspace}
+              workspace={isFocusedChildChat ? null : activeWorkspace}
               availableArtifactTabs={availableArtifactTabs}
               modelDisplay={{
                 id: normalizedActiveRuntime.modelId,
                 label: normalizedActiveRuntime.modelId,
               }}
-              {...(isFocusedChildIdeation
+              {...(isFocusedChildChat
                 ? {
                     focusReturnLabel: "Workspace chat",
-                    onReturnToWorkspaceChat: handleReturnToWorkspaceChat,
+                    onReturnToWorkspaceChat,
                   }
                 : {})}
               hasAutoOpenArtifacts={hasAutoOpenArtifacts}

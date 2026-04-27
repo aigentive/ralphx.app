@@ -37,7 +37,10 @@ import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { useVerificationStatus } from "@/hooks/useVerificationStatus";
 import type { Artifact } from "@/types/artifact";
 import type { IdeationSession, TaskProposal } from "@/types/ideation";
-import type { DependencyGraphResponse } from "@/api/ideation.types";
+import type {
+  DependencyGraphResponse,
+  IdeationSessionResponse,
+} from "@/api/ideation.types";
 import type { AgentConversation } from "./agentConversations";
 import {
   getVisibleIdeationArtifactTabs,
@@ -104,29 +107,34 @@ const PUBLISH_TAB = {
 interface AgentsArtifactPaneProps {
   conversation: AgentConversation | null;
   workspace?: AgentConversationWorkspace | null;
+  focusedIdeationSessionId?: string | null;
   activeTab: AgentArtifactTab;
   taskMode: AgentTaskArtifactMode;
   onTabChange: (tab: AgentArtifactTab) => void;
   onTaskModeChange: (mode: AgentTaskArtifactMode) => void;
   onPublishWorkspace: ((conversationId: string) => Promise<void>) | undefined;
   isPublishingWorkspace?: boolean;
+  onFocusVerificationSession?: (parentSessionId: string, childSessionId: string) => void;
   onClose: () => void;
 }
 
 export const AgentsArtifactPane = memo(function AgentsArtifactPane({
   conversation,
   workspace = null,
+  focusedIdeationSessionId = null,
   activeTab,
   taskMode,
   onTabChange,
   onTaskModeChange,
   onPublishWorkspace,
   isPublishingWorkspace = false,
+  onFocusVerificationSession,
   onClose,
 }: AgentsArtifactPaneProps) {
   const queryClient = useQueryClient();
   const canHydrateIdeationArtifacts = Boolean(
-    workspace?.mode === "ideation" ||
+    focusedIdeationSessionId ||
+      workspace?.mode === "ideation" ||
       workspace?.linkedIdeationSessionId ||
       workspace?.linkedPlanBranchId,
   );
@@ -134,7 +142,7 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
     workspace?.mode === "edit" && !workspace.linkedIdeationSessionId && !workspace.linkedPlanBranchId;
   const shouldLoadIdeationData = canHydrateIdeationArtifacts;
   const conversationQuery = useConversationHistoryWindow(conversation?.id ?? null, {
-    enabled: shouldLoadIdeationData && !!conversation?.id,
+    enabled: shouldLoadIdeationData && !focusedIdeationSessionId && !!conversation?.id,
     pageSize: 40,
   });
   const conversationData = conversationQuery.data;
@@ -149,16 +157,18 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
   );
   const attachedSessionId = useMemo(
     () =>
-      shouldLoadIdeationData
+      focusedIdeationSessionId ??
+      (shouldLoadIdeationData
         ? resolveAttachedIdeationSessionId(
             conversation,
             conversationMessages,
             workspace?.linkedIdeationSessionId ?? null,
           )
-        : null,
+        : null),
     [
       conversation,
       conversationMessages,
+      focusedIdeationSessionId,
       shouldLoadIdeationData,
       workspace?.linkedIdeationSessionId,
     ],
@@ -231,6 +241,12 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
   const verificationQuery = useVerificationStatus(
     shouldLoadVerificationData ? attachedSessionId ?? undefined : undefined,
   );
+  const verificationChildrenQuery = useQuery({
+    queryKey: ["childSessions", attachedSessionId, "verification"],
+    queryFn: () => ideationApi.sessions.getChildren(attachedSessionId!, "verification"),
+    enabled: shouldLoadVerificationData && !!attachedSessionId,
+    staleTime: 4_000,
+  });
   const dependencyQuery = useDependencyGraph(
     shouldLoadDependencyGraph ? attachedSessionId ?? "" : "",
   );
@@ -244,6 +260,25 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
     verificationData?.status ?? sessionData?.session.verificationStatus ?? "unverified";
   const verificationInProgress =
     verificationData?.inProgress ?? sessionData?.session.verificationInProgress ?? false;
+  const latestVerificationChildId = useMemo(
+    () => getLatestIdeationChildId(verificationChildrenQuery.data),
+    [verificationChildrenQuery.data],
+  );
+  useEffect(() => {
+    if (
+      effectiveActiveTab !== "verification" ||
+      !attachedSessionId ||
+      !latestVerificationChildId
+    ) {
+      return;
+    }
+    onFocusVerificationSession?.(attachedSessionId, latestVerificationChildId);
+  }, [
+    attachedSessionId,
+    effectiveActiveTab,
+    latestVerificationChildId,
+    onFocusVerificationSession,
+  ]);
   const handlePlanUpdated = useCallback(
     (updatedPlan: Artifact) => {
       queryClient.setQueryData(["agents", "artifact", updatedPlan.id], updatedPlan);
@@ -440,6 +475,18 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
     </aside>
   );
 });
+
+function getLatestIdeationChildId(
+  children: IdeationSessionResponse[] | undefined,
+): string | null {
+  if (!children?.length) {
+    return null;
+  }
+  const sorted = [...children].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  return sorted[0]?.id ?? null;
+}
 
 type ArtifactContentProps = {
   activeTab: AgentArtifactTab;

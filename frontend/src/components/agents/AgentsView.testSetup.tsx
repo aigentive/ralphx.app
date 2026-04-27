@@ -344,18 +344,37 @@ vi.mock("./AgentsArtifactPane", () => {
     AgentsArtifactPane: ({
     conversation,
     activeTab,
+    focusedIdeationSessionId,
     onClose,
+    onFocusVerificationSession,
     onPublishWorkspace,
   }: {
     conversation: AgentConversation | null;
     activeTab?: string;
+    focusedIdeationSessionId?: string | null;
     onClose?: () => void;
+    onFocusVerificationSession?: (parentSessionId: string, childSessionId: string) => void;
     onPublishWorkspace?: (conversationId: string) => Promise<void>;
   }) => (
-    <div data-testid="agents-artifact-pane" data-active-tab={activeTab ?? ""}>
+    <div
+      data-testid="agents-artifact-pane"
+      data-active-tab={activeTab ?? ""}
+      data-focused-ideation-session-id={focusedIdeationSessionId ?? ""}
+    >
       {onClose ? (
         <button type="button" data-testid="agents-artifact-pane-close" onClick={onClose}>
           Close
+        </button>
+      ) : null}
+      {onFocusVerificationSession ? (
+        <button
+          type="button"
+          data-testid="mock-focus-verification-session"
+          onClick={() =>
+            onFocusVerificationSession("session-parent", "verification-child")
+          }
+        >
+          Focus verification
         </button>
       ) : null}
       {conversation && onPublishWorkspace ? (

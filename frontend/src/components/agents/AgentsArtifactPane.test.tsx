@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -20,6 +21,7 @@ const {
   updateWorkspaceFromBaseMock,
   getArtifactMock,
   getIdeationSessionMock,
+  getIdeationChildrenMock,
   useConversationMock,
   useDependencyGraphMock,
   useVerificationStatusMock,
@@ -35,6 +37,7 @@ const {
   updateWorkspaceFromBaseMock: vi.fn(),
   getArtifactMock: vi.fn(),
   getIdeationSessionMock: vi.fn(),
+  getIdeationChildrenMock: vi.fn(),
   useConversationMock: vi.fn(),
   useDependencyGraphMock: vi.fn(),
   useVerificationStatusMock: vi.fn(),
@@ -81,10 +84,17 @@ vi.mock("@/api/ideation", async (importOriginal) => {
       sessions: {
         ...actual.ideationApi.sessions,
         getWithData: (...args: unknown[]) => getIdeationSessionMock(...args),
+        getChildren: (...args: unknown[]) => getIdeationChildrenMock(...args),
       },
     },
   };
 });
+
+vi.mock("@/components/Ideation/VerificationPanel", () => ({
+  VerificationPanel: ({ session }: { session: { id: string } }) => (
+    <div data-testid="mock-verification-panel">{session.id}</div>
+  ),
+}));
 
 vi.mock("@/api/artifact", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/artifact")>();
@@ -165,6 +175,7 @@ function renderPane(
   onPublishWorkspace = vi.fn(),
   isPublishingWorkspace = false,
   paneConversation = null,
+  paneProps: Partial<ComponentProps<typeof AgentsArtifactPane>> = {},
 ) {
   const queryClient = createTestQueryClient();
 
@@ -182,6 +193,7 @@ function renderPane(
             onPublishWorkspace={onPublishWorkspace}
             isPublishingWorkspace={isPublishingWorkspace}
             onClose={() => {}}
+            {...paneProps}
           />
         </div>
       </TooltipProvider>
@@ -230,6 +242,7 @@ describe("AgentsArtifactPane", () => {
     });
     getArtifactMock.mockResolvedValue(null);
     getIdeationSessionMock.mockResolvedValue(null);
+    getIdeationChildrenMock.mockResolvedValue([]);
     useConversationMock.mockReturnValue({
       data: null,
       isLoading: false,
@@ -409,6 +422,184 @@ describe("AgentsArtifactPane", () => {
     await waitFor(() => expect(getIdeationSessionMock).toHaveBeenCalledWith("session-1"));
     expect(useDependencyGraphMock).toHaveBeenCalledWith("");
     expect(useVerificationStatusMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it("uses the focused ideation session as the artifact data source", async () => {
+    useConversationMock.mockReturnValue({
+      data: {
+        conversation: conversation(),
+        messages: [
+          {
+            id: "message-1",
+            conversationId: "conversation-1",
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "tool-1",
+                name: "v1_start_ideation",
+                arguments: {},
+                result: { session_id: "session-from-workspace" },
+              },
+            ],
+            contentBlocks: [],
+            createdAt: "2026-04-23T09:00:00Z",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+    getIdeationSessionMock.mockImplementation(async (sessionId: string) => ({
+      session: {
+        id: sessionId,
+        projectId: "project-1",
+        title: "Focused Plan",
+        titleSource: "auto",
+        status: "active",
+        planArtifactId: "artifact-1",
+        seedTaskId: null,
+        parentSessionId: null,
+        teamMode: null,
+        teamConfig: null,
+        createdAt: "2026-04-23T09:00:00Z",
+        updatedAt: "2026-04-23T09:00:00Z",
+        archivedAt: null,
+        convertedAt: null,
+        verificationStatus: "unverified",
+        verificationInProgress: false,
+        gapScore: null,
+        inheritedPlanArtifactId: null,
+        sessionPurpose: "general",
+        acceptanceStatus: null,
+      },
+      proposals: [],
+      messages: [],
+    }));
+
+    renderPane(
+      "plan",
+      workspace({ mode: "ideation" }),
+      vi.fn(),
+      false,
+      conversation(),
+      { focusedIdeationSessionId: "session-focused" },
+    );
+
+    await waitFor(() =>
+      expect(getIdeationSessionMock).toHaveBeenCalledWith("session-focused")
+    );
+    expect(getIdeationSessionMock).not.toHaveBeenCalledWith("session-from-workspace");
+    expect(useConversationMock).toHaveBeenCalledWith("conversation-1", {
+      enabled: false,
+      pageSize: 40,
+    });
+  });
+
+  it("focuses the newest verification child when the verification tab opens", async () => {
+    const onFocusVerificationSession = vi.fn();
+    getIdeationSessionMock.mockResolvedValue({
+      session: {
+        id: "session-1",
+        projectId: "project-1",
+        title: "Agent Plan",
+        titleSource: "auto",
+        status: "active",
+        planArtifactId: "artifact-1",
+        seedTaskId: null,
+        parentSessionId: null,
+        teamMode: null,
+        teamConfig: null,
+        createdAt: "2026-04-23T09:00:00Z",
+        updatedAt: "2026-04-23T09:00:00Z",
+        archivedAt: null,
+        convertedAt: null,
+        verificationStatus: "verified",
+        verificationInProgress: false,
+        gapScore: 0,
+        inheritedPlanArtifactId: null,
+        sessionPurpose: "general",
+        acceptanceStatus: null,
+      },
+      proposals: [],
+      messages: [],
+    });
+    getIdeationChildrenMock.mockResolvedValue([
+      {
+        id: "verification-old",
+        projectId: "project-1",
+        title: "Old verifier",
+        titleSource: "auto",
+        status: "active",
+        planArtifactId: null,
+        seedTaskId: null,
+        parentSessionId: "session-1",
+        teamMode: null,
+        teamConfig: null,
+        createdAt: "2026-04-23T09:00:00Z",
+        updatedAt: "2026-04-23T09:00:00Z",
+        archivedAt: null,
+        convertedAt: null,
+        verificationStatus: "unverified",
+        verificationInProgress: false,
+        gapScore: null,
+        inheritedPlanArtifactId: null,
+        sessionPurpose: "verification",
+        acceptanceStatus: null,
+      },
+      {
+        id: "verification-new",
+        projectId: "project-1",
+        title: "New verifier",
+        titleSource: "auto",
+        status: "active",
+        planArtifactId: null,
+        seedTaskId: null,
+        parentSessionId: "session-1",
+        teamMode: null,
+        teamConfig: null,
+        createdAt: "2026-04-23T10:00:00Z",
+        updatedAt: "2026-04-23T10:00:00Z",
+        archivedAt: null,
+        convertedAt: null,
+        verificationStatus: "unverified",
+        verificationInProgress: false,
+        gapScore: null,
+        inheritedPlanArtifactId: null,
+        sessionPurpose: "verification",
+        acceptanceStatus: null,
+      },
+    ]);
+    useVerificationStatusMock.mockReturnValue({
+      data: {
+        sessionId: "session-1",
+        status: "verified",
+        inProgress: false,
+        gaps: [],
+        rounds: [],
+        roundDetails: [],
+        runHistory: [],
+      },
+      isLoading: false,
+    });
+
+    renderPane(
+      "verification",
+      workspace({ mode: "ideation", linkedIdeationSessionId: "session-1" }),
+      vi.fn(),
+      false,
+      conversation(),
+      { onFocusVerificationSession },
+    );
+
+    await waitFor(() =>
+      expect(getIdeationChildrenMock).toHaveBeenCalledWith("session-1", "verification")
+    );
+    await waitFor(() =>
+      expect(onFocusVerificationSession).toHaveBeenCalledWith(
+        "session-1",
+        "verification-new",
+      )
+    );
   });
 
   it("hides plan-derived tabs until the attached ideation run has a plan", async () => {

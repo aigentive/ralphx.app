@@ -10,6 +10,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ideationApi } from "@/api/ideation";
+import { useAgentArtifactUiStore } from "./agentArtifactUiStore";
 import {
   conversationFixture as conversation,
   conversationWorkspaceFixture as conversationWorkspace,
@@ -116,6 +117,9 @@ describe("AgentsView", () => {
 
   it("focuses the main chat on an attached ideation run when Open Run is used", async () => {
     mockAgentViewData();
+    getAgentConversationWorkspaceMock.mockResolvedValue(
+      conversationWorkspace({ mode: "edit" })
+    );
 
     renderAgentsView();
     selectSidebarConversationRow();
@@ -123,6 +127,7 @@ describe("AgentsView", () => {
     const panel = await screen.findByTestId("integrated-chat-panel");
     expect(panel).toHaveAttribute("data-conversation-id-override", "conversation-1");
     expect(panel).toHaveAttribute("data-ideation-session-id", "");
+    expect(await screen.findByTestId("agents-workspace-status")).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("mock-open-child-session"));
 
@@ -141,6 +146,7 @@ describe("AgentsView", () => {
       "",
     );
     expect(screen.getByTestId("agents-chat-focus-return")).toBeInTheDocument();
+    expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("agents-chat-focus-return"));
 
@@ -150,6 +156,49 @@ describe("AgentsView", () => {
         "conversation-1",
       );
     });
+    expect(await screen.findByTestId("agents-workspace-status")).toBeInTheDocument();
+  });
+
+  it("focuses the main chat on a verification child selected from artifacts", async () => {
+    mockAgentViewData();
+    getAgentConversationWorkspaceMock.mockResolvedValue(
+      conversationWorkspace({ mode: "ideation", linkedIdeationSessionId: "session-parent" })
+    );
+    useAgentArtifactUiStore.setState({
+      artifactByConversationId: {
+        "conversation-1": {
+          isOpen: true,
+          activeTab: "verification",
+          taskMode: "graph",
+        },
+      },
+    });
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    const focusButton = await screen.findByTestId("mock-focus-verification-session");
+    fireEvent.click(focusButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+        "data-ideation-session-id",
+        "verification-child",
+      );
+    });
+    expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+      "data-conversation-id-override",
+      "",
+    );
+    expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+      "data-send-conversation-id",
+      "",
+    );
+    expect(screen.getByTestId("agents-artifact-pane")).toHaveAttribute(
+      "data-focused-ideation-session-id",
+      "session-parent",
+    );
+    expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
   });
 
   it("uses a collapsed sidebar strip on small screens and opens the overlay on demand", async () => {
