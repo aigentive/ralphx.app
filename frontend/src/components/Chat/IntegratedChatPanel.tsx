@@ -1041,6 +1041,7 @@ export function IntegratedChatPanel({
     "w-full",
     contentWidthClassName ? ["mx-auto", contentWidthClassName] : undefined,
   );
+  const transcriptTopInsetClassName = headerSubContent ? "pt-12" : undefined;
 
   return (
     <>
@@ -1055,7 +1056,7 @@ export function IntegratedChatPanel({
       >
         {/* Inner surface — flat with blur, no perimeter or radius. */}
         <div
-          className="flex-1 flex flex-col overflow-hidden"
+          className="relative flex-1 flex flex-col overflow-hidden"
           style={
             surfaceBackground === "transparent"
               ? { background: "transparent" }
@@ -1127,7 +1128,11 @@ export function IntegratedChatPanel({
               </div>
             )}
           </div>
-          {headerSubContent}
+          {headerSubContent ? (
+            <div className="pointer-events-none absolute left-0 right-0 top-11 z-10 [&>*]:pointer-events-auto">
+              {headerSubContent}
+            </div>
+          ) : null}
 
           {/* Session Toolbar — houses StatusActivityBadge + optional back
               action. Provider-context chips are now rendered inline in
@@ -1224,6 +1229,7 @@ export function IntegratedChatPanel({
               providerHarness={activeConversationMeta?.providerHarness ?? null}
               providerSessionId={activeConversationMeta?.providerSessionId ?? null}
               contentWidthClassName={contentWidthClassName}
+              topInsetClassName={transcriptTopInsetClassName}
               hasOlderMessages={
                 isTeammateTab
                   ? teammateConversationHistory.hasOlderMessages

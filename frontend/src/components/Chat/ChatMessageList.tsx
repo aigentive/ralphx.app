@@ -374,6 +374,7 @@ interface ChatMessageListProps {
   providerHarness?: string | null | undefined;
   providerSessionId?: string | null | undefined;
   contentWidthClassName?: string | undefined;
+  topInsetClassName?: string | undefined;
   hasOlderMessages?: boolean;
   isFetchingOlderMessages?: boolean;
   onLoadOlderMessages?: (() => void | Promise<void>) | undefined;
@@ -407,6 +408,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       providerHarness,
       providerSessionId,
       contentWidthClassName,
+      topInsetClassName,
       hasOlderMessages = false,
       isFetchingOlderMessages = false,
       onLoadOlderMessages,
@@ -1307,7 +1309,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // to re-mount Header → layout change → atBottomStateChange → re-render → loop.
     const virtuosoComponents = useMemo(() => ({
       Header: () => (
-        <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
+        <div
+          className={cn("px-3 w-full", topInsetClassName ?? "pt-3")}
+          style={contentContainerStyle}
+        >
           <ContentShell className={contentWidthClassName}>
             {/* Show failed run banner if last run failed */}
             {failedRun?.errorMessage && onDismissFailedRun && (
@@ -1322,6 +1327,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     }), [
       contentWidthClassName,
       failedRun, onDismissFailedRun,
+      topInsetClassName,
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
@@ -1456,7 +1462,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               </span>
             </div>
           )}
-          <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
+          <div
+            className={cn("px-3 w-full", topInsetClassName ?? "pt-3")}
+            style={contentContainerStyle}
+          >
             <ContentShell className={contentWidthClassName}>
               {failedRun?.errorMessage && onDismissFailedRun && (
                 <FailedRunBanner
