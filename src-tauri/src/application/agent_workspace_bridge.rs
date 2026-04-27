@@ -9,11 +9,12 @@ use crate::application::chat_service::{ChatService, SendCallerContext, SendMessa
 use crate::application::AppState;
 use crate::domain::entities::{
     AgentConversationWorkspace, AgentConversationWorkspaceStatus, ChatContextType,
-    ChatConversationId, ChatMessage,
+    ChatConversationId, ChatMessage, TaskId,
 };
 use crate::domain::repositories::{
     external_events_repository::ExternalEventRecord, AgentConversationWorkspaceRepository,
     ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository, ProjectRepository,
+    TaskRepository,
 };
 use crate::domain::services::MessageQueue;
 use crate::error::{AppError, AppResult};
@@ -29,6 +30,7 @@ pub struct AgentWorkspaceBridgeDeps {
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub agent_conversation_workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
     pub external_events_repo: Arc<dyn ExternalEventsRepository>,
+    pub task_repo: Arc<dyn TaskRepository>,
     pub message_queue: Arc<MessageQueue>,
 }
 
@@ -40,6 +42,7 @@ impl AgentWorkspaceBridgeDeps {
             chat_message_repo: Arc::clone(&state.chat_message_repo),
             agent_conversation_workspace_repo: Arc::clone(&state.agent_conversation_workspace_repo),
             external_events_repo: Arc::clone(&state.external_events_repo),
+            task_repo: Arc::clone(&state.task_repo),
             message_queue: Arc::clone(&state.message_queue),
         }
     }
@@ -244,11 +247,17 @@ pub async fn prepare_agent_workspace_bridge_wakeup_with_deps(
         )
         .await?;
 
-    let new_events: Vec<_> = events
-        .into_iter()
-        .filter_map(|event| bridge_event_from_external_event(&event, session_id.as_str()))
-        .filter(|event| !delivered_event_keys.contains(&event.event_key))
-        .collect();
+    let mut new_events = Vec::new();
+    for event in events {
+        let Some(event) =
+            bridge_event_for_workspace_session(deps, &event, session_id.as_str()).await?
+        else {
+            continue;
+        };
+        if !delivered_event_keys.contains(&event.event_key) {
+            new_events.push(event);
+        }
+    }
 
     if new_events.is_empty() {
         return Ok(None);
@@ -400,6 +409,56 @@ pub fn bridge_event_from_external_event(
     if payload_session_id(&payload).as_deref() != Some(session_id) {
         return None;
     }
+    bridge_event_from_payload(event, session_id, payload)
+}
+
+async fn bridge_event_for_workspace_session(
+    deps: &AgentWorkspaceBridgeDeps,
+    event: &ExternalEventRecord,
+    session_id: &str,
+) -> AppResult<Option<AgentWorkspaceBridgeEvent>> {
+    let Some(payload) = parse_event_payload(event) else {
+        return Ok(None);
+    };
+    let matches_session = match payload_session_id(&payload) {
+        Some(payload_session_id) => payload_session_id == session_id,
+        None => {
+            task_session_id_for_payload(deps, &payload)
+                .await?
+                .as_deref()
+                == Some(session_id)
+        }
+    };
+    if !matches_session {
+        return Ok(None);
+    }
+
+    Ok(bridge_event_from_payload(event, session_id, payload))
+}
+
+async fn task_session_id_for_payload(
+    deps: &AgentWorkspaceBridgeDeps,
+    payload: &JsonMap<String, JsonValue>,
+) -> AppResult<Option<String>> {
+    let Some(task_id) =
+        string_field(payload, "task_id").or_else(|| string_field(payload, "taskId"))
+    else {
+        return Ok(None);
+    };
+
+    Ok(deps
+        .task_repo
+        .get_by_id(&TaskId::from_string(task_id))
+        .await?
+        .and_then(|task| task.ideation_session_id)
+        .map(|session_id| session_id.as_str().to_string()))
+}
+
+fn bridge_event_from_payload(
+    event: &ExternalEventRecord,
+    session_id: &str,
+    payload: JsonMap<String, JsonValue>,
+) -> Option<AgentWorkspaceBridgeEvent> {
     let event_key = bridge_event_key(event, session_id, &payload)?;
 
     Some(AgentWorkspaceBridgeEvent {
@@ -543,7 +602,7 @@ mod tests {
     use crate::application::AppState;
     use crate::domain::entities::{
         AgentConversationWorkspaceMode, ChatConversation, IdeationAnalysisBaseRefKind,
-        IdeationSessionId, Project, ProjectId,
+        IdeationSessionId, Project, ProjectId, Task,
     };
 
     fn event(id: i64, event_type: &str, payload: JsonValue) -> ExternalEventRecord {
@@ -860,5 +919,50 @@ mod tests {
             Some(conversation_id),
             "dispatcher must send to the explicit linked workspace conversation"
         );
+    }
+
+    #[tokio::test]
+    async fn dispatches_task_events_by_task_ideation_session_link() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::from_string("project-1".to_string());
+        let session_id = IdeationSessionId::from_string("session-1".to_string());
+        create_project(&state, &project_id).await;
+        let conversation_id = create_workspace(
+            &state,
+            project_id.clone(),
+            "Linked workspace",
+            Some(session_id.as_str()),
+        )
+        .await;
+        let mut task = Task::new(project_id.clone(), "Implement plan".to_string());
+        task.ideation_session_id = Some(session_id.clone());
+        let task = state.task_repo.create(task).await.unwrap();
+        state
+            .external_events_repo
+            .insert_event(
+                "task:execution_completed",
+                project_id.as_str(),
+                &json!({
+                    "task_id": task.id.as_str(),
+                    "project_id": project_id.as_str(),
+                    "outcome": "completed"
+                })
+                .to_string(),
+            )
+            .await
+            .unwrap();
+        let chat_service = crate::application::MockChatService::new();
+
+        let summary = dispatch_agent_workspace_bridge_events_once(&state, &chat_service)
+            .await
+            .unwrap();
+
+        assert_eq!(summary.wake_up_count, 1);
+        let sent = chat_service.get_sent_messages().await;
+        assert_eq!(sent.len(), 1);
+        assert!(sent[0].contains("task:execution_completed"));
+        assert!(sent[0].contains(task.id.as_str()));
+        let options = chat_service.get_sent_options().await;
+        assert_eq!(options[0].conversation_id_override, Some(conversation_id));
     }
 }

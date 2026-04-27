@@ -386,6 +386,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
             chat_message_repo: Arc::clone(&chat_message_repo),
             agent_conversation_workspace_repo: Arc::clone(&agent_conversation_workspace_repo),
             external_events_repo: Arc::clone(&external_events_repo),
+            task_repo: Arc::clone(&task_repo),
             message_queue: Arc::clone(&message_queue),
         },
         recovery_chat_service_deps.clone(),
