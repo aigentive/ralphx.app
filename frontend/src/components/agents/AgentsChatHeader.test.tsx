@@ -1,6 +1,8 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { chatApi, type ConversationStatsResponse } from "@/api/chat";
+import { useChatStore } from "@/stores/chatStore";
 import { AgentsChatHeader } from "./AgentsChatHeader";
 import {
   conversationFixture as conversation,
@@ -8,7 +10,64 @@ import {
   renderWithAgentProviders as renderWithProviders,
 } from "./agentsTestFixtures";
 
+function conversationStats(
+  overrides: Partial<ConversationStatsResponse> = {},
+): ConversationStatsResponse {
+  return {
+    conversationId: "conversation-1",
+    contextType: "project",
+    contextId: "project-1",
+    providerHarness: "codex",
+    upstreamProvider: null,
+    providerProfile: null,
+    messageUsageTotals: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      estimatedUsd: null,
+    },
+    runUsageTotals: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      estimatedUsd: null,
+    },
+    effectiveUsageTotals: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      estimatedUsd: null,
+    },
+    usageCoverage: {
+      providerMessageCount: 0,
+      providerMessagesWithUsage: 0,
+      runCount: 0,
+      runsWithUsage: 0,
+      effectiveTotalsSource: "none",
+    },
+    attributionCoverage: {
+      providerMessageCount: 0,
+      providerMessagesWithAttribution: 0,
+      runCount: 0,
+      runsWithAttribution: 0,
+    },
+    byHarness: [],
+    byUpstreamProvider: [],
+    byModel: [],
+    byEffort: [],
+    ...overrides,
+  };
+}
+
 describe("AgentsChatHeader", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useChatStore.setState({ agentStatus: {}, isSending: {} });
+  });
+
   it("opts the title button out of the high-contrast default button border", () => {
     renderWithProviders(
       <AgentsChatHeader
@@ -64,7 +123,7 @@ describe("AgentsChatHeader", () => {
     expect(screen.queryByText("Default")).not.toBeInTheDocument();
   });
 
-  it("shows conversation stats in the Agents chat header", () => {
+  it("shows only conversation stats in the Agents chat header chips", () => {
     renderWithProviders(
       <AgentsChatHeader
         conversation={conversation()}
@@ -80,7 +139,37 @@ describe("AgentsChatHeader", () => {
 
     expect(screen.getByTestId("chat-session-chips")).toBeInTheDocument();
     expect(screen.getByTestId("chat-session-stats-button")).toBeInTheDocument();
-    expect(screen.getByText("gpt-5.4")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-session-provider-badge")).not.toBeInTheDocument();
+    expect(screen.queryByText("gpt-5.4")).not.toBeInTheDocument();
+  });
+
+  it("marks conversation stats as pending while the active Agents turn has no usage yet", async () => {
+    vi.spyOn(chatApi, "getConversationStats").mockResolvedValue(conversationStats());
+    useChatStore
+      .getState()
+      .setAgentStatus("project:conversation-1", "generating");
+
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation()}
+        workspace={null}
+        modelDisplay={{ id: "gpt-5.4", label: "gpt-5.4" }}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("chat-session-stats-button"));
+
+    expect(
+      await screen.findByText(
+        "Usage totals are pending until the provider reports the current turn.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Pending")).toHaveLength(4);
   });
 
   it("shows the workspace branch status when available", () => {

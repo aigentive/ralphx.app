@@ -470,7 +470,7 @@ export interface ConversationMessagesPageResponse {
   hasOlder: boolean;
 }
 
-const UsageTotalsResponseSchema = z.object({
+const SnakeUsageTotalsResponseSchema = z.object({
   input_tokens: z.number(),
   output_tokens: z.number(),
   cache_creation_tokens: z.number(),
@@ -478,13 +478,26 @@ const UsageTotalsResponseSchema = z.object({
   estimated_usd: z.number().nullable(),
 });
 
+const CamelUsageTotalsResponseSchema = z.object({
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cacheCreationTokens: z.number(),
+  cacheReadTokens: z.number(),
+  estimatedUsd: z.number().nullable(),
+});
+
+const UsageTotalsResponseSchema = z.union([
+  SnakeUsageTotalsResponseSchema,
+  CamelUsageTotalsResponseSchema,
+]);
+
 const UsageBucketResponseSchema = z.object({
   key: z.string(),
   count: z.number(),
   usage: UsageTotalsResponseSchema,
 });
 
-const ConversationUsageCoverageResponseSchema = z.object({
+const SnakeConversationUsageCoverageResponseSchema = z.object({
   provider_message_count: z.number(),
   provider_messages_with_usage: z.number(),
   run_count: z.number(),
@@ -492,14 +505,39 @@ const ConversationUsageCoverageResponseSchema = z.object({
   effective_totals_source: z.string(),
 });
 
-const ConversationAttributionCoverageResponseSchema = z.object({
+const CamelConversationUsageCoverageResponseSchema = z.object({
+  providerMessageCount: z.number(),
+  providerMessagesWithUsage: z.number(),
+  runCount: z.number(),
+  runsWithUsage: z.number(),
+  effectiveTotalsSource: z.string(),
+});
+
+const ConversationUsageCoverageResponseSchema = z.union([
+  SnakeConversationUsageCoverageResponseSchema,
+  CamelConversationUsageCoverageResponseSchema,
+]);
+
+const SnakeConversationAttributionCoverageResponseSchema = z.object({
   provider_message_count: z.number(),
   provider_messages_with_attribution: z.number(),
   run_count: z.number(),
   runs_with_attribution: z.number(),
 });
 
-const ConversationStatsResponseSchema = z.object({
+const CamelConversationAttributionCoverageResponseSchema = z.object({
+  providerMessageCount: z.number(),
+  providerMessagesWithAttribution: z.number(),
+  runCount: z.number(),
+  runsWithAttribution: z.number(),
+});
+
+const ConversationAttributionCoverageResponseSchema = z.union([
+  SnakeConversationAttributionCoverageResponseSchema,
+  CamelConversationAttributionCoverageResponseSchema,
+]);
+
+const SnakeConversationStatsResponseSchema = z.object({
   conversation_id: z.string(),
   context_type: z.string(),
   context_id: z.string(),
@@ -517,9 +555,42 @@ const ConversationStatsResponseSchema = z.object({
   by_effort: z.array(UsageBucketResponseSchema),
 });
 
+const CamelConversationStatsResponseSchema = z.object({
+  conversationId: z.string(),
+  contextType: z.string(),
+  contextId: z.string(),
+  providerHarness: z.string().nullable(),
+  upstreamProvider: z.string().nullable(),
+  providerProfile: z.string().nullable(),
+  messageUsageTotals: UsageTotalsResponseSchema,
+  runUsageTotals: UsageTotalsResponseSchema,
+  effectiveUsageTotals: UsageTotalsResponseSchema,
+  usageCoverage: ConversationUsageCoverageResponseSchema,
+  attributionCoverage: ConversationAttributionCoverageResponseSchema,
+  byHarness: z.array(UsageBucketResponseSchema),
+  byUpstreamProvider: z.array(UsageBucketResponseSchema),
+  byModel: z.array(UsageBucketResponseSchema),
+  byEffort: z.array(UsageBucketResponseSchema),
+});
+
+const ConversationStatsResponseSchema = z.union([
+  SnakeConversationStatsResponseSchema,
+  CamelConversationStatsResponseSchema,
+]);
+
 type RawConversationStats = z.infer<typeof ConversationStatsResponseSchema>;
 
 function transformUsageTotals(raw: z.infer<typeof UsageTotalsResponseSchema>): UsageTotalsResponse {
+  if ("inputTokens" in raw) {
+    return {
+      inputTokens: raw.inputTokens,
+      outputTokens: raw.outputTokens,
+      cacheCreationTokens: raw.cacheCreationTokens,
+      cacheReadTokens: raw.cacheReadTokens,
+      estimatedUsd: raw.estimatedUsd,
+    };
+  }
+
   return {
     inputTokens: raw.input_tokens,
     outputTokens: raw.output_tokens,
@@ -537,7 +608,70 @@ function transformUsageBucket(raw: z.infer<typeof UsageBucketResponseSchema>): U
   };
 }
 
+function transformUsageCoverage(
+  raw: z.infer<typeof ConversationUsageCoverageResponseSchema>,
+): ConversationUsageCoverageResponse {
+  if ("providerMessageCount" in raw) {
+    return {
+      providerMessageCount: raw.providerMessageCount,
+      providerMessagesWithUsage: raw.providerMessagesWithUsage,
+      runCount: raw.runCount,
+      runsWithUsage: raw.runsWithUsage,
+      effectiveTotalsSource: raw.effectiveTotalsSource,
+    };
+  }
+
+  return {
+    providerMessageCount: raw.provider_message_count,
+    providerMessagesWithUsage: raw.provider_messages_with_usage,
+    runCount: raw.run_count,
+    runsWithUsage: raw.runs_with_usage,
+    effectiveTotalsSource: raw.effective_totals_source,
+  };
+}
+
+function transformAttributionCoverage(
+  raw: z.infer<typeof ConversationAttributionCoverageResponseSchema>,
+): ConversationAttributionCoverageResponse {
+  if ("providerMessageCount" in raw) {
+    return {
+      providerMessageCount: raw.providerMessageCount,
+      providerMessagesWithAttribution: raw.providerMessagesWithAttribution,
+      runCount: raw.runCount,
+      runsWithAttribution: raw.runsWithAttribution,
+    };
+  }
+
+  return {
+    providerMessageCount: raw.provider_message_count,
+    providerMessagesWithAttribution:
+      raw.provider_messages_with_attribution,
+    runCount: raw.run_count,
+    runsWithAttribution: raw.runs_with_attribution,
+  };
+}
+
 function transformConversationStats(raw: RawConversationStats): ConversationStatsResponse {
+  if ("conversationId" in raw) {
+    return {
+      conversationId: raw.conversationId,
+      contextType: raw.contextType as ContextType,
+      contextId: raw.contextId,
+      providerHarness: raw.providerHarness,
+      upstreamProvider: raw.upstreamProvider,
+      providerProfile: raw.providerProfile,
+      messageUsageTotals: transformUsageTotals(raw.messageUsageTotals),
+      runUsageTotals: transformUsageTotals(raw.runUsageTotals),
+      effectiveUsageTotals: transformUsageTotals(raw.effectiveUsageTotals),
+      usageCoverage: transformUsageCoverage(raw.usageCoverage),
+      attributionCoverage: transformAttributionCoverage(raw.attributionCoverage),
+      byHarness: raw.byHarness.map(transformUsageBucket),
+      byUpstreamProvider: raw.byUpstreamProvider.map(transformUsageBucket),
+      byModel: raw.byModel.map(transformUsageBucket),
+      byEffort: raw.byEffort.map(transformUsageBucket),
+    };
+  }
+
   return {
     conversationId: raw.conversation_id,
     contextType: raw.context_type as ContextType,
@@ -548,20 +682,8 @@ function transformConversationStats(raw: RawConversationStats): ConversationStat
     messageUsageTotals: transformUsageTotals(raw.message_usage_totals),
     runUsageTotals: transformUsageTotals(raw.run_usage_totals),
     effectiveUsageTotals: transformUsageTotals(raw.effective_usage_totals),
-    usageCoverage: {
-      providerMessageCount: raw.usage_coverage.provider_message_count,
-      providerMessagesWithUsage: raw.usage_coverage.provider_messages_with_usage,
-      runCount: raw.usage_coverage.run_count,
-      runsWithUsage: raw.usage_coverage.runs_with_usage,
-      effectiveTotalsSource: raw.usage_coverage.effective_totals_source,
-    },
-    attributionCoverage: {
-      providerMessageCount: raw.attribution_coverage.provider_message_count,
-      providerMessagesWithAttribution:
-        raw.attribution_coverage.provider_messages_with_attribution,
-      runCount: raw.attribution_coverage.run_count,
-      runsWithAttribution: raw.attribution_coverage.runs_with_attribution,
-    },
+    usageCoverage: transformUsageCoverage(raw.usage_coverage),
+    attributionCoverage: transformAttributionCoverage(raw.attribution_coverage),
     byHarness: raw.by_harness.map(transformUsageBucket),
     byUpstreamProvider: raw.by_upstream_provider.map(transformUsageBucket),
     byModel: raw.by_model.map(transformUsageBucket),

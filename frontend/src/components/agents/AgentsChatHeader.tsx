@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState, type ElementType } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type ElementType } from "react";
 import {
   CheckCircle2,
   ClipboardList,
@@ -23,10 +23,14 @@ import {
 import { formatBranchDisplay } from "@/lib/branch-utils";
 import { withAlpha } from "@/lib/theme-colors";
 import { cn } from "@/lib/utils";
+import { useChatStore } from "@/stores/chatStore";
 import type { AgentArtifactTab } from "@/stores/agentSessionStore";
 import type { ModelDisplay } from "@/types/chat-conversation";
 
-import type { AgentConversation } from "./agentConversations";
+import {
+  getAgentConversationStoreKey,
+  type AgentConversation,
+} from "./agentConversations";
 import { resolveConversationAgentMode } from "./agentConversationMode";
 
 const HEADER_ARTIFACT_TABS: Array<{
@@ -93,6 +97,19 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   );
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
+  const conversationStoreKey = useMemo(
+    () => (conversation ? getAgentConversationStoreKey(conversation) : null),
+    [conversation],
+  );
+  const agentStatus = useChatStore((state) =>
+    conversationStoreKey
+      ? state.agentStatus[conversationStoreKey] ?? "idle"
+      : "idle",
+  );
+  const isSending = useChatStore((state) =>
+    conversationStoreKey ? state.isSending[conversationStoreKey] ?? false : false,
+  );
+  const isAgentActive = isSending || agentStatus === "generating";
 
   useEffect(() => {
     if (!isEditing) {
@@ -161,13 +178,15 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
           <ChatSessionChips
             contextType={conversation.contextType}
             contextId={conversation.contextId}
-            isAgentActive={false}
+            isAgentActive={isAgentActive}
             conversationId={conversation.id}
             providerHarness={conversation.providerHarness ?? null}
             providerSessionId={conversation.providerSessionId ?? null}
             upstreamProvider={conversation.upstreamProvider ?? null}
             providerProfile={conversation.providerProfile ?? null}
             fallbackConversation={conversation}
+            showProviderModel={false}
+            showStats
             {...(modelDisplay !== undefined ? { modelDisplay } : {})}
           />
         )}

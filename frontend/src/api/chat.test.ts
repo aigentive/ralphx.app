@@ -739,6 +739,96 @@ describe("chat api", () => {
     });
   });
 
+  it("accepts the camelCase conversation stats payload returned by Tauri", async () => {
+    mockInvoke.mockResolvedValue({
+      conversationId: "c1",
+      contextType: "project",
+      contextId: "p1",
+      providerHarness: "codex",
+      upstreamProvider: "openai",
+      providerProfile: null,
+      messageUsageTotals: {
+        inputTokens: 2535967,
+        outputTokens: 13593,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 2434048,
+        estimatedUsd: null,
+      },
+      runUsageTotals: {
+        inputTokens: 2535967,
+        outputTokens: 13593,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 2434048,
+        estimatedUsd: null,
+      },
+      effectiveUsageTotals: {
+        inputTokens: 2535967,
+        outputTokens: 13593,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 2434048,
+        estimatedUsd: null,
+      },
+      usageCoverage: {
+        providerMessageCount: 1,
+        providerMessagesWithUsage: 1,
+        runCount: 1,
+        runsWithUsage: 1,
+        effectiveTotalsSource: "messages",
+      },
+      attributionCoverage: {
+        providerMessageCount: 1,
+        providerMessagesWithAttribution: 1,
+        runCount: 1,
+        runsWithAttribution: 1,
+      },
+      byHarness: [
+        {
+          key: "codex",
+          count: 1,
+          usage: {
+            inputTokens: 2535967,
+            outputTokens: 13593,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 2434048,
+            estimatedUsd: null,
+          },
+        },
+      ],
+      byUpstreamProvider: [],
+      byModel: [{ key: "gpt-5.4", count: 1, usage: {
+        inputTokens: 2535967,
+        outputTokens: 13593,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 2434048,
+        estimatedUsd: null,
+      } }],
+      byEffort: [{ key: "medium", count: 1, usage: {
+        inputTokens: 2535967,
+        outputTokens: 13593,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 2434048,
+        estimatedUsd: null,
+      } }],
+    });
+
+    const result = await getConversationStats("c1");
+
+    expect(result).toMatchObject({
+      conversationId: "c1",
+      usageCoverage: {
+        effectiveTotalsSource: "messages",
+        providerMessagesWithUsage: 1,
+      },
+      effectiveUsageTotals: {
+        inputTokens: 2535967,
+        outputTokens: 13593,
+        cacheReadTokens: 2434048,
+      },
+      byModel: [{ key: "gpt-5.4" }],
+      byEffort: [{ key: "medium" }],
+    });
+  });
+
   it("starts chat-mode agent conversations with a selected workspace base", async () => {
     mockInvoke.mockResolvedValue({
       conversation: {
