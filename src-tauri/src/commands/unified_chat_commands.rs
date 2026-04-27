@@ -22,7 +22,7 @@ use crate::application::agent_conversation_workspace::{
     agent_name_for_workspace_mode, prepare_agent_conversation_workspace,
     resolve_valid_agent_conversation_workspace_path, AgentConversationWorkspaceBaseSelection,
 };
-use crate::application::agent_workspace_bridge::reconcile_agent_workspace_bridge_messages;
+use crate::application::agent_workspace_bridge::wake_agent_workspace_for_bridge_events;
 use crate::application::chat_service::{AgentConversationCreatedPayload, SendMessageOptions};
 use crate::application::git_service::GitService;
 use crate::application::publish_resilience::{
@@ -2597,11 +2597,16 @@ pub async fn get_agent_conversation(
 
     let conversation_id = ChatConversationId::from_string(&conversation_id);
 
-    reconcile_agent_workspace_bridge_messages(&state, &conversation_id, Some(&app))
-        .await
-        .map_err(|e| e.to_string())?;
-
     let service = create_chat_service(&state, app, &execution_state, None);
+    if let Err(error) =
+        wake_agent_workspace_for_bridge_events(&state, &service, &conversation_id).await
+    {
+        tracing::warn!(
+            conversation_id = %conversation_id,
+            error = %error,
+            "Failed to wake agent workspace for bridge events"
+        );
+    }
 
     let conversation = service
         .get_conversation_with_messages(&conversation_id)
@@ -2664,6 +2669,7 @@ pub async fn get_agent_conversation_messages_page(
     limit: Option<u32>,
     offset: Option<u32>,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<Option<AgentConversationMessagesPageResponse>, String> {
     use crate::domain::entities::ChatConversationId;
@@ -2672,9 +2678,16 @@ pub async fn get_agent_conversation_messages_page(
     let limit = limit.unwrap_or(40).clamp(1, 200);
     let offset = offset.unwrap_or(0);
 
-    reconcile_agent_workspace_bridge_messages(&state, &conversation_id, Some(&app))
-        .await
-        .map_err(|e| e.to_string())?;
+    let service = create_chat_service(&state, app, &execution_state, None);
+    if let Err(error) =
+        wake_agent_workspace_for_bridge_events(&state, &service, &conversation_id).await
+    {
+        tracing::warn!(
+            conversation_id = %conversation_id,
+            error = %error,
+            "Failed to wake agent workspace for bridge events"
+        );
+    }
 
     let Some(conversation) = state
         .chat_conversation_repo
