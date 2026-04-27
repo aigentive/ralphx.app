@@ -126,6 +126,7 @@ const COMPLETION_TOOL_NAMES: &[&str] = &[
     "mcp__ralphx__execution_complete",
     "mcp__ralphx__complete_review",
     "mcp__ralphx__complete_merge",
+    "mcp__ralphx__complete_agent_workspace_repair",
     "mcp__ralphx__finalize_proposals",
 ];
 
@@ -140,14 +141,22 @@ pub fn is_completion_tool_name(name: &str) -> bool {
     if let Some(tool_name) = normalized.strip_prefix("ralphx::") {
         return matches!(
             tool_name,
-            "execution_complete" | "complete_review" | "complete_merge" | "finalize_proposals"
+            "execution_complete"
+                | "complete_review"
+                | "complete_merge"
+                | "complete_agent_workspace_repair"
+                | "finalize_proposals"
         );
     }
 
     if let Some(tool_name) = normalized.strip_prefix("ralphx:") {
         return matches!(
             tool_name,
-            "execution_complete" | "complete_review" | "complete_merge" | "finalize_proposals"
+            "execution_complete"
+                | "complete_review"
+                | "complete_merge"
+                | "complete_agent_workspace_repair"
+                | "finalize_proposals"
         );
     }
 
@@ -751,6 +760,7 @@ pub async fn process_stream_background<R: Runtime>(
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
     split_verification_transcript: bool,
+    persist_conversation_provider_session_ref: bool,
 ) -> Result<StreamOutcome, StreamError> {
     if stream_mode_for_harness(harness) == HarnessStreamMode::CodexJsonl {
         return process_codex_stream_background(
@@ -772,6 +782,7 @@ pub async fn process_stream_background<R: Runtime>(
             execution_state,
             conversation_repo,
             split_verification_transcript,
+            persist_conversation_provider_session_ref,
         )
         .await;
     }
@@ -1581,7 +1592,7 @@ pub async fn process_stream_background<R: Runtime>(
                         }
 
                         // Persist session_id to DB on first TurnComplete
-                        if !session_id_persisted {
+                        if !session_id_persisted && persist_conversation_provider_session_ref {
                             if let (Some(ref sess_id), Some(ref repo)) =
                                 (&session_id, &conversation_repo)
                             {
@@ -2632,6 +2643,7 @@ async fn process_codex_stream_background<R: Runtime>(
     _execution_state: Option<Arc<crate::commands::ExecutionState>>,
     conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
     _split_verification_transcript: bool,
+    persist_conversation_provider_session_ref: bool,
 ) -> Result<StreamOutcome, StreamError> {
     let timeout_config = StreamTimeoutConfig::for_context(&context_type);
     let stdout = child
@@ -2777,13 +2789,18 @@ async fn process_codex_stream_background<R: Runtime>(
 
             if let Some(thread_id) = extract_codex_thread_id(&event) {
                 session_id = Some(thread_id.clone());
-                if let Some(ref repo) = conversation_repo {
-                    let _ = repo
-                        .update_provider_session_ref(
-                            conversation_id,
-                            &provider_session_ref_for_harness(AgentHarnessKind::Codex, thread_id),
-                        )
-                        .await;
+                if persist_conversation_provider_session_ref {
+                    if let Some(ref repo) = conversation_repo {
+                        let _ = repo
+                            .update_provider_session_ref(
+                                conversation_id,
+                                &provider_session_ref_for_harness(
+                                    AgentHarnessKind::Codex,
+                                    thread_id,
+                                ),
+                            )
+                            .await;
+                    }
                 }
             }
 

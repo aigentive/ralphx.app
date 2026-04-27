@@ -9,6 +9,7 @@ import { ISSUE_TOOLS } from "./issue-tools.js";
 import { FILESYSTEM_TOOLS } from "./filesystem-tools.js";
 import { IDEATION_TOOLS } from "./ideation-tools.js";
 import { WORKFLOW_TOOLS } from "./workflow-tools.js";
+import { AGENT_WORKSPACE_TOOLS } from "./agent-workspace-tools.js";
 import { SUPPORT_TOOLS } from "./support-tools.js";
 import { formatToolErrorMessageFromRegistry, getToolRecoveryHintFromRegistry, } from "./tool-recovery.js";
 import { logToolsByAgent } from "./tool-debug.js";
@@ -22,6 +23,10 @@ export const ALL_TOOLS = [
     ...FILESYSTEM_TOOLS,
     ...IDEATION_TOOLS,
     ...WORKFLOW_TOOLS,
+    // ========================================================================
+    // AGENT WORKSPACE TOOLS (workspace repair and publication)
+    // ========================================================================
+    ...AGENT_WORKSPACE_TOOLS,
     // ========================================================================
     // PLAN ARTIFACT TOOLS (ralphx-ideation agent)
     // ========================================================================

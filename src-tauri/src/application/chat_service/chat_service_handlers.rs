@@ -460,6 +460,7 @@ fn build_recovery_retry_background_context<R: Runtime>(
             logical_effort: None,
             effective_effort: None,
         },
+        persist_conversation_provider_session_ref: true,
         cancellation_token: tokio_util::sync::CancellationToken::new(),
         team_service: None,
         streaming_state_cache: super::StreamingStateCache::new(),

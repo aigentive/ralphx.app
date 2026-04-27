@@ -100,6 +100,7 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     pub agent_name: Option<String>,
     pub team_mode: bool,
     pub assistant_message_attribution: ChatMessageAttribution,
+    pub persist_conversation_provider_session_ref: bool,
     // Cancellation
     pub cancellation_token: CancellationToken,
     // Team state
@@ -462,6 +463,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             agent_name,
             team_mode,
             assistant_message_attribution,
+            persist_conversation_provider_session_ref,
             cancellation_token,
             team_service,
             streaming_state_cache,
@@ -574,6 +576,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             execution_state.clone(),
             Some(Arc::clone(&conversation_repo)),
             split_verification_transcript,
+            persist_conversation_provider_session_ref,
         )
         .await;
 
@@ -663,22 +666,24 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Update conversation with provider session id
                 if let Some(ref sess_id) = provider_session_id {
                     tracing::info!("[CHAT_SERVICE] Updating conversation with session_id={}", sess_id);
-                    if let Err(e) = conversation_repo
-                        .update_provider_session_ref(
-                            &conversation_id,
-                            &ProviderSessionRef {
-                                harness,
-                                provider_session_id: sess_id.clone(),
-                            },
-                        )
-                        .await
-                    {
-                        tracing::error!(
-                            error = %e,
-                            conversation_id = conversation_id.as_str(),
-                            session_id = %sess_id,
-                            "[CHAT_SERVICE] Failed to persist provider_session_id — next resume attempt will use stale session ID"
-                        );
+                    if persist_conversation_provider_session_ref {
+                        if let Err(e) = conversation_repo
+                            .update_provider_session_ref(
+                                &conversation_id,
+                                &ProviderSessionRef {
+                                    harness,
+                                    provider_session_id: sess_id.clone(),
+                                },
+                            )
+                            .await
+                        {
+                            tracing::error!(
+                                error = %e,
+                                conversation_id = conversation_id.as_str(),
+                                session_id = %sess_id,
+                                "[CHAT_SERVICE] Failed to persist provider_session_id — next resume attempt will use stale session ID"
+                            );
+                        }
                     }
 
                     let _ = chat_message_repo

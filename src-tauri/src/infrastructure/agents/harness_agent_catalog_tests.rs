@@ -173,6 +173,11 @@ const CROSS_HARNESS_GENERAL_AGENTS: &[(&str, &str, &str)] = &[
         "ralphx-general-worker",
     ),
     (
+        "ralphx-agent-workspace-repair",
+        "agent_workspace_repair",
+        "ralphx-agent-workspace-repair",
+    ),
+    (
         "ralphx-research-deep-researcher",
         "researcher",
         "deep-researcher",
@@ -195,6 +200,7 @@ const CROSS_HARNESS_READONLY_IDEATION_AGENTS: &[(&str, &str, &str)] = &[(
 const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
     "ralphx-general-explorer",
     "ralphx-general-worker",
+    "ralphx-agent-workspace-repair",
     "ralphx-ideation",
     "ralphx-ideation-readonly",
     "ralphx-execution-worker",
@@ -320,6 +326,7 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
 const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
     "ralphx-general-explorer",
     "ralphx-general-worker",
+    "ralphx-agent-workspace-repair",
     "ralphx-execution-worker",
     "ralphx-execution-coder",
     "ralphx-execution-merger",
@@ -358,6 +365,7 @@ const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
 
 const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-general-worker", "acceptEdits"),
+    ("ralphx-agent-workspace-repair", "acceptEdits"),
     ("ralphx-execution-worker", "acceptEdits"),
     ("ralphx-execution-coder", "acceptEdits"),
     ("ralphx-execution-merger", "acceptEdits"),
@@ -370,6 +378,7 @@ const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
 const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-general-explorer", "sonnet"),
     ("ralphx-general-worker", "sonnet"),
+    ("ralphx-agent-workspace-repair", "opus"),
     ("ralphx-utility-session-namer", "sonnet"),
     ("ralphx-chat-task", "sonnet"),
     ("ralphx-chat-project", "sonnet"),
@@ -414,6 +423,12 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
         "ralphx-general-worker",
         "readonly_tools",
         &["Write", "Edit", "Bash", "LSP"],
+        false,
+    ),
+    (
+        "ralphx-agent-workspace-repair",
+        "base_tools",
+        &["Edit"],
         false,
     ),
     ("ralphx-chat-task", "base_tools", &["Task"], false),

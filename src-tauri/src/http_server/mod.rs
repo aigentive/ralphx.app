@@ -297,6 +297,10 @@ pub async fn start_http_server(
         .route("/api/question/resolve", post(resolve_question))
         // Git merge endpoints (merger agent)
         .route("/api/git/tasks/:id/complete-merge", post(complete_merge))
+        .route(
+            "/api/agent-workspaces/:conversation_id/complete-repair",
+            post(complete_agent_workspace_repair),
+        )
         .route("/api/git/tasks/:id/report-conflict", post(report_conflict))
         .route(
             "/api/git/tasks/:id/report-incomplete",

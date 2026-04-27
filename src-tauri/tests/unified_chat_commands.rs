@@ -1,15 +1,16 @@
 use ralphx_lib::application::{AppState, MockChatService, SendResult};
 use ralphx_lib::commands::unified_chat_commands::{
     mark_agent_workspace_publish_failure, parse_context_type,
-    send_agent_workspace_publish_repair_message, AgentRunStatusResponse, QueuedMessageResponse,
-    SendAgentMessageResponse,
+    send_agent_workspace_publish_repair_message, AgentRunStatusResponse,
+    AgentWorkspaceRepairRuntimeOverrides, QueuedMessageResponse, SendAgentMessageResponse,
 };
+use ralphx_lib::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
 use ralphx_lib::domain::entities::{
-    AgentConversationWorkspace, AgentConversationWorkspaceMode, ChatContextType,
-    ChatConversationId, IdeationAnalysisBaseRefKind, ProjectId,
+    AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentRun, ChatContextType,
+    ChatConversation, ChatConversationId, IdeationAnalysisBaseRefKind, ProjectId,
 };
 use ralphx_lib::domain::services::QueuedMessage;
-use ralphx_lib::infrastructure::agents::claude::agent_names::AGENT_GENERAL_WORKER;
+use ralphx_lib::infrastructure::agents::claude::agent_names::AGENT_WORKSPACE_REPAIR;
 
 #[test]
 fn test_parse_context_type() {
@@ -143,6 +144,7 @@ async fn workspace_publish_repair_message_wakes_same_agent_conversation() {
         &service,
         &workspace,
         "Failed to commit: typecheck failed",
+        AgentWorkspaceRepairRuntimeOverrides::default(),
     )
     .await
     .expect("repair handoff should be sent through chat service");
@@ -153,6 +155,8 @@ async fn workspace_publish_repair_message_wakes_same_agent_conversation() {
     assert!(messages[0].contains("Failed to commit: typecheck failed"));
     assert!(messages[0].contains("Workspace branch: ralphx/ralphx/agent-1234"));
     assert!(messages[0].contains("Base: Current branch (feature/agent-screen)"));
+    assert!(messages[0].contains("Conversation ID: 00000000-0000-0000-0000-000000000123"));
+    assert!(messages[0].contains("complete_agent_workspace_repair"));
 
     let options = service.get_sent_options().await;
     assert_eq!(options.len(), 1);
@@ -162,8 +166,10 @@ async fn workspace_publish_repair_message_wakes_same_agent_conversation() {
     );
     assert_eq!(
         options[0].agent_name_override.as_deref(),
-        Some(AGENT_GENERAL_WORKER)
+        Some(AGENT_WORKSPACE_REPAIR)
     );
+    assert!(options[0].force_new_provider_session);
+    assert!(options[0].preserve_conversation_provider_session_ref);
 }
 
 #[tokio::test]
@@ -185,6 +191,56 @@ async fn workspace_publish_fixable_failure_is_routed_by_backend() {
     let messages = service.get_sent_messages().await;
     assert_eq!(messages.len(), 1);
     assert!(messages[0].contains("typecheck failed"));
+}
+
+#[tokio::test]
+async fn workspace_publish_repair_inherits_workspace_runtime_but_starts_fresh_session() {
+    let state = AppState::new_test();
+    let service = MockChatService::new();
+    let workspace = test_agent_workspace();
+
+    let mut conversation = ChatConversation::new_project(workspace.project_id.clone());
+    conversation.id = workspace.conversation_id;
+    conversation.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "thread-main".to_string(),
+    });
+    state
+        .chat_conversation_repo
+        .create(conversation)
+        .await
+        .expect("conversation should seed");
+
+    let mut latest_run = AgentRun::new(workspace.conversation_id);
+    latest_run.harness = Some(AgentHarnessKind::Claude);
+    latest_run.logical_model = Some("gpt-5.4".to_string());
+    latest_run.effective_model_id = Some("gpt-5.4-provider".to_string());
+    latest_run.logical_effort = Some(LogicalEffort::High);
+    state
+        .agent_run_repo
+        .create(latest_run)
+        .await
+        .expect("run should seed");
+
+    mark_agent_workspace_publish_failure(
+        &state,
+        &workspace,
+        "Failed to commit workspace changes: merge conflict",
+        None,
+        &service,
+    )
+    .await;
+
+    let options = service.get_sent_options().await;
+    assert_eq!(options.len(), 1);
+    assert_eq!(options[0].harness_override, Some(AgentHarnessKind::Codex));
+    assert_eq!(options[0].model_override.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        options[0].logical_effort_override,
+        Some(LogicalEffort::High)
+    );
+    assert!(options[0].force_new_provider_session);
+    assert!(options[0].preserve_conversation_provider_session_ref);
 }
 
 #[tokio::test]

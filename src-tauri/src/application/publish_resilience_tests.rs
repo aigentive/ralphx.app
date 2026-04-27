@@ -3,6 +3,7 @@ use super::publish_resilience::{
     classify_publish_failure, publish_branch_freshness_outcome_from_source_update,
     publish_branch_freshness_status_from_commits,
     publish_branch_freshness_status_from_commits_and_branch, remote_tracking_ref_for_publish,
+    verify_agent_workspace_repair_completion, AgentWorkspaceRepairCompletionCheck,
     PublishBranchFreshnessOutcome, PublishFailureClass,
 };
 use crate::domain::state_machine::transition_handler::SourceUpdateResult;
@@ -171,4 +172,105 @@ fn keeps_publish_base_ahead_when_source_branch_does_not_contain_target_commit() 
     assert_eq!(status.captured_base_commit.as_deref(), Some("old-base"));
     assert_eq!(status.target_base_commit, "new-base");
     assert!(status.is_base_ahead);
+}
+
+fn repaired_workspace_check() -> AgentWorkspaceRepairCompletionCheck<'static> {
+    let status = Box::leak(Box::new(
+        publish_branch_freshness_status_from_commits_and_branch(
+            Some("old-base"),
+            "origin/main",
+            "new-base",
+            true,
+        ),
+    ));
+
+    AgentWorkspaceRepairCompletionCheck {
+        freshness_status: status,
+        workspace_base_ref: "main",
+        resolved_base_ref: "origin/main",
+        resolved_base_commit: "new-base",
+        repair_commit_sha: "repair-head",
+        workspace_head_sha: "repair-head",
+        has_uncommitted_changes: false,
+        is_merge_in_progress: false,
+        is_rebase_in_progress: false,
+        has_conflict_markers: false,
+    }
+}
+
+#[test]
+fn verifies_clean_agent_workspace_repair_completion() {
+    assert!(verify_agent_workspace_repair_completion(repaired_workspace_check()).is_ok());
+}
+
+#[test]
+fn rejects_agent_workspace_repair_when_base_still_ahead() {
+    let stale_status =
+        publish_branch_freshness_status_from_commits(Some("old-base"), "origin/main", "new-base");
+    let mut check = repaired_workspace_check();
+    check.freshness_status = &stale_status;
+
+    let error = verify_agent_workspace_repair_completion(check)
+        .expect_err("stale base must reject repair completion");
+    assert!(error.contains("still behind"));
+}
+
+#[test]
+fn rejects_agent_workspace_repair_when_reported_base_commit_mismatches_current_target() {
+    let mut check = repaired_workspace_check();
+    check.resolved_base_commit = "other-base";
+
+    let error = verify_agent_workspace_repair_completion(check)
+        .expect_err("mismatched base commit must reject repair completion");
+    assert!(error.contains("resolved_base_commit"));
+}
+
+#[test]
+fn rejects_agent_workspace_repair_when_head_does_not_match_reported_repair_commit() {
+    let mut check = repaired_workspace_check();
+    check.workspace_head_sha = "different-head";
+
+    let error = verify_agent_workspace_repair_completion(check)
+        .expect_err("reported repair commit must be current HEAD");
+    assert!(error.contains("repair_commit_sha"));
+}
+
+#[test]
+fn rejects_agent_workspace_repair_when_worktree_is_dirty() {
+    let mut check = repaired_workspace_check();
+    check.has_uncommitted_changes = true;
+
+    let error = verify_agent_workspace_repair_completion(check)
+        .expect_err("dirty worktree must reject repair completion");
+    assert!(error.contains("uncommitted"));
+}
+
+#[test]
+fn rejects_agent_workspace_repair_when_merge_is_still_in_progress() {
+    let mut check = repaired_workspace_check();
+    check.is_merge_in_progress = true;
+
+    let error = verify_agent_workspace_repair_completion(check)
+        .expect_err("in-progress merge must reject repair completion");
+    assert!(error.contains("merge is still in progress"));
+}
+
+#[test]
+fn rejects_agent_workspace_repair_when_rebase_is_still_in_progress() {
+    let mut check = repaired_workspace_check();
+    check.is_rebase_in_progress = true;
+
+    let error = verify_agent_workspace_repair_completion(check)
+        .expect_err("in-progress rebase must reject repair completion");
+    assert!(error.contains("rebase is still in progress"));
+}
+
+#[test]
+fn rejects_agent_workspace_repair_when_conflict_markers_remain() {
+    let mut check = repaired_workspace_check();
+    check.has_conflict_markers = true;
+
+    let error = verify_agent_workspace_repair_completion(check)
+        .expect_err("conflict markers must reject repair completion");
+    assert!(error.contains("conflict markers"));
 }

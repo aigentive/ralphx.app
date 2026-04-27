@@ -432,6 +432,12 @@ pub struct SendMessageOptions {
     pub approval_policy_override: Option<String>,
     /// Optional explicit sandbox-mode override for this send.
     pub sandbox_mode_override: Option<String>,
+    /// Start a fresh provider-native session even when the conversation has a stored
+    /// provider session or an idle interactive process.
+    pub force_new_provider_session: bool,
+    /// Keep the conversation-level provider session ref unchanged after this run. The
+    /// assistant message and run still retain their own provider-session attribution.
+    pub preserve_conversation_provider_session_ref: bool,
     /// When true, the agent was spawned from an external MCP request (e.g. ReefBot).
     /// Filters interactive-only tools (e.g. `ask_user_question`) from the allowed tool list
     /// to prevent deadlocks where the agent waits for human input that will never arrive.
@@ -1645,7 +1651,16 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             // Diagnostic: dump all registered IPR keys when lookup fails
             ipr_ref.log_registered_keys("GATE_1_MISS").await;
         }
-        if has_ipr_entry {
+        if has_ipr_entry && options.force_new_provider_session {
+            ipr_ref.remove(&interactive_key).await;
+            tracing::info!(
+                %context_type,
+                context_id,
+                runtime_context_id = %runtime_context_id,
+                "chat_service.send_message: skipped existing interactive process for fresh provider session"
+            );
+        }
+        if has_ipr_entry && !options.force_new_provider_session {
             tracing::info!(
                 %context_type,
                 context_id,
@@ -2444,9 +2459,13 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 "Disabling team mode because the selected harness does not support it"
             );
         }
-        let stored_provider_session = conversation
-            .provider_session_ref()
-            .filter(|session_ref| session_ref.harness == resolved_spawn_settings.effective_harness);
+        let stored_provider_session = if options.force_new_provider_session {
+            None
+        } else {
+            conversation.provider_session_ref().filter(|session_ref| {
+                session_ref.harness == resolved_spawn_settings.effective_harness
+            })
+        };
         let stored_session_id = stored_provider_session
             .as_ref()
             .map(|session_ref| session_ref.provider_session_id.clone());
@@ -2715,6 +2734,8 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                     resolved_spawn_settings.logical_effort,
                 )),
             },
+            persist_conversation_provider_session_ref: !options
+                .preserve_conversation_provider_session_ref,
             cancellation_token,
             team_service: self.team_service.clone(),
             streaming_state_cache: self.streaming_state_cache.clone(),

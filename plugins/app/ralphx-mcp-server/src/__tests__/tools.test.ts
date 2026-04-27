@@ -1158,6 +1158,33 @@ describe('acceptance gate tools', () => {
   });
 });
 
+describe('agent workspace repair tool', () => {
+  const allTools = getAllTools();
+  const tool = allTools.find((t) => t.name === 'complete_agent_workspace_repair');
+
+  it('should exist in ALL_TOOLS', () => {
+    expect(tool).toBeDefined();
+  });
+
+  it('should require repair verification fields', () => {
+    expect(tool?.inputSchema.type).toBe('object');
+    expect(tool?.inputSchema.properties).toHaveProperty('conversation_id');
+    expect(tool?.inputSchema.properties).toHaveProperty('repair_commit_sha');
+    expect(tool?.inputSchema.properties).toHaveProperty('resolved_base_ref');
+    expect(tool?.inputSchema.properties).toHaveProperty('resolved_base_commit');
+    expect(tool?.inputSchema.properties).toHaveProperty('summary');
+    expect(tool?.inputSchema.required).toEqual(
+      expect.arrayContaining([
+        'conversation_id',
+        'repair_commit_sha',
+        'resolved_base_ref',
+        'resolved_base_commit',
+        'summary',
+      ])
+    );
+  });
+});
+
 // ===========================================================================
 // RalphX native delegation bridge tools
 // ===========================================================================

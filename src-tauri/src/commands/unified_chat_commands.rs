@@ -36,7 +36,7 @@ use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, ChatServiceError, SendResult,
 };
 use crate::commands::ExecutionState;
-use crate::domain::agents::AgentHarnessKind;
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
 use crate::domain::entities::{
     AgentConversationWorkspace, AgentConversationWorkspaceMode,
     AgentConversationWorkspacePublicationEvent, AgentRunId, AgentRunStatus, ChatContextType,
@@ -44,6 +44,7 @@ use crate::domain::entities::{
     IdeationSessionId, ProjectId, TaskId,
 };
 use crate::domain::services::{AgentWorkspacePrPublisher, QueuedMessage, RunningAgentKey};
+use crate::infrastructure::agents::claude::agent_names::AGENT_WORKSPACE_REPAIR;
 
 // ============================================================================
 // Request/Response types
@@ -2302,15 +2303,58 @@ pub fn build_agent_workspace_publish_repair_message(
         .as_deref()
         .unwrap_or(workspace.base_ref.as_str());
     [
-        "Commit & Publish failed for this edit workspace.".to_string(),
+        "Commit & Publish failed for this agent workspace.".to_string(),
         String::new(),
         "Please fix the workspace so publishing can be retried.".to_string(),
+        "After the repair is committed, call complete_agent_workspace_repair with the conversation ID, repair commit SHA, resolved base ref, resolved base commit, and summary."
+            .to_string(),
         String::new(),
         format!("Error: {error}"),
+        format!("Conversation ID: {}", workspace.conversation_id),
         format!("Workspace branch: {}", workspace.branch_name),
         format!("Base: {base}"),
+        format!("Base ref: {}", workspace.base_ref),
     ]
     .join("\n")
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AgentWorkspaceRepairRuntimeOverrides {
+    pub harness: Option<AgentHarnessKind>,
+    pub model: Option<String>,
+    pub logical_effort: Option<LogicalEffort>,
+}
+
+async fn resolve_agent_workspace_repair_runtime_overrides(
+    state: &AppState,
+    workspace: &AgentConversationWorkspace,
+) -> AgentWorkspaceRepairRuntimeOverrides {
+    let conversation = state
+        .chat_conversation_repo
+        .get_by_id(&workspace.conversation_id)
+        .await
+        .ok()
+        .flatten();
+    let latest_run = state
+        .agent_run_repo
+        .get_latest_for_conversation(&workspace.conversation_id)
+        .await
+        .ok()
+        .flatten();
+
+    AgentWorkspaceRepairRuntimeOverrides {
+        harness: conversation
+            .as_ref()
+            .and_then(ChatConversation::provider_session_ref)
+            .map(|session_ref| session_ref.harness)
+            .or_else(|| latest_run.as_ref().and_then(|run| run.harness)),
+        model: latest_run.as_ref().and_then(|run| {
+            run.logical_model
+                .clone()
+                .or_else(|| run.effective_model_id.clone())
+        }),
+        logical_effort: latest_run.as_ref().and_then(|run| run.logical_effort),
+    }
 }
 
 #[doc(hidden)]
@@ -2318,6 +2362,7 @@ pub async fn send_agent_workspace_publish_repair_message<S>(
     service: &S,
     workspace: &AgentConversationWorkspace,
     error: &str,
+    runtime_overrides: AgentWorkspaceRepairRuntimeOverrides,
 ) -> Result<SendResult, ChatServiceError>
 where
     S: ChatService + ?Sized,
@@ -2329,9 +2374,12 @@ where
             &build_agent_workspace_publish_repair_message(error, workspace),
             SendMessageOptions {
                 conversation_id_override: Some(workspace.conversation_id),
-                agent_name_override: Some(
-                    agent_name_for_workspace_mode(workspace.mode).to_string(),
-                ),
+                agent_name_override: Some(AGENT_WORKSPACE_REPAIR.to_string()),
+                harness_override: runtime_overrides.harness,
+                model_override: runtime_overrides.model,
+                logical_effort_override: runtime_overrides.logical_effort,
+                force_new_provider_session: true,
+                preserve_conversation_provider_session_ref: true,
                 ..Default::default()
             },
         )
@@ -2378,7 +2426,16 @@ pub async fn mark_agent_workspace_publish_failure<S>(
         return;
     }
 
-    match send_agent_workspace_publish_repair_message(repair_service, workspace, error).await {
+    let runtime_overrides =
+        resolve_agent_workspace_repair_runtime_overrides(state, workspace).await;
+    match send_agent_workspace_publish_repair_message(
+        repair_service,
+        workspace,
+        error,
+        runtime_overrides,
+    )
+    .await
+    {
         Ok(_) => {
             let _ = append_agent_workspace_publication_event(
                 state,

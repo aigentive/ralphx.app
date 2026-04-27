@@ -640,6 +640,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         commit_sha: string;
       };
       result = await callTauri(`git/tasks/${task_id}/complete-merge`, { commit_sha });
+    } else if (name === "complete_agent_workspace_repair") {
+      // POST /api/agent-workspaces/:conversation_id/complete-repair
+      const {
+        conversation_id,
+        repair_commit_sha,
+        resolved_base_ref,
+        resolved_base_commit,
+        summary,
+      } = args as {
+        conversation_id: string;
+        repair_commit_sha: string;
+        resolved_base_ref: string;
+        resolved_base_commit: string;
+        summary: string;
+      };
+      result = await callTauri(`agent-workspaces/${conversation_id}/complete-repair`, {
+        repair_commit_sha,
+        resolved_base_ref,
+        resolved_base_commit,
+        summary,
+      });
     } else if (name === "report_conflict") {
       // POST /api/git/tasks/:task_id/report-conflict
       const { task_id, conflict_files, reason } = args as {

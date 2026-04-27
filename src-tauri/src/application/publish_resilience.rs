@@ -237,6 +237,71 @@ pub fn publish_branch_freshness_status_from_commits_and_branch(
     )
 }
 
+pub struct AgentWorkspaceRepairCompletionCheck<'a> {
+    pub freshness_status: &'a PublishBranchFreshnessStatus,
+    pub workspace_base_ref: &'a str,
+    pub resolved_base_ref: &'a str,
+    pub resolved_base_commit: &'a str,
+    pub repair_commit_sha: &'a str,
+    pub workspace_head_sha: &'a str,
+    pub has_uncommitted_changes: bool,
+    pub is_merge_in_progress: bool,
+    pub is_rebase_in_progress: bool,
+    pub has_conflict_markers: bool,
+}
+
+pub fn verify_agent_workspace_repair_completion(
+    check: AgentWorkspaceRepairCompletionCheck<'_>,
+) -> Result<(), String> {
+    let target_ref = check.freshness_status.target_ref.as_str();
+    if check.resolved_base_ref != check.workspace_base_ref && check.resolved_base_ref != target_ref
+    {
+        return Err(format!(
+            "resolved_base_ref '{}' does not match workspace base '{}' or target '{}'",
+            check.resolved_base_ref, check.workspace_base_ref, target_ref
+        ));
+    }
+
+    if check.resolved_base_commit != check.freshness_status.target_base_commit {
+        return Err(format!(
+            "resolved_base_commit '{}' does not match current target base '{}'",
+            check.resolved_base_commit, check.freshness_status.target_base_commit
+        ));
+    }
+
+    if check.freshness_status.is_base_ahead {
+        return Err(format!(
+            "workspace branch is still behind {} at {}",
+            check.freshness_status.target_ref, check.freshness_status.target_base_commit
+        ));
+    }
+
+    if check.workspace_head_sha != check.repair_commit_sha {
+        return Err(format!(
+            "repair_commit_sha '{}' is not the current workspace HEAD '{}'",
+            check.repair_commit_sha, check.workspace_head_sha
+        ));
+    }
+
+    if check.has_uncommitted_changes {
+        return Err("workspace has uncommitted changes".to_string());
+    }
+
+    if check.is_merge_in_progress {
+        return Err("workspace merge is still in progress".to_string());
+    }
+
+    if check.is_rebase_in_progress {
+        return Err("workspace rebase is still in progress".to_string());
+    }
+
+    if check.has_conflict_markers {
+        return Err("workspace still contains conflict markers".to_string());
+    }
+
+    Ok(())
+}
+
 pub(crate) fn publish_branch_freshness_outcome_from_source_update(
     result: SourceUpdateResult,
     target_ref: &str,
