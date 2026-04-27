@@ -59,54 +59,15 @@ export type GraphSelection =
   | { kind: "tierGroup"; id: string }
   | { kind: "customGroup"; id: string };
 
-// ============================================================================
-// Chat Visibility Persistence
-// ============================================================================
-
-const CHAT_VISIBILITY_KEY = "ralphx-chat-visibility-by-view";
-
-const DEFAULT_CHAT_VISIBILITY: Record<ViewType, boolean> = {
-  kanban: true, // visible by default (integrated layout)
-  graph: false, // hidden by default (focus on visualization)
-  ideation: true, // always visible (built-in chat)
-  agents: false, // agents view has its own embedded chat
-  extensibility: false,
-  activity: false,
-  insights: false,
-  task_detail: false,
-  team: false, // team view has its own split layout
-};
-
-function loadChatVisibility(): Record<ViewType, boolean> {
-  try {
-    const saved = localStorage.getItem(CHAT_VISIBILITY_KEY);
-    if (saved) {
-      return { ...DEFAULT_CHAT_VISIBILITY, ...JSON.parse(saved) };
-    }
-  } catch {
-    /* ignore parse errors */
-  }
-  return { ...DEFAULT_CHAT_VISIBILITY };
-}
-
 function applyTaskSelection(
-  state: { selectedTaskId: string | null; taskHistoryState: UiState["taskHistoryState"]; chatVisibleByView: Record<ViewType, boolean> },
+  state: { selectedTaskId: string | null; taskHistoryState: UiState["taskHistoryState"] },
   taskId: string | null
 ): void {
   state.selectedTaskId = taskId;
-  // Auto-open chat when a task is selected in kanban view
-  if (taskId !== null) {
-    state.chatVisibleByView.kanban = true;
-    saveChatVisibility(state.chatVisibleByView);
-  }
   // Clear history state when task is deselected
   if (taskId === null) {
     state.taskHistoryState = null;
   }
-}
-
-function saveChatVisibility(visibility: Record<ViewType, boolean>): void {
-  localStorage.setItem(CHAT_VISIBILITY_KEY, JSON.stringify(visibility));
 }
 
 // ============================================================================
@@ -115,6 +76,7 @@ function saveChatVisibility(visibility: Record<ViewType, boolean>): void {
 
 const VIEW_BY_PROJECT_KEY = "ralphx-views-by-project";
 const SESSION_BY_PROJECT_KEY = "ralphx-sessions-by-project";
+const SELECTED_TASK_BY_PROJECT_KEY = "ralphx-selected-task-by-project";
 
 function loadViewByProject(): Record<string, ViewType> {
   try {
@@ -145,6 +107,23 @@ function loadSessionByProject(): Record<string, string | null> {
 function saveSessionByProject(map: Record<string, string | null>): void {
   try {
     localStorage.setItem(SESSION_BY_PROJECT_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore write errors */
+  }
+}
+
+function loadSelectedTaskByProject(): Record<string, string | null> {
+  try {
+    const stored = localStorage.getItem(SELECTED_TASK_BY_PROJECT_KEY);
+    return stored ? (JSON.parse(stored) as Record<string, string | null>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSelectedTaskByProject(map: Record<string, string | null>): void {
+  try {
+    localStorage.setItem(SELECTED_TASK_BY_PROJECT_KEY, JSON.stringify(map));
   } catch {
     /* ignore write errors */
   }
@@ -263,8 +242,6 @@ interface UiState {
   } | null;
   /** Task creation overlay context, or null if closed */
   taskCreationContext: { projectId: string; defaultTitle?: string } | null;
-  /** Chat visibility per view (persisted to localStorage) */
-  chatVisibleByView: Record<ViewType, boolean>;
   /** Whether the welcome screen is manually shown (vs. empty state) */
   showWelcomeOverlay: boolean;
   /** View to return to when closing manually-opened welcome screen */
@@ -279,6 +256,8 @@ interface UiState {
   viewByProject: Record<string, ViewType>;
   /** Per-project last ideation session ID (persisted to localStorage) */
   sessionByProject: Record<string, string | null>;
+  /** Per-project selected task detail ID (persisted to localStorage) */
+  selectedTaskByProject: Record<string, string | null>;
   /** Cached UI feature flags (fetched once at startup, defaults to all-enabled) */
   featureFlags: FeatureFlags;
   /** Queue of session IDs awaiting finalization confirmation (first = active dialog) */
@@ -385,10 +364,6 @@ interface UiActions {
   openTaskCreation: (projectId: string, defaultTitle?: string) => void;
   /** Close task creation overlay */
   closeTaskCreation: () => void;
-  /** Set chat visibility for a specific view */
-  setChatVisible: (view: ViewType, visible: boolean) => void;
-  /** Toggle chat visibility for a specific view */
-  toggleChatVisible: (view: ViewType) => void;
   /** Open welcome screen overlay, saving current view */
   openWelcomeOverlay: () => void;
   /** Close welcome screen overlay, restoring previous view */
@@ -487,7 +462,6 @@ export const useUiStore = create<UiState & UiActions>()(
     battleModePanelRestoreState: null,
     taskHistoryState: null,
     taskCreationContext: null,
-    chatVisibleByView: loadChatVisibility(),
     showWelcomeOverlay: false,
     welcomeOverlayReturnView: null,
     previousView: null,
@@ -495,7 +469,8 @@ export const useUiStore = create<UiState & UiActions>()(
     collapsedColumns: loadCollapsedColumns(),
     viewByProject: loadViewByProject(),
     sessionByProject: loadSessionByProject(),
-  featureFlags: DEFAULT_FEATURE_FLAGS,
+    selectedTaskByProject: loadSelectedTaskByProject(),
+    featureFlags: DEFAULT_FEATURE_FLAGS,
     pendingConfirmationQueue: [],
     autoAcceptPlans: false,
     autoAcceptSessions: new Set<string>(),
@@ -515,27 +490,12 @@ export const useUiStore = create<UiState & UiActions>()(
 
     toggleReviewsPanel: () =>
       set((state) => {
-        const willOpen = !state.reviewsPanelOpen;
-        state.reviewsPanelOpen = willOpen;
-        // Mutual exclusion: close chat when opening reviews
-        if (willOpen) {
-          Object.keys(state.chatVisibleByView).forEach((view) => {
-            state.chatVisibleByView[view as ViewType] = false;
-          });
-          saveChatVisibility(state.chatVisibleByView);
-        }
+        state.reviewsPanelOpen = !state.reviewsPanelOpen;
       }),
 
     setReviewsPanelOpen: (open) =>
       set((state) => {
         state.reviewsPanelOpen = open;
-        // Mutual exclusion: close chat when opening reviews
-        if (open) {
-          Object.keys(state.chatVisibleByView).forEach((view) => {
-            state.chatVisibleByView[view as ViewType] = false;
-          });
-          saveChatVisibility(state.chatVisibleByView);
-        }
       }),
 
     setCurrentView: (view) =>
@@ -687,6 +647,11 @@ export const useUiStore = create<UiState & UiActions>()(
         } else if (state.graphSelection?.kind === "task") {
           state.graphSelection = null;
         }
+        const projectId = useProjectStore.getState().activeProjectId;
+        if (projectId) {
+          state.selectedTaskByProject[projectId] = taskId;
+          saveSelectedTaskByProject(state.selectedTaskByProject);
+        }
       }),
 
     setGraphSelection: (selection) =>
@@ -760,23 +725,6 @@ export const useUiStore = create<UiState & UiActions>()(
         state.taskCreationContext = null;
       }),
 
-    setChatVisible: (view, visible) =>
-      set((state) => {
-        state.chatVisibleByView[view] = visible;
-        saveChatVisibility(state.chatVisibleByView);
-      }),
-
-    toggleChatVisible: (view) =>
-      set((state) => {
-        const willOpen = !state.chatVisibleByView[view];
-        state.chatVisibleByView[view] = willOpen;
-        saveChatVisibility(state.chatVisibleByView);
-        // Mutual exclusion: close reviews when opening chat
-        if (willOpen) {
-          state.reviewsPanelOpen = false;
-        }
-      }),
-
     openWelcomeOverlay: () =>
       set((state) => {
         state.welcomeOverlayReturnView = state.currentView;
@@ -846,31 +794,38 @@ export const useUiStore = create<UiState & UiActions>()(
         if (oldProjectId) {
           state.viewByProject[oldProjectId] = state.currentView;
           state.sessionByProject[oldProjectId] = useIdeationStore.getState().activeSessionId;
+          state.selectedTaskByProject[oldProjectId] = state.selectedTaskId;
         }
 
         // RESTORE phase — resolve view, fallback ephemeral views to the default project view
         let restoredView: ViewType = state.viewByProject[newProjectId] ?? DEFAULT_PROJECT_VIEW;
+        let restoredSelectedTaskId = state.selectedTaskByProject[newProjectId] ?? null;
         // Guard against stale localStorage values ("settings" was removed from ViewType)
-        if (
-          (restoredView as string) === "settings" ||
-          restoredView === "task_detail" ||
-          restoredView === "team"
-        ) {
+        if ((restoredView as string) === "settings" || restoredView === "team") {
           restoredView = DEFAULT_PROJECT_VIEW;
+        }
+        if (restoredView === "task_detail") {
+          restoredView = restoredSelectedTaskId ? "kanban" : DEFAULT_PROJECT_VIEW;
         }
         // Feature flag guard: redirect disabled views to the default project view
         if (!isViewEnabled(restoredView, state.featureFlags)) {
           restoredView = DEFAULT_PROJECT_VIEW;
         }
+        if (restoredView !== "kanban" && restoredView !== "graph") {
+          restoredSelectedTaskId = null;
+        }
 
         // Persist updated maps
         saveViewByProject(state.viewByProject);
         saveSessionByProject(state.sessionByProject);
+        saveSelectedTaskByProject(state.selectedTaskByProject);
 
         // CLEAN + RESTORE (atomic)
         state.currentView = restoredView;
-        state.selectedTaskId = null;
-        state.graphSelection = null;
+        state.selectedTaskId = restoredSelectedTaskId;
+        state.graphSelection = restoredSelectedTaskId
+          ? { kind: "task", id: restoredSelectedTaskId }
+          : null;
         state.taskHistoryState = null;
         state.boardSearchQuery = null;
         state.battleModeActive = false;
@@ -886,8 +841,10 @@ export const useUiStore = create<UiState & UiActions>()(
       set((state) => {
         delete state.viewByProject[projectId];
         delete state.sessionByProject[projectId];
+        delete state.selectedTaskByProject[projectId];
         saveViewByProject(state.viewByProject);
         saveSessionByProject(state.sessionByProject);
+        saveSelectedTaskByProject(state.selectedTaskByProject);
       }),
 
     setFeatureFlags: (flags) =>
@@ -900,6 +857,11 @@ export const useUiStore = create<UiState & UiActions>()(
       set((state) => {
         applyTaskSelection(state, taskId);
         state.graphSelection = { kind: "task", id: taskId };
+        const projectId = useProjectStore.getState().activeProjectId;
+        if (projectId) {
+          state.selectedTaskByProject[projectId] = taskId;
+          saveSelectedTaskByProject(state.selectedTaskByProject);
+        }
       });
     },
 

@@ -68,6 +68,7 @@ function resetStores() {
     graphRightPanelCompactOpen: false,
     viewByProject: {},
     sessionByProject: {},
+    selectedTaskByProject: {},
   });
 
   useIdeationStore.setState({
@@ -93,6 +94,21 @@ describe("Project switch effect — App.tsx integration", () => {
     simulateProjectSwitch("project-a", "project-b");
 
     expect(useUiStore.getState().selectedTaskId).toBeNull();
+  });
+
+  it("restores selected task detail when switching back to a saved graph route", () => {
+    useUiStore.setState({
+      currentView: "kanban",
+      viewByProject: { "project-b": "graph" },
+      selectedTaskByProject: { "project-b": "task-b" },
+    });
+
+    simulateProjectSwitch("project-a", "project-b");
+
+    const state = useUiStore.getState();
+    expect(state.currentView).toBe("graph");
+    expect(state.selectedTaskId).toBe("task-b");
+    expect(state.graphSelection).toEqual({ kind: "task", id: "task-b" });
   });
 
   it("restores ideation session when the saved session exists in the store", () => {

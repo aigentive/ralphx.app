@@ -3,12 +3,9 @@
  *
  * Provides a split layout with:
  * - Left side: Kanban board + task detail overlay (when selected)
- * - Right side: Integrated chat panel (toggleable via header button, resizable)
+ * - Right side: selected-task chat only when an agent chat is available
  *
- * This layout is specific to the Kanban view. Other views continue to use
- * the floating ChatPanel.
- *
- * Resizing works like IdeationView - percentage-based with mouse drag.
+ * This layout intentionally does not render a project/main chat pane.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,13 +14,10 @@ import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
 import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
+import { useTaskChatAvailability } from "@/hooks/useTaskChatAvailability";
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-const MAX_CHAT_WIDTH = 600; // Maximum chat panel width
-const CHAT_WIDTH_STORAGE_KEY = "ralphx-kanban-chat-width";
+const MAX_CHAT_WIDTH = 600;
+const TASK_CHAT_WIDTH_STORAGE_KEY = "ralphx-kanban-task-chat-width";
 
 // ============================================================================
 // Main Component
@@ -37,45 +31,38 @@ interface KanbanSplitLayoutProps {
 }
 
 export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLayoutProps) {
-  const chatVisible = useUiStore((s) => s.chatVisibleByView.kanban);
-  const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
   const taskCreationContext = useUiStore((s) => s.taskCreationContext);
-
-  // Chat panel width (pixel-based)
+  const showTaskChat = useTaskChatAvailability(projectId);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isResizing, setIsResizing] = useState(false);
   const [chatPanelWidth, setChatPanelWidth] = useState(() => {
-    const saved = localStorage.getItem(CHAT_WIDTH_STORAGE_KEY);
+    const saved = localStorage.getItem(TASK_CHAT_WIDTH_STORAGE_KEY);
     if (saved) {
       const parsed = parseInt(saved, 10);
-      if (!isNaN(parsed) && parsed >= CHAT_PANEL_MIN_WIDTH && parsed <= MAX_CHAT_WIDTH) {
+      if (!Number.isNaN(parsed) && parsed >= CHAT_PANEL_MIN_WIDTH && parsed <= MAX_CHAT_WIDTH) {
         return parsed;
       }
     }
     return CHAT_PANEL_DEFAULT_WIDTH;
   });
 
-  const [isResizing, setIsResizing] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Persist chat panel width
   useEffect(() => {
-    localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatPanelWidth.toString());
+    localStorage.setItem(TASK_CHAT_WIDTH_STORAGE_KEY, chatPanelWidth.toString());
   }, [chatPanelWidth]);
 
-  // Handle resize start
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
   }, []);
 
-  // Handle resize move/end
   useEffect(() => {
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      // Chat panel is on the right, so width = container right edge - mouse position
       const newWidth = rect.right - e.clientX;
       setChatPanelWidth(Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(MAX_CHAT_WIDTH, newWidth)));
     };
@@ -119,25 +106,29 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
         )}
 
         {/* Task Detail Overlay */}
-        {selectedTaskId && <TaskDetailOverlay projectId={projectId} footer={footer} />}
+        {selectedTaskId && (
+          <TaskDetailOverlay
+            projectId={projectId}
+            footer={footer}
+            constrainContent={!showTaskChat}
+          />
+        )}
 
         {/* Task Creation Overlay */}
         {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}
       </div>
 
-      {/* Resize Handle */}
-      {chatVisible && (
+      {showTaskChat && (
         <ResizeHandle
           isResizing={isResizing}
           onMouseDown={handleResizeStart}
-          testId="kanban-split-resize-handle"
+          testId="kanban-task-chat-resize-handle"
         />
       )}
 
-      {/* Right Section - Chat Panel with floating glass container */}
-      {chatVisible && (
+      {showTaskChat && (
         <div
-          data-testid="kanban-split-right"
+          data-testid="kanban-task-chat-panel"
           className="flex flex-col overflow-hidden shrink-0 border-l border-[var(--border-subtle)]"
           style={{
             width: `${chatPanelWidth}px`,
@@ -146,7 +137,7 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
         >
           <IntegratedChatPanel
             projectId={projectId}
-            onClose={() => toggleChatVisible("kanban")}
+            onClose={() => setSelectedTaskId(null)}
             autoFocusInput={false}
           />
         </div>

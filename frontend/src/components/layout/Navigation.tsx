@@ -31,61 +31,59 @@ interface NavItemConfig {
   view: ViewType;
   label: string;
   icon: React.ElementType;
-  shortcut: string;
+  shortcut?: string;
   visible: (flags: FeatureFlags, taskCount: number) => boolean;
 }
 
 // Unified nav items with visibility predicates.
-// Order reflects the default workflow: agents first, then plan ideas → visualize dependencies → execute tasks.
+// Order matches the main navigation shortcut map: ⌘1 through ⌘5.
 const ALL_NAV_ITEMS: NavItemConfig[] = [
   {
     view: "agents",
     label: "Agents",
     icon: Bot,
-    shortcut: "⌘⇧A",
+    shortcut: "⌘1",
     visible: () => true,
   },
   {
     view: "ideation",
     label: "Ideation",
     icon: Lightbulb,
-    shortcut: "⌘1",
+    shortcut: "⌘2",
     visible: () => true,
   },
   {
     view: "graph",
     label: "Graph",
     icon: Network,
-    shortcut: "⌘2",
+    shortcut: "⌘3",
     visible: () => true,
   },
   {
     view: "kanban",
     label: "Kanban",
     icon: LayoutGrid,
-    shortcut: "⌘3",
+    shortcut: "⌘4",
     visible: () => true,
+  },
+  {
+    view: "insights",
+    label: "Insights",
+    icon: TrendingUp,
+    shortcut: "⌘5",
+    visible: (_flags, taskCount) => taskCount >= 10,
   },
   {
     view: "extensibility",
     label: "Extensibility",
     icon: Puzzle,
-    shortcut: "⌘4",
     visible: (flags) => flags.extensibilityPage,
   },
   {
     view: "activity",
     label: "Activity",
     icon: Activity,
-    shortcut: "⌘5",
     visible: (flags) => flags.activityPage,
-  },
-  {
-    view: "insights",
-    label: "Insights",
-    icon: TrendingUp,
-    shortcut: "⌘6",
-    visible: (_flags, taskCount) => taskCount >= 10,
   },
 ];
 
@@ -106,7 +104,7 @@ function NavItem({
   view: ViewType;
   label: string;
   icon: React.ElementType;
-  shortcut: string;
+  shortcut: string | undefined;
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
 }) {
@@ -142,7 +140,8 @@ function NavItem({
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="text-xs">
-        {label} <kbd className="ml-1 opacity-70">{shortcut}</kbd>
+        {label}
+        {shortcut && <kbd className="ml-1 opacity-70">{shortcut}</kbd>}
       </TooltipContent>
     </Tooltip>
   );

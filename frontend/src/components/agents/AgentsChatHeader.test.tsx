@@ -64,6 +64,25 @@ describe("AgentsChatHeader", () => {
     expect(screen.queryByText("Default")).not.toBeInTheDocument();
   });
 
+  it("shows conversation stats in the Agents chat header", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation()}
+        workspace={null}
+        modelDisplay={{ id: "gpt-5.4", label: "gpt-5.4" }}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("chat-session-chips")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-session-stats-button")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5.4")).toBeInTheDocument();
+  });
+
   it("shows the workspace branch status when available", () => {
     renderWithProviders(
       <AgentsChatHeader

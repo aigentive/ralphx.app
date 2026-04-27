@@ -116,6 +116,7 @@ for (const theme of THEMES) {
 
       // Capture each major view with the selected theme active.
       const views = [
+        "agents",
         "ideation",
         "graph",
         "kanban",
@@ -133,12 +134,6 @@ for (const theme of THEMES) {
       await page.waitForTimeout(300);
       await saveScreenshot(page, theme, "settings");
       await closeSettings(page);
-
-      // Chat panel toggle
-      await page.click('[data-testid="chat-toggle"]');
-      await page.waitForTimeout(400);
-      await saveScreenshot(page, theme, "chat");
-      await page.click('[data-testid="chat-toggle"]');
 
       // Reviews panel toggle
       await page.click('[data-testid="reviews-toggle"]');

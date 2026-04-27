@@ -31,8 +31,13 @@ vi.mock("@/stores/projectStore", () => ({
 }));
 
 // Mock useProjectStats — avoids needing QueryClientProvider in Navigation tests
+let mockTaskCount = 0;
 vi.mock("@/hooks/useProjectStats", () => ({
-  useProjectStats: vi.fn(() => ({ data: undefined, isLoading: false, isError: false })),
+  useProjectStats: vi.fn(() => ({
+    data: { taskCount: mockTaskCount },
+    isLoading: false,
+    isError: false,
+  })),
 }));
 
 // Feature flags mock — default all enabled
@@ -58,6 +63,7 @@ describe("Navigation", () => {
   beforeEach(() => {
     mockState = { activeTeams: {} };
     mockFeatureFlags = { activityPage: true, extensibilityPage: true };
+    mockTaskCount = 0;
   });
 
   it("renders all nav items", () => {
@@ -84,6 +90,30 @@ describe("Navigation", () => {
       "nav-graph",
       "nav-kanban",
     ]);
+  });
+
+  it("orders the shortcut-backed main views as Agents, Ideation, Graph, Kanban, Insights", () => {
+    mockTaskCount = 10;
+
+    render(<Navigation {...defaultProps} />);
+
+    const nav = screen.getByRole("navigation");
+    const navItemIds = Array.from(nav.querySelectorAll("[data-testid]")).map((element) =>
+      element.getAttribute("data-testid")
+    );
+
+    expect(navItemIds.slice(0, 5)).toEqual([
+      "nav-agents",
+      "nav-ideation",
+      "nav-graph",
+      "nav-kanban",
+      "nav-insights",
+    ]);
+    expect(screen.getByText("⌘1")).toBeInTheDocument();
+    expect(screen.getByText("⌘2")).toBeInTheDocument();
+    expect(screen.getByText("⌘3")).toBeInTheDocument();
+    expect(screen.getByText("⌘4")).toBeInTheDocument();
+    expect(screen.getByText("⌘5")).toBeInTheDocument();
   });
 
   it("shows team pill when hasActiveTeam is true", () => {
@@ -131,6 +161,7 @@ describe("Navigation — feature flag filtering", () => {
   beforeEach(() => {
     mockState = { activeTeams: {} };
     mockFeatureFlags = { activityPage: true, extensibilityPage: true };
+    mockTaskCount = 0;
   });
 
   it("renders activity and extensibility nav items when flags are enabled", () => {

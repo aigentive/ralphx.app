@@ -8,7 +8,7 @@
  * - Premium Apple-grade typography and spacing
  */
 
-import { useState, useEffect, useMemo, useRef, useSyncExternalStore, useCallback } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -100,9 +100,6 @@ export function TaskBoard({
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const boardSearchQuery = useUiStore((s) => s.boardSearchQuery);
   const setBoardSearchQuery = useUiStore((s) => s.setBoardSearchQuery);
-  const kanbanChatVisible = useUiStore((s) => s.chatVisibleByView.kanban);
-  const setChatVisible = useUiStore((s) => s.setChatVisible);
-  const previousActivePlanRef = useRef<string | null>(activePlanId);
 
   // Column collapse: reactive task counts and auto-collapse/expand logic
   const taskCounts = useColumnTaskCounts(
@@ -118,20 +115,6 @@ export function TaskBoard({
     taskCounts,
     ideationSessionId,
   );
-
-  // Auto-open Kanban chat when switching to a different active plan.
-  useEffect(() => {
-    const previousActivePlanId = previousActivePlanRef.current;
-    const activePlanChanged =
-      activePlanId !== null &&
-      activePlanId !== previousActivePlanId;
-
-    if (activePlanChanged && !kanbanChatVisible) {
-      setChatVisible("kanban", true);
-    }
-
-    previousActivePlanRef.current = activePlanId;
-  }, [activePlanId, kanbanChatVisible, setChatVisible]);
 
   // Fetch archived count to show/hide the toggle
   const { data: archivedCount = 0 } = useQuery({

@@ -476,10 +476,7 @@ html[data-theme="high-contrast"] main {
   border: none !important;
 }
 
-/* Right-side chat panels — left fence separates chat from main content.
-   Covers both ResizeablePanel (ChatPanel on Graph/Insights/…) and the
-   integrated variant (Kanban/Ideation). */
-[data-theme="high-contrast"] [data-testid="chat-panel"],
+/* Right-side chat panels — left fence separates embedded chat from main content. */
 [data-theme="high-contrast"] [data-testid="integrated-chat-panel"] {
   border-left: 1px solid hsla(0 0% 100% / 0.15) !important;
 }

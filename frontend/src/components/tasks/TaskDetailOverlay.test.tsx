@@ -86,7 +86,10 @@ function createTestTask(overrides?: Partial<Task>): Task {
   };
 }
 
-function renderOverlay(task: Task) {
+function renderOverlay(
+  task: Task,
+  props?: Partial<React.ComponentProps<typeof TaskDetailOverlay>>
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -96,7 +99,7 @@ function renderOverlay(task: Task) {
   useUiStore.getState().setSelectedTaskId(task.id);
   return render(
     <QueryClientProvider client={queryClient}>
-      <TaskDetailOverlay projectId={task.projectId} />
+      <TaskDetailOverlay projectId={task.projectId} {...props} />
     </QueryClientProvider>
   );
 }
@@ -128,6 +131,17 @@ describe("TaskDetailOverlay", () => {
 
     expect(screen.getByTestId("task-overlay-edit-button")).toBeInTheDocument();
     expect(screen.getByTestId("mock-status-dropdown")).toBeInTheDocument();
+  });
+
+  it("centers task detail content when constrained by the host layout", () => {
+    renderOverlay(createTestTask({ category: "feature", internalStatus: "ready" }), {
+      constrainContent: true,
+    });
+
+    expect(screen.getByTestId("task-detail-content-frame")).toHaveClass(
+      "mx-auto",
+      "max-w-[1500px]"
+    );
   });
 
   it("adds accessible names and app tooltips to header icon buttons", async () => {

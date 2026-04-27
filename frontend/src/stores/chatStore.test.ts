@@ -40,7 +40,6 @@ describe("chatStore", () => {
     useChatStore.setState({
       messages: {},
       context: null,
-      width: 320,
       isLoading: false,
       activeConversationIds: {},
       queuedMessages: {},
@@ -61,11 +60,6 @@ describe("chatStore", () => {
     it("has null context", () => {
       const state = useChatStore.getState();
       expect(state.context).toBeNull();
-    });
-
-    it("has default width 320", () => {
-      const state = useChatStore.getState();
-      expect(state.width).toBe(320);
     });
 
     it("has isLoading false", () => {
@@ -117,43 +111,6 @@ describe("chatStore", () => {
 
       const state = useChatStore.getState();
       expect(state.context).toBeNull();
-    });
-  });
-
-  describe("setWidth", () => {
-    it("sets width", () => {
-      useChatStore.getState().setWidth(400);
-
-      const state = useChatStore.getState();
-      expect(state.width).toBe(400);
-    });
-
-    it("clamps to minimum width 320", () => {
-      useChatStore.getState().setWidth(200);
-
-      const state = useChatStore.getState();
-      expect(state.width).toBe(320);
-    });
-
-    it("clamps to maximum width 800", () => {
-      useChatStore.getState().setWidth(1000);
-
-      const state = useChatStore.getState();
-      expect(state.width).toBe(800);
-    });
-
-    it("accepts width at minimum boundary", () => {
-      useChatStore.getState().setWidth(320);
-
-      const state = useChatStore.getState();
-      expect(state.width).toBe(320);
-    });
-
-    it("accepts width at maximum boundary", () => {
-      useChatStore.getState().setWidth(800);
-
-      const state = useChatStore.getState();
-      expect(state.width).toBe(800);
     });
   });
 
@@ -830,7 +787,6 @@ describe("selectors", () => {
     useChatStore.setState({
       messages: {},
       context: null,
-      width: 320,
       isLoading: false,
       activeConversationIds: {},
       queuedMessages: {},

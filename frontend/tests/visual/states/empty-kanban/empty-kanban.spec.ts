@@ -41,9 +41,6 @@ test.describe("Empty Kanban Board State", () => {
     // Verify the RalphX branding is visible
     await expect(kanban.branding).toBeVisible();
 
-    // Verify the chat toggle is visible
-    await expect(kanban.chatToggle).toBeVisible();
-
     // Verify the reviews toggle is visible
     await expect(kanban.reviewsToggle).toBeVisible();
   });

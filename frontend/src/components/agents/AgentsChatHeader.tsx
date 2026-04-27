@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import type { AgentConversationWorkspace } from "@/api/chat";
+import { ChatSessionChips } from "@/components/Chat/ChatSessionChips";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,6 +24,7 @@ import { formatBranchDisplay } from "@/lib/branch-utils";
 import { withAlpha } from "@/lib/theme-colors";
 import { cn } from "@/lib/utils";
 import type { AgentArtifactTab } from "@/stores/agentSessionStore";
+import type { ModelDisplay } from "@/types/chat-conversation";
 
 import type { AgentConversation } from "./agentConversations";
 import { resolveConversationAgentMode } from "./agentConversationMode";
@@ -41,6 +43,7 @@ const HEADER_ARTIFACT_TABS: Array<{
 export interface AgentsChatHeaderProps {
   conversation: AgentConversation | null;
   workspace: AgentConversationWorkspace | null;
+  modelDisplay?: ModelDisplay | undefined;
   artifactOpen: boolean;
   activeArtifactTab: AgentArtifactTab;
   terminalOpen?: boolean;
@@ -60,6 +63,7 @@ export interface AgentsChatHeaderProps {
 export const AgentsChatHeader = memo(function AgentsChatHeader({
   conversation,
   workspace,
+  modelDisplay,
   artifactOpen,
   activeArtifactTab,
   terminalOpen = false,
@@ -153,6 +157,21 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
       </div>
 
       <div className="hidden md:flex items-center gap-1 ml-auto shrink-0">
+        {conversation && (
+          <ChatSessionChips
+            contextType={conversation.contextType}
+            contextId={conversation.contextId}
+            isAgentActive={false}
+            conversationId={conversation.id}
+            providerHarness={conversation.providerHarness ?? null}
+            providerSessionId={conversation.providerSessionId ?? null}
+            upstreamProvider={conversation.upstreamProvider ?? null}
+            providerProfile={conversation.providerProfile ?? null}
+            fallbackConversation={conversation}
+            {...(modelDisplay !== undefined ? { modelDisplay } : {})}
+          />
+        )}
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

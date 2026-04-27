@@ -26,14 +26,6 @@ import { buildStoreKey } from "@/lib/chat-context-registry";
 export type AgentStatus = "idle" | "generating" | "waiting_for_input";
 
 // ============================================================================
-// Constants
-// ============================================================================
-
-const MIN_WIDTH = 320;
-const MAX_WIDTH = 800;
-const DEFAULT_WIDTH = 320; // Minimum size as default
-
-// ============================================================================
 // Types
 // ============================================================================
 
@@ -64,8 +56,6 @@ interface ChatState {
   messages: Record<string, ChatMessage[]>;
   /** Current chat context (view, selected items) */
   context: ChatContext | null;
-  /** Panel width in pixels */
-  width: number;
   /** Loading state for async operations */
   isLoading: boolean;
   /** Active conversation IDs scoped per context key (e.g., "session:abc-123") */
@@ -97,8 +87,6 @@ interface ChatState {
 interface ChatActions {
   /** Set the current chat context */
   setContext: (context: ChatContext | null) => void;
-  /** Set the panel width (clamped to min/max) */
-  setWidth: (width: number) => void;
   /** Add a message to a context */
   addMessage: (contextKey: string, message: ChatMessage) => void;
   /** Set all messages for a context */
@@ -158,7 +146,6 @@ export const useChatStore = create<ChatState & ChatActions>()(
     // Initial state
     messages: {},
     context: null,
-    width: DEFAULT_WIDTH,
     isLoading: false,
     activeConversationIds: {},
     queuedMessages: {},
@@ -175,11 +162,6 @@ export const useChatStore = create<ChatState & ChatActions>()(
     setContext: (context) =>
       set((state) => {
         state.context = context;
-      }),
-
-    setWidth: (width) =>
-      set((state) => {
-        state.width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, width));
       }),
 
     addMessage: (contextKey, message) =>

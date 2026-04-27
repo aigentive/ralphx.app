@@ -47,6 +47,7 @@ import { logger } from "@/lib/logger";
 import { toast } from "sonner";
 import { AuditTrailDialog } from "@/components/tasks/AuditTrailDialog";
 import { getTaskCategoryLabel } from "@/lib/task-category";
+import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Priority Colors (Tahoe HSL palette)
@@ -263,9 +264,15 @@ interface TaskDetailOverlayProps {
   projectId: string;
   /** Optional footer to render at the bottom of the overlay (e.g., ExecutionControlBar) */
   footer?: React.ReactNode;
+  /** Center task details in a readable column when no adjacent chat is present. */
+  constrainContent?: boolean;
 }
 
-export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps) {
+export function TaskDetailOverlay({
+  projectId,
+  footer,
+  constrainContent = false,
+}: TaskDetailOverlayProps) {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
@@ -465,6 +472,9 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
   const categoryLabel = getTaskCategoryLabel(task.category);
   // "Backlog" is the equivalent of "draft" - tasks that haven't started execution yet
   const isBacklog = task.internalStatus === "backlog";
+  const contentFrameClassName = constrainContent
+    ? "mx-auto w-full max-w-[1500px]"
+    : "w-full";
 
   return (
     <>
@@ -539,104 +549,104 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
             {/* Action buttons */}
             <TooltipProvider delayDuration={250}>
               <div className="absolute top-4 right-4 flex items-center gap-2">
-              {/* StatusDropdown - only for user-controlled statuses */}
-              {canEdit && (
-                <StatusDropdown
-                  taskId={task.id}
-                  currentStatus={task.internalStatus}
-                  onTransition={handleStatusChange}
-                  disabled={moveMutation.isPending}
-                />
-              )}
-              {/* Start Ideation button - only for backlog (draft) tasks */}
-              {isBacklog && (
+                {/* StatusDropdown - only for user-controlled statuses */}
+                {canEdit && (
+                  <StatusDropdown
+                    taskId={task.id}
+                    currentStatus={task.internalStatus}
+                    onTransition={handleStatusChange}
+                    disabled={moveMutation.isPending}
+                  />
+                )}
+                {/* Start Ideation button - only for backlog (draft) tasks */}
+                {isBacklog && (
+                  <HeaderIconButton
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleStartIdeation}
+                    disabled={createSession.isPending}
+                    data-testid="task-overlay-ideation-button"
+                    aria-label="Start Ideation"
+                    tooltip="Start ideation"
+                  >
+                    {createSession.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Lightbulb className="w-4 h-4" />
+                    )}
+                  </HeaderIconButton>
+                )}
+                {/* Edit button */}
+                {canEdit && (
+                  <HeaderIconButton
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setIsEditing(!isEditing)}
+                    data-testid="task-overlay-edit-button"
+                    aria-label={isEditing ? "Cancel editing" : "Edit task"}
+                    tooltip={isEditing ? "Cancel editing" : "Edit task"}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </HeaderIconButton>
+                )}
+                {/* Archive button */}
+                {!isArchived && (
+                  <HeaderIconButton
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleArchive}
+                    disabled={isArchiving}
+                    data-testid="task-overlay-archive-button"
+                    aria-label="Archive task"
+                    tooltip="Archive task"
+                  >
+                    {isArchiving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Archive className="w-4 h-4" />
+                    )}
+                  </HeaderIconButton>
+                )}
+                {/* Restore button */}
+                {isArchived && (
+                  <HeaderIconButton
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleRestore}
+                    disabled={isRestoring}
+                    data-testid="task-overlay-restore-button"
+                    aria-label="Restore task"
+                    tooltip="Restore task"
+                  >
+                    {isRestoring ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <RotateCcw className="w-4 h-4" />
+                    )}
+                  </HeaderIconButton>
+                )}
+                {/* Audit Trail button */}
                 <HeaderIconButton
                   variant="ghost"
                   size="icon-sm"
-                  onClick={handleStartIdeation}
-                  disabled={createSession.isPending}
-                  data-testid="task-overlay-ideation-button"
-                  aria-label="Start Ideation"
-                  tooltip="Start ideation"
+                  onClick={() => setShowAuditTrail(true)}
+                  data-testid="task-overlay-audit-trail-button"
+                  aria-label="Audit Trail"
+                  tooltip="Audit trail"
                 >
-                  {createSession.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Lightbulb className="w-4 h-4" />
-                  )}
+                  <ScrollText className="w-4 h-4" />
                 </HeaderIconButton>
-              )}
-              {/* Edit button */}
-              {canEdit && (
+                {/* Close button */}
                 <HeaderIconButton
                   variant="ghost"
                   size="icon-sm"
-                  onClick={() => setIsEditing(!isEditing)}
-                  data-testid="task-overlay-edit-button"
-                  aria-label={isEditing ? "Cancel editing" : "Edit task"}
-                  tooltip={isEditing ? "Cancel editing" : "Edit task"}
+                  onClick={handleClose}
+                  data-testid="task-overlay-close"
+                  aria-label="Close"
+                  tooltip="Close task details"
                 >
-                  <Pencil className="w-4 h-4" />
+                  <X className="w-4 h-4" />
                 </HeaderIconButton>
-              )}
-              {/* Archive button */}
-              {!isArchived && (
-                <HeaderIconButton
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleArchive}
-                  disabled={isArchiving}
-                  data-testid="task-overlay-archive-button"
-                  aria-label="Archive task"
-                  tooltip="Archive task"
-                >
-                  {isArchiving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Archive className="w-4 h-4" />
-                  )}
-                </HeaderIconButton>
-              )}
-              {/* Restore button */}
-              {isArchived && (
-                <HeaderIconButton
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleRestore}
-                  disabled={isRestoring}
-                  data-testid="task-overlay-restore-button"
-                  aria-label="Restore task"
-                  tooltip="Restore task"
-                >
-                  {isRestoring ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RotateCcw className="w-4 h-4" />
-                  )}
-                </HeaderIconButton>
-              )}
-              {/* Audit Trail button */}
-              <HeaderIconButton
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setShowAuditTrail(true)}
-                data-testid="task-overlay-audit-trail-button"
-                aria-label="Audit Trail"
-                tooltip="Audit trail"
-              >
-                <ScrollText className="w-4 h-4" />
-              </HeaderIconButton>
-              {/* Close button */}
-              <HeaderIconButton
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleClose}
-                data-testid="task-overlay-close"
-                aria-label="Close"
-                tooltip="Close task details"
-              >
-                <X className="w-4 h-4" />
-              </HeaderIconButton>
               </div>
             </TooltipProvider>
           </div>
@@ -671,17 +681,25 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
           {isEditing ? (
             /* Edit Mode - No ScrollArea, form handles its own layout */
             <div className="flex-1 flex flex-col overflow-auto px-6 py-4">
-              <TaskEditForm
-                task={task}
-                onSave={handleSave}
-                onCancel={() => setIsEditing(false)}
-                isSaving={updateMutation.isPending}
-              />
+              <div
+                data-testid="task-detail-content-frame"
+                className={cn("flex flex-1 flex-col", contentFrameClassName)}
+              >
+                <TaskEditForm
+                  task={task}
+                  onSave={handleSave}
+                  onCancel={() => setIsEditing(false)}
+                  isSaving={updateMutation.isPending}
+                />
+              </div>
             </div>
           ) : (
             /* Read-only View */
             <ScrollArea className="flex-1">
-              <div className="px-6 py-4">
+              <div
+                data-testid="task-detail-content-frame"
+                className={cn("px-6 py-4", contentFrameClassName)}
+              >
                 <ErrorBoundary>
                   <TaskDetailPanel
                     task={task}

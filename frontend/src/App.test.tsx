@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { useUiStore } from "@/stores/uiStore";
@@ -42,6 +42,16 @@ vi.mock("@/components/tasks/TaskBoard", () => ({
   TaskBoard: () => <div data-testid="task-board-mock">Task Board</div>,
 }));
 
+// Mock TaskGraphView to avoid ReactFlow setup during app-shell tests
+vi.mock("@/components/TaskGraph", () => ({
+  TaskGraphView: ({ footer }: { footer?: React.ReactNode }) => (
+    <div data-testid="task-graph-view-mock">
+      Task Graph
+      {footer && <div data-testid="graph-footer-mock">{footer}</div>}
+    </div>
+  ),
+}));
+
 // Mock IdeationView to avoid complex ideation state issues
 vi.mock("@/components/Ideation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/Ideation")>();
@@ -66,6 +76,11 @@ vi.mock("@/components/activity", () => ({
   ActivityView: ({ showHeader }: { showHeader?: boolean }) => (
     <div data-testid="activity-view-mock">Activity View {showHeader && "(with header)"}</div>
   ),
+}));
+
+// Mock AgentsView
+vi.mock("@/components/agents", () => ({
+  AgentsView: () => <div data-testid="agents-view-mock">Agents View</div>,
 }));
 
 // Mock UpdateChecker to avoid delayed non-critical updater checks during shell tests.
@@ -239,7 +254,7 @@ function resetStores() {
   useUiStore.setState({
     sidebarOpen: true,
     reviewsPanelOpen: false,
-    currentView: "kanban",
+    currentView: "agents",
     activeModal: null,
     modalContext: undefined,
     notifications: [],
@@ -254,6 +269,11 @@ function resetStores() {
       queuedCount: 0,
       canStartTask: true,
     },
+    selectedTaskId: null,
+    graphSelection: null,
+    viewByProject: {},
+    sessionByProject: {},
+    selectedTaskByProject: {},
   });
 
   useChatStore.setState({
@@ -262,8 +282,6 @@ function resetStores() {
       view: "kanban",
       projectId: "demo-project",
     },
-    isOpen: false,
-    width: 320,
     isLoading: false,
   });
 
@@ -351,9 +369,9 @@ describe("App", () => {
     expect(header).toHaveClass("flex", "items-center", "justify-between");
   });
 
-  it("should render TaskBoard component", () => {
+  it("should render Agents view by default", () => {
     render(<App />);
-    expect(screen.getByTestId("task-board-mock")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-view-mock")).toBeInTheDocument();
   });
 
   it("should provide QueryClient context", () => {
@@ -366,7 +384,9 @@ describe("App", () => {
   describe("View Navigation", () => {
     it("should render all navigation buttons", () => {
       render(<App />);
+      expect(screen.getByTestId("nav-agents")).toBeInTheDocument();
       expect(screen.getByTestId("nav-kanban")).toBeInTheDocument();
+      expect(screen.getByTestId("nav-graph")).toBeInTheDocument();
       expect(screen.getByTestId("nav-ideation")).toBeInTheDocument();
       expect(screen.getByTestId("nav-extensibility")).toBeInTheDocument();
       expect(screen.getByTestId("nav-activity")).toBeInTheDocument();
@@ -378,7 +398,9 @@ describe("App", () => {
       // All nav buttons should exist and have proper accessible labels
       // (Using shadcn Tooltip which provides keyboard shortcut info on hover)
       const navButtons = [
+        { testId: "nav-agents", label: /Agents/i },
         { testId: "nav-kanban", label: /Kanban/i },
+        { testId: "nav-graph", label: /Graph/i },
         { testId: "nav-ideation", label: /Ideation/i },
         { testId: "nav-extensibility", label: /Extensibility/i },
         { testId: "nav-activity", label: /Activity/i },
@@ -391,10 +413,24 @@ describe("App", () => {
       }
     });
 
-    it("should start with Kanban view active", () => {
+    it("should start with Agents view active", () => {
       render(<App />);
-      expect(screen.getByTestId("nav-kanban")).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTestId("nav-agents")).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTestId("agents-view-mock")).toBeInTheDocument();
+    });
+
+    it("does not render the old page chat toggle on Kanban or Graph", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await user.click(screen.getByTestId("nav-kanban"));
       expect(screen.getByTestId("task-board-mock")).toBeInTheDocument();
+      expect(screen.queryByTestId("chat-toggle")).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId("nav-graph"));
+
+      expect(screen.getByTestId("task-graph-view-mock")).toBeInTheDocument();
+      expect(screen.queryByTestId("chat-toggle")).not.toBeInTheDocument();
     });
 
     it("should switch to Ideation view when clicked", async () => {
@@ -446,17 +482,17 @@ describe("App", () => {
 
       await user.click(screen.getByTestId("nav-settings"));
 
-      // Settings is now a modal — activeModal is set, kanban stays visible underneath
+      // Settings is now a modal — activeModal is set, current view stays visible underneath
       expect(useUiStore.getState().activeModal).toBe("settings");
-      expect(screen.getByTestId("task-board-mock")).toBeInTheDocument();
+      expect(screen.getByTestId("agents-view-mock")).toBeInTheDocument();
     });
 
     it("should switch views correctly multiple times", async () => {
       const user = userEvent.setup();
       render(<App />);
 
-      // Start on Kanban
-      expect(screen.getByTestId("task-board-mock")).toBeInTheDocument();
+      // Start on Agents
+      expect(screen.getByTestId("agents-view-mock")).toBeInTheDocument();
 
       // Go to Activity
       await user.click(screen.getByTestId("nav-activity"));
@@ -475,8 +511,8 @@ describe("App", () => {
       const user = userEvent.setup();
       render(<App />);
 
-      // Kanban is active initially
-      expect(screen.getByTestId("nav-kanban")).toHaveAttribute("aria-current", "page");
+      // Agents is active initially
+      expect(screen.getByTestId("nav-agents")).toHaveAttribute("aria-current", "page");
       expect(screen.getByTestId("nav-activity")).not.toHaveAttribute("aria-current");
 
       // Switch to Activity
@@ -484,52 +520,69 @@ describe("App", () => {
 
       // Activity is now active, Kanban is not
       expect(screen.getByTestId("nav-activity")).toHaveAttribute("aria-current", "page");
-      expect(screen.getByTestId("nav-kanban")).not.toHaveAttribute("aria-current");
+      expect(screen.getByTestId("nav-agents")).not.toHaveAttribute("aria-current");
+    });
+
+    it("restores saved view and selected task for the active project on initial render", async () => {
+      useUiStore.setState({
+        viewByProject: { "demo-project-1": "graph" },
+        selectedTaskByProject: { "demo-project-1": "task-42" },
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(useUiStore.getState().currentView).toBe("graph");
+      });
+      expect(useUiStore.getState().selectedTaskId).toBe("task-42");
+      expect(screen.getByTestId("task-graph-view-mock")).toBeInTheDocument();
     });
   });
 
   describe("Keyboard Shortcuts", () => {
-    it("should switch to Ideation with Cmd+1", () => {
-      render(<App />);
-      // First switch away from ideation
-      useUiStore.setState({ currentView: "activity" });
+    it("should switch to Agents with Cmd+1", () => {
+      useUiStore.setState({ viewByProject: { "demo-project-1": "activity" } });
       render(<App />);
 
       fireEvent.keyDown(window, { key: "1", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("ideation");
+      expect(useUiStore.getState().currentView).toBe("agents");
     });
 
-    it("should switch to Graph with Cmd+2", () => {
+    it("should switch to Ideation with Cmd+2", () => {
+      useUiStore.setState({ viewByProject: { "demo-project-1": "activity" } });
       render(<App />);
 
       fireEvent.keyDown(window, { key: "2", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("graph");
+      expect(useUiStore.getState().currentView).toBe("ideation");
     });
 
-    it("should switch to Kanban with Cmd+3", () => {
+    it("should switch to Graph with Cmd+3", () => {
+      useUiStore.setState({ viewByProject: { "demo-project-1": "ideation" } });
       render(<App />);
 
       fireEvent.keyDown(window, { key: "3", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("kanban");
+      expect(useUiStore.getState().currentView).toBe("graph");
     });
 
-    it("should switch to Extensibility with Cmd+4", () => {
+    it("should switch to Kanban with Cmd+4", () => {
+      useUiStore.setState({ viewByProject: { "demo-project-1": "ideation" } });
       render(<App />);
 
       fireEvent.keyDown(window, { key: "4", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("extensibility");
+      expect(useUiStore.getState().currentView).toBe("kanban");
     });
 
-    it("should switch to Activity with Cmd+5", () => {
+    it("should switch to Insights with Cmd+5", () => {
+      useUiStore.setState({ viewByProject: { "demo-project-1": "ideation" } });
       render(<App />);
 
       fireEvent.keyDown(window, { key: "5", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("activity");
+      expect(useUiStore.getState().currentView).toBe("insights");
     });
 
     it("should open Settings dialog with Cmd+6", () => {
@@ -541,11 +594,12 @@ describe("App", () => {
     });
 
     it("should work with Ctrl key (for non-Mac)", () => {
+      useUiStore.setState({ viewByProject: { "demo-project-1": "ideation" } });
       render(<App />);
 
       fireEvent.keyDown(window, { key: "4", ctrlKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("extensibility");
+      expect(useUiStore.getState().currentView).toBe("kanban");
     });
 
     it("should not switch views when pressing number without modifier", () => {
@@ -553,8 +607,8 @@ describe("App", () => {
 
       fireEvent.keyDown(window, { key: "4" });
 
-      // Should still be on kanban (default)
-      expect(useUiStore.getState().currentView).toBe("kanban");
+      // Should still be on agents (default)
+      expect(useUiStore.getState().currentView).toBe("agents");
     });
   });
 

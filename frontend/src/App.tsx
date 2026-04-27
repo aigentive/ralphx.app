@@ -12,7 +12,6 @@ import { EventProvider } from "@/providers/EventProvider";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { ReviewsPanel } from "@/components/reviews/ReviewsPanel";
 import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar";
-import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { KanbanSplitLayout, Navigation } from "@/components/layout";
 import { PermissionDialog } from "@/components/PermissionDialog";
 import { IdeationView, ProposalEditModal, FinalizeConfirmationDialog, VerificationConfirmDialog } from "@/components/Ideation";
@@ -38,7 +37,7 @@ import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { useAgentSessionStore } from "@/stores/agentSessionStore";
-import { DEFAULT_PROJECT_VIEW, type ChatContext, type ViewType } from "@/types/chat";
+import { DEFAULT_PROJECT_VIEW, type ViewType } from "@/types/chat";
 import type { ApplyProposalsInput } from "@/api/ideation.types";
 import type { UpdateProposalInput } from "@/api/ideation";
 import { toTaskProposal, ideationApi } from "@/api/ideation";
@@ -77,16 +76,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  MessageSquare,
   CheckCircle,
   PanelRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 import { ScreenshotGalleryTestPage } from "@/test-pages/ScreenshotGalleryTest";
-
-// Local storage key for persisting chat panel width
-const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
 
 const queryClient = getQueryClient();
 
@@ -153,9 +148,6 @@ function AppContent() {
   const currentView = useUiStore((s) => s.currentView);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
-  // Unified chat visibility per view (replaces chatCollapsed and chatStore.isOpen)
-  const chatVisibleByView = useUiStore((s) => s.chatVisibleByView);
-  const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
   const graphRightPanelUserOpen = useUiStore((s) => s.graphRightPanelUserOpen);
   const graphRightPanelCompactOpen = useUiStore((s) => s.graphRightPanelCompactOpen);
   const toggleGraphRightPanelUserOpen = useUiStore((s) => s.toggleGraphRightPanel);
@@ -184,9 +176,7 @@ function AppContent() {
   // Activity filter state (for context-aware navigation from StatusActivityBadge)
   const activityFilter = useUiStore((s) => s.activityFilter);
 
-  // Chat panel state (width + message management)
-  const chatWidth = useChatStore((s) => s.width);
-  const setChatWidth = useChatStore((s) => s.setWidth);
+  // Chat message management for embedded ideation/agent conversations.
   const clearMessages = useChatStore((s) => s.clearMessages);
 
   const switchToProject = useUiStore((s) => s.switchToProject);
@@ -199,7 +189,7 @@ function AppContent() {
   const clearAgentSelection = useAgentSessionStore((s) => s.clearSelection);
   const setFocusedAgentProject = useAgentSessionStore((s) => s.setFocusedProject);
 
-  const prevProjectIdRef = useRef<string | null>(activeProjectId);
+  const prevProjectIdRef = useRef<string | null>(null);
   const agentsReturnViewRef = useRef<ViewType>(DEFAULT_PROJECT_VIEW);
 
   // Fetch projects from backend
@@ -366,22 +356,6 @@ function AppContent() {
     }
   }, [activeProjectId, switchToProject, setActiveSession]);
 
-  // Load persisted chat width from localStorage on mount
-  useEffect(() => {
-    const savedWidth = localStorage.getItem(CHAT_WIDTH_STORAGE_KEY);
-    if (savedWidth) {
-      const width = parseInt(savedWidth, 10);
-      if (!isNaN(width)) {
-        setChatWidth(width);
-      }
-    }
-  }, [setChatWidth]);
-
-  // Persist chat width to localStorage when it changes
-  useEffect(() => {
-    localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
-  }, [chatWidth]);
-
   // Load execution settings from database when project changes
   useEffect(() => {
     async function loadSettings() {
@@ -452,28 +426,6 @@ function AppContent() {
       }
     };
   }, []);
-
-  // Build chat context based on current view
-  const chatContext: ChatContext = useMemo(() => {
-    if (currentView === "ideation") {
-      if (activeSession) {
-        return {
-          view: "ideation",
-          projectId: currentProjectId,
-          ideationSessionId: activeSession.id,
-        };
-      }
-      // No session yet - fall back to project context for chat
-      return {
-        view: "kanban",
-        projectId: currentProjectId,
-      };
-    }
-    return {
-      view: currentView,
-      projectId: currentProjectId,
-    };
-  }, [currentView, activeSession, currentProjectId]);
 
   // Phase 82: Pass currentProjectId to execution API calls for per-project scoping
   const handlePauseToggle = async () => {
@@ -751,7 +703,7 @@ function AppContent() {
     setCurrentView,
   ]);
 
-  // Keyboard shortcuts for view switching, chat toggle, reviews toggle, and project creation
+  // Keyboard shortcuts for view switching, reviews toggle, and project creation
   const handleToggleGraphRightPanel = useCallback(() => {
     if (isNavCompact) {
       toggleGraphRightPanelCompactOpen();
@@ -771,7 +723,6 @@ function AppContent() {
   useAppKeyboardShortcuts({
     currentView,
     setCurrentView: handleViewChange,
-    toggleChatVisible,
     toggleReviewsPanel,
     toggleGraphRightPanel: handleToggleGraphRightPanel,
     openProjectWizard: handleOpenProjectWizard,
@@ -875,60 +826,6 @@ function AppContent() {
             <div className="mr-2">
               <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
             </div>
-            {/* Chat Panel Toggle - hidden on views with built-in chat */}
-            {currentView !== "ideation" && currentView !== "agents" && (() => {
-              // Unified per-view visibility - same logic for all views
-              const isExpanded = chatVisibleByView[currentView];
-              const handleToggle = () => toggleChatVisible(currentView);
-
-              return (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleToggle}
-                      className={cn(
-                        "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                        isNavCompact ? "px-2" : isExpanded ? "px-3" : "px-2 xl:px-3"
-                      )}
-                      style={{
-                        background: isExpanded
-                          ? "var(--accent-muted)"
-                          : "transparent",
-                        border: isExpanded ? "1px solid var(--accent-border)" : "1px solid transparent",
-                        color: isExpanded ? "var(--accent-primary)" : "var(--text-muted)",
-                      }}
-                      data-testid="chat-toggle"
-                    >
-                      <MessageSquare className="w-[18px] h-[18px] flex-shrink-0" />
-                      <span className={cn(
-                        "text-sm font-medium whitespace-nowrap",
-                        isNavCompact ? "hidden" : isExpanded ? "inline" : "hidden xl:inline"
-                      )}>
-                        Chat
-                      </span>
-                      <kbd
-                        className={cn(
-                          "ml-1 px-1.5 py-0.5 text-xs rounded",
-                          isNavCompact ? "hidden" : isExpanded ? "inline" : "hidden xl:inline"
-                        )}
-                        style={{
-                          backgroundColor: "var(--overlay-faint)",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        ⌘K
-                      </kbd>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    Toggle Chat <kbd className="ml-1 opacity-70">⌘K</kbd>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })()}
-
             {/* Reviews Panel Toggle */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1211,8 +1108,6 @@ function AppContent() {
             </div>
           )}
 
-          {/* ChatPanel - resizable side panel with Cmd+K toggle (not on kanban, ideation, or agents) */}
-          {currentView !== "kanban" && currentView !== "ideation" && currentView !== "agents" && <ChatPanel context={chatContext} />}
         </div>
       )}
 

@@ -202,6 +202,10 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
             <AgentsChatHeaderController
               conversation={activeConversation}
               workspace={activeWorkspace}
+              modelDisplay={{
+                id: normalizedActiveRuntime.modelId,
+                label: normalizedActiveRuntime.modelId,
+              }}
               hasAutoOpenArtifacts={hasAutoOpenArtifacts}
               terminalUnavailableReason={terminalUnavailableReason}
               onRenameConversation={onRenameConversation}

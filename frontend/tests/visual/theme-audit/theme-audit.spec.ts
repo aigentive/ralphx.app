@@ -66,6 +66,13 @@ for (const theme of THEMES) {
       expect(path).toContain(".png");
     });
 
+    test("agents", async ({ page }) => {
+      await openView(page, "agents");
+      await page.waitForTimeout(600);
+      const path = await saveScreenshot(page, theme, "agents");
+      expect(path).toContain(".png");
+    });
+
     test("graph", async ({ page }) => {
       await openView(page, "graph");
       await page.waitForTimeout(600);
@@ -121,13 +128,6 @@ for (const theme of THEMES) {
       await page.waitForSelector('[data-testid="settings-dialog"]', { timeout: 10000 });
       await page.waitForTimeout(400);
       const path = await saveScreenshot(page, theme, "settings");
-      expect(path).toContain(".png");
-    });
-
-    test("chat panel", async ({ page }) => {
-      await page.click('[data-testid="chat-toggle"]');
-      await page.waitForTimeout(500);
-      const path = await saveScreenshot(page, theme, "chat");
       expect(path).toContain(".png");
     });
 

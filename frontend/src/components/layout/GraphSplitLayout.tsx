@@ -4,11 +4,11 @@
  * Provides a split layout with:
  * - Left side: ReactFlow canvas + task detail overlay (takes remaining space)
  * - Right side: Panel that switches content and sizing:
- *   - No task selected: FloatingTimeline at fixed 320px
- *   - Task selected: IntegratedChatPanel with resizable width
+ *   - No task chat available: FloatingTimeline at fixed 320px
+ *   - Task chat available: IntegratedChatPanel with resizable width
  *
  * Key difference from KanbanSplitLayout:
- * - Kanban: Chat toggleable (can hide completely)
+ * - Kanban: hides the right panel when no selected-task agent chat is available
  * - Graph: Right panel always visible, content switches (timeline ↔ chat)
  */
 
@@ -18,6 +18,7 @@ import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
 import { ResizeHandle, SeparatorLine, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
+import { useTaskChatAvailability } from "@/hooks/useTaskChatAvailability";
 
 // ============================================================================
 // Constants
@@ -157,8 +158,8 @@ export function GraphSplitLayout({
     };
   }, [isResizing]);
 
-  // Show chat (resizable) when task selected, timeline (fixed) otherwise
-  const showChat = !!selectedTaskId;
+  // Show chat only for task states/runs with a live or historical agent conversation.
+  const showChat = useTaskChatAvailability(projectId);
 
   const panelWidthPx = showChat ? chatPanelWidth : TIMELINE_SIDEBAR_WIDTH;
   const panelWidth = `${panelWidthPx}px`;
@@ -192,7 +193,13 @@ export function GraphSplitLayout({
         )}
 
         {/* Task Detail Overlay */}
-        {selectedTaskId && <TaskDetailOverlay projectId={projectId} footer={footer} />}
+        {selectedTaskId && (
+          <TaskDetailOverlay
+            projectId={projectId}
+            footer={footer}
+            constrainContent={!showChat}
+          />
+        )}
 
         {/* Task Creation Overlay */}
         {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}

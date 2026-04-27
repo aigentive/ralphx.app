@@ -28,7 +28,6 @@ export class KanbanPage extends BasePage {
 
   // Header elements
   readonly branding: Locator;
-  readonly chatToggle: Locator;
   readonly reviewsToggle: Locator;
 
   constructor(page: Page) {
@@ -60,7 +59,6 @@ export class KanbanPage extends BasePage {
 
     // Header elements
     this.branding = page.locator("text=RalphX");
-    this.chatToggle = page.locator('[data-testid="chat-toggle"]');
     this.reviewsToggle = page.locator('[data-testid="reviews-toggle"]');
   }
 

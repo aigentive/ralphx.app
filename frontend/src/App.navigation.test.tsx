@@ -29,6 +29,11 @@ function resetStores() {
     confirmation: null,
     activeQuestions: {},
     answeredQuestions: {},
+    selectedTaskId: null,
+    graphSelection: null,
+    viewByProject: {},
+    sessionByProject: {},
+    selectedTaskByProject: {},
     executionStatus: {
       isPaused: false,
       runningCount: 0,
@@ -44,8 +49,6 @@ function resetStores() {
       view: "kanban",
       projectId: "demo-project",
     },
-    isOpen: false,
-    width: 320,
     isLoading: false,
   });
 

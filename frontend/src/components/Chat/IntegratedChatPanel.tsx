@@ -1,7 +1,7 @@
 /**
  * IntegratedChatPanel - Context-aware chat panel for split-screen layout
  *
- * This is a refactored version of ChatPanel that:
+ * This is the shared embedded chat surface that:
  * - Is part of the layout, not fixed positioned
  * - Supports context switching based on selected task
  * - No slide animations (instant show/hide)
@@ -1052,7 +1052,8 @@ export function IntegratedChatPanel({
             WebkitBackdropFilter: "blur(20px) saturate(180%)",
           }}
         >
-          {/* Header — theme-agnostic subtle tint matches ChatPanel overlay.
+          {/* Header — theme-agnostic subtle tint keeps the embedded chrome
+             aligned across themes.
              Previous bg-base@50 produced visible seam on Dark (lum=25 vs
              body lum=30) and collapsed to pure black on HC. Using a tint
              derived from text-primary keeps a consistent 2% brighter band
