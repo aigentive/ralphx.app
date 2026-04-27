@@ -28,7 +28,11 @@ import { PublishEventLog } from "./AgentsPublishEventLog";
 import { PublishFact } from "./AgentsPublishFact";
 import { PublishPipelineSteps } from "./AgentsPublishPipelineSteps";
 import { formatPullRequestUrlLabel } from "./agentPublishFormatting";
-import { isAgentWorkspacePublishCurrent } from "./agentWorkspacePublishState";
+import {
+  getAgentWorkspaceTerminalPublicationLabel,
+  getAgentWorkspaceTerminalPublicationStatus,
+  isAgentWorkspacePublishCurrent,
+} from "./agentWorkspacePublishState";
 
 const LazyDiffViewer = lazy(() =>
   import("@/components/diff").then((module) => ({ default: module.DiffViewer })),
@@ -81,10 +85,18 @@ export function AgentPublishPanel({
     enabled: canHydratePublishFacts && !!conversationId && reviewOpen,
     staleTime: 2_000,
   });
+  const terminalPublicationStatus =
+    getAgentWorkspaceTerminalPublicationStatus(workspace);
+  const terminalPublicationLabel =
+    getAgentWorkspaceTerminalPublicationLabel(workspace);
   const freshnessQuery = useQuery({
     queryKey: ["agents", "conversation-workspace-freshness", conversationId],
     queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(conversationId!),
-    enabled: canHydratePublishFacts && !!conversationId && workspace?.mode === "edit",
+    enabled:
+      canHydratePublishFacts &&
+      !!conversationId &&
+      workspace?.mode === "edit" &&
+      !terminalPublicationStatus,
     staleTime: 5_000,
   });
   const updateFromBaseMutation = useMutation({
@@ -164,7 +176,8 @@ export function AgentPublishPanel({
     ? formatPullRequestUrlLabel(workspace.publicationPrUrl)
     : null;
   const freshness = freshnessQuery.data;
-  const isBranchUpdateNeeded = Boolean(freshness?.isBaseAhead);
+  const isBranchUpdateNeeded =
+    !terminalPublicationStatus && Boolean(freshness?.isBaseAhead);
   const isPublishCurrent = isAgentWorkspacePublishCurrent(workspace, freshness);
   const isUpdatingFromBase = updateFromBaseMutation.isPending;
   const effectivePublishing = isPublishingWorkspace || isUpdatingFromBase;
@@ -183,18 +196,29 @@ export function AgentPublishPanel({
     effectivePublishing ||
     isRepairPending ||
     isPublishCurrent ||
+    Boolean(terminalPublicationStatus) ||
     workspace.status === "missing";
-  const publishButtonLabel = isPublishCurrent ? "Published" : "Commit & Publish";
+  const publishButtonLabel =
+    terminalPublicationLabel ??
+    (isPublishCurrent ? "Published" : "Commit & Publish");
+  const terminalPrLabel =
+    workspace.publicationPrNumber !== null
+      ? `PR #${workspace.publicationPrNumber}`
+      : "This pull request";
   const publishSummary =
-    isChangesLoading
-      ? "Loading changed files..."
-      : isPublishCurrent
-        ? changes.length > 0
-          ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} published for review.`
-          : "Workspace is published and current."
-        : changes.length > 0
-          ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} ready for review.`
-          : "No changed files detected yet.";
+    terminalPublicationStatus === "merged"
+      ? `${terminalPrLabel} has been merged. By continuing this conversation, a new workspace branch will be created automatically.`
+      : terminalPublicationStatus === "closed"
+        ? `${terminalPrLabel} is closed. By continuing this conversation, a new workspace branch will be created automatically.`
+        : isChangesLoading
+          ? "Loading changed files..."
+          : isPublishCurrent
+            ? changes.length > 0
+              ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} published for review.`
+              : "Workspace is published and current."
+            : changes.length > 0
+              ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} ready for review.`
+              : "No changed files detected yet.";
 
   return (
     <div className="min-h-full p-4" data-testid="agents-publish-pane">
@@ -222,7 +246,9 @@ export function AgentPublishPanel({
                 color: "var(--text-secondary)",
               }}
             >
-              {workspace.publicationPushStatus ?? workspace.status}
+              {terminalPublicationLabel ??
+                workspace.publicationPushStatus ??
+                workspace.status}
             </span>
           </div>
 
@@ -294,7 +320,9 @@ export function AgentPublishPanel({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-sm font-semibold text-[var(--text-primary)]">
-                Commit & Publish
+                {terminalPublicationLabel
+                  ? `Pull Request ${terminalPublicationLabel}`
+                  : "Commit & Publish"}
               </div>
               <div className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
                 {publishSummary}
@@ -341,7 +369,7 @@ export function AgentPublishPanel({
                 >
                   {isPublishingWorkspace ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : isPublishCurrent ? (
+                  ) : isPublishCurrent || terminalPublicationStatus ? (
                     <CheckCircle2 className="h-3.5 w-3.5" />
                   ) : (
                     <GitPullRequestArrow className="h-3.5 w-3.5" />

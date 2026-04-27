@@ -13,7 +13,10 @@ import {
   getAgentTerminalUnavailableReason,
   runtimeFromConversation,
 } from "./agentConversationRuntime";
-import { isAgentWorkspacePublishCurrent } from "./agentWorkspacePublishState";
+import {
+  getAgentWorkspaceTerminalPublicationLabel,
+  isAgentWorkspacePublishCurrent,
+} from "./agentWorkspacePublishState";
 import { normalizeRuntimeSelection } from "./agentOptions";
 import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
 
@@ -53,8 +56,12 @@ export function useAgentsWorkspaceModel({
       null
     : null;
   const normalizedActiveRuntime = normalizeRuntimeSelection(activeRuntime);
+  const terminalPublicationLabel =
+    getAgentWorkspaceTerminalPublicationLabel(activeWorkspace);
   const canHydrateActiveWorkspaceFreshness = useDeferredAgentHydration(
-    selectedConversationId && activeWorkspace?.mode === "edit"
+    selectedConversationId &&
+      activeWorkspace?.mode === "edit" &&
+      !terminalPublicationLabel
       ? selectedConversationId
       : null,
   );
@@ -65,6 +72,7 @@ export function useAgentsWorkspaceModel({
       canHydrateActiveWorkspaceFreshness &&
       !!selectedConversationId &&
       activeWorkspace?.mode === "edit" &&
+      !terminalPublicationLabel &&
       activeWorkspace.status !== "missing",
     staleTime: 5_000,
   });
@@ -72,7 +80,9 @@ export function useAgentsWorkspaceModel({
     activeWorkspace,
     activeWorkspaceFreshnessQuery.data,
   );
-  const publishShortcutLabel = activeWorkspaceFreshnessQuery.data?.isBaseAhead
+  const publishShortcutLabel = terminalPublicationLabel
+    ? terminalPublicationLabel
+    : activeWorkspaceFreshnessQuery.data?.isBaseAhead
     ? `Update from ${activeWorkspace?.baseRef ?? activeWorkspaceFreshnessQuery.data.baseRef}`
     : isPublishShortcutCurrent
       ? "Published"

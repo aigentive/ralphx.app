@@ -267,7 +267,7 @@ describe("AgentsChatHeader", () => {
       />,
     );
 
-    expect(screen.getByTestId("agents-chat-focus-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-chat-focus-bar")).not.toHaveAttribute("style");
     expect(screen.getByTestId("agents-chat-focus-return")).toHaveAttribute(
       "data-active",
       "false",

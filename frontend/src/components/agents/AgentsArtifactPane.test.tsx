@@ -835,6 +835,39 @@ describe("AgentsArtifactPane", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it("treats merged pull requests as terminal even if the old base moved", async () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+
+    renderPane(
+      "publish",
+      workspace({
+        mode: "edit",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+        publicationPrNumber: 91,
+        publicationPrStatus: "merged",
+        publicationPushStatus: "pushed",
+      }),
+      publish,
+    );
+
+    const publishButton = await screen.findByTestId("agents-publish-confirm");
+    expect(publishButton).toHaveTextContent("Merged");
+    expect(publishButton).toBeDisabled();
+    expect(screen.queryByTestId("agents-base-stale")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agents-update-from-base")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "PR #91 has been merged. By continuing this conversation, a new workspace branch will be created automatically."
+      )
+    ).toBeInTheDocument();
+    expect(getWorkspaceFreshnessMock).not.toHaveBeenCalled();
+
+    fireEvent.click(publishButton);
+
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("locks the base update action while agent repair is pending", async () => {
     getWorkspaceFreshnessMock.mockResolvedValue({
       conversationId: "conversation-1",

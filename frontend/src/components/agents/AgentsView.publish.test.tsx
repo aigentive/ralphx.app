@@ -73,6 +73,33 @@ describe("AgentsView publish", () => {
     );
   });
 
+  it("shows merged terminal state instead of Update from base in the header shortcut", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(
+      conversationWorkspace({
+        mode: "edit",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+        publicationPrNumber: 91,
+        publicationPrStatus: "merged",
+        publicationPushStatus: "pushed",
+      })
+    );
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-publish-workspace")).toHaveTextContent(
+        "Merged"
+      )
+    );
+    expect(screen.getByTestId("agents-publish-workspace")).not.toHaveTextContent(
+      "Update from feature/agent-screen"
+    );
+    expect(getAgentConversationWorkspaceFreshnessMock).not.toHaveBeenCalled();
+  });
+
   it("shows Published in the header shortcut when the workspace branch is already current", async () => {
     mockAgentViewData(conversation({ agentMode: "edit" }));
     getAgentConversationWorkspaceMock.mockResolvedValue(

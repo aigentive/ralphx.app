@@ -113,12 +113,6 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
   return (
     <div
       className="relative z-10 -mb-[18px] flex h-9 shrink-0 items-start gap-3 overflow-hidden px-3 pt-1.5"
-      style={{
-        background:
-          "linear-gradient(to bottom, var(--bg-base) 0, var(--bg-base) 5px, color-mix(in srgb, var(--bg-base) 62%, transparent) 60%, transparent 100%)",
-        backdropFilter: "blur(3px)",
-        WebkitBackdropFilter: "blur(3px)",
-      }}
       data-testid="agents-chat-focus-bar"
     >
       {showFocusSwitcher ? (
