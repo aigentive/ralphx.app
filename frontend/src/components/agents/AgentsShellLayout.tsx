@@ -35,7 +35,6 @@ export function AgentsShellLayout({
     <TooltipProvider delayDuration={300}>
       <section
         className="h-full min-h-0 w-full flex overflow-hidden"
-        style={{ background: "var(--bg-base)" }}
         data-testid="agents-view"
       >
         {isSidebarCollapsed && !isSidebarOverlayOpen && (

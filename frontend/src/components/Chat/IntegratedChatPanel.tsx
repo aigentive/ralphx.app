@@ -1056,11 +1056,15 @@ export function IntegratedChatPanel({
         {/* Inner surface — flat with blur, no perimeter or radius. */}
         <div
           className="flex-1 flex flex-col overflow-hidden"
-          style={{
-            background: surfaceBackground ?? withAlpha("var(--bg-surface)", 92),
-            backdropFilter: "blur(20px) saturate(180%)",
-            WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          }}
+          style={
+            surfaceBackground === "transparent"
+              ? { background: "transparent" }
+              : {
+                  background: surfaceBackground ?? withAlpha("var(--bg-surface)", 92),
+                  backdropFilter: "blur(20px) saturate(180%)",
+                  WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                }
+          }
         >
           {/* Header — theme-agnostic subtle tint keeps the embedded chrome
              aligned across themes.

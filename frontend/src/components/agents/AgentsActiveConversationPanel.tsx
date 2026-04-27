@@ -158,7 +158,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
           onChildSessionNavigate={onFocusIdeationSession}
           hideHeaderSessionControls
           hideSessionToolbar
-          surfaceBackground="var(--bg-base)"
+          surfaceBackground="transparent"
           contentWidthClassName={AGENTS_CHAT_CONTENT_WIDTH_CLASS}
           {...(!isFocusedChildChat
             ? {
