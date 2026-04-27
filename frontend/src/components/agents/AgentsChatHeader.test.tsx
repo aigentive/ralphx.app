@@ -311,10 +311,33 @@ describe("AgentsChatHeader", () => {
     expect(screen.getAllByText("Pending")).toHaveLength(4);
   });
 
-  it("shows the workspace branch status when available", () => {
+  it("keeps the primary header focused on title and actions when a workspace is available", () => {
     renderWithProviders(
       <AgentsChatHeader
         conversation={conversation()}
+        workspace={conversationWorkspace({ mode: "edit" })}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
+  });
+
+  it("shows the workspace branch status inside the focus subheader", () => {
+    renderWithProviders(
+      <AgentsChatFocusBar
+        activeType="workspace"
+        options={[
+          {
+            type: "workspace",
+            label: "Workspace",
+            description: "Show the workspace agent chat",
+          },
+        ]}
         workspace={{
           conversationId: "conversation-1",
           projectId: "project-1",
@@ -335,11 +358,7 @@ describe("AgentsChatHeader", () => {
           createdAt: "2026-04-23T09:00:00Z",
           updatedAt: "2026-04-23T09:00:00Z",
         }}
-        artifactOpen={false}
-        activeArtifactTab="plan"
-        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
-        onToggleArtifacts={vi.fn()}
-        onSelectArtifact={vi.fn()}
+        onSelectFocus={vi.fn()}
       />
     );
 

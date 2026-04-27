@@ -101,82 +101,93 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
   activeType,
   options,
   onSelectFocus,
+  workspace = null,
 }: {
   activeType: AgentsChatFocusType;
   options: readonly AgentsChatFocusSwitchOption[];
   onSelectFocus: (type: AgentsChatFocusType) => void;
+  workspace?: AgentConversationWorkspace | null;
 }) {
+  const showFocusSwitcher = options.length > 1;
+
   return (
     <div
-      className="flex h-9 shrink-0 items-center gap-2 overflow-hidden border-b px-3"
+      className="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b px-3"
       style={{
-        backgroundColor: "color-mix(in srgb, var(--text-primary) 1.5%, transparent)",
+        backgroundColor: "var(--bg-base)",
         borderBottomColor: "var(--border-subtle)",
       }}
       data-testid="agents-chat-focus-bar"
     >
-      <span
-        className="shrink-0 text-[11px] font-medium uppercase tracking-[0.08em]"
-        style={{ color: "var(--text-muted)" }}
-      >
-        Chat
-      </span>
-      <div
-        role="tablist"
-        aria-label="Chat focus"
-        className="flex min-w-0 items-center gap-1 overflow-x-auto"
-      >
-        {options.map((option) => {
-          const active = option.type === activeType;
-          const toneStyle = option.tone ? FOCUS_TONE_STYLES[option.tone] : null;
-          const Icon =
-            option.type === "workspace"
-              ? MessageSquare
-              : option.tone
-                ? FOCUS_TONE_ICONS[option.tone]
-                : null;
-
-          return (
-            <button
-              key={option.type}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              aria-label={option.description}
-              data-testid={
+      {showFocusSwitcher ? (
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <span
+            className="shrink-0 text-[11px] font-medium uppercase tracking-[0.08em]"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Chat
+          </span>
+          <div
+            role="tablist"
+            aria-label="Chat focus"
+            className="flex min-w-0 items-center gap-1 overflow-x-auto"
+          >
+            {options.map((option) => {
+              const active = option.type === activeType;
+              const toneStyle = option.tone ? FOCUS_TONE_STYLES[option.tone] : null;
+              const Icon =
                 option.type === "workspace"
-                  ? "agents-chat-focus-return"
-                  : `agents-chat-focus-option-${option.type}`
-              }
-              data-active={active ? "true" : "false"}
-              className="inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1.5 rounded-full border px-2 text-[12px] font-medium transition-colors"
-              style={
-                active
-                  ? toneStyle
-                    ? {
-                        color: toneStyle.color,
-                        background: toneStyle.background,
-                        borderColor: toneStyle.border,
-                      }
-                    : {
-                        color: "var(--text-primary)",
-                        background: "var(--overlay-weak)",
-                        borderColor: "var(--overlay-moderate)",
-                      }
-                  : {
-                      color: "var(--text-muted)",
-                      background: "transparent",
-                      borderColor: "transparent",
-                    }
-              }
-              onClick={() => onSelectFocus(option.type)}
-            >
-              {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" /> : null}
-              <span className="truncate">{option.label}</span>
-            </button>
-          );
-        })}
-      </div>
+                  ? MessageSquare
+                  : option.tone
+                    ? FOCUS_TONE_ICONS[option.tone]
+                    : null;
+
+              return (
+                <button
+                  key={option.type}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  aria-label={option.description}
+                  data-testid={
+                    option.type === "workspace"
+                      ? "agents-chat-focus-return"
+                      : `agents-chat-focus-option-${option.type}`
+                  }
+                  data-active={active ? "true" : "false"}
+                  className="inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1.5 rounded-full border px-2 text-[12px] font-medium transition-colors"
+                  style={
+                    active
+                      ? toneStyle
+                        ? {
+                            color: toneStyle.color,
+                            background: toneStyle.background,
+                            borderColor: toneStyle.border,
+                          }
+                        : {
+                            color: "var(--text-primary)",
+                            background: "var(--overlay-weak)",
+                            borderColor: "var(--overlay-moderate)",
+                          }
+                      : {
+                          color: "var(--text-muted)",
+                          background: "transparent",
+                          borderColor: "transparent",
+                        }
+                  }
+                  onClick={() => onSelectFocus(option.type)}
+                >
+                  {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" /> : null}
+                  <span className="truncate">{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="min-w-0 flex-1" />
+      )}
+      {workspace ? <AgentsWorkspaceStatusPill workspace={workspace} /> : null}
     </div>
   );
 });
@@ -305,7 +316,6 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
             </button>
           )}
         </div>
-        {workspace && !publishPaneOpen && <AgentsWorkspaceStatusPill workspace={workspace} />}
       </div>
 
       <div className="hidden md:flex items-center gap-1 ml-auto shrink-0">
