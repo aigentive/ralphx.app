@@ -42,6 +42,7 @@ import { buildStoreKey } from "@/lib/chat-context-registry";
 import type { TeammateState } from "@/stores/teamStore";
 import { ReviewFeedbackBody } from "@/components/reviews/ReviewFeedbackBody";
 import { getReviewFeedbackHeading } from "@/lib/review-feedback";
+import { getCompletableStepProgressCounts } from "@/types/task-step";
 
 interface ExecutionTaskDetailProps {
   task: Task;
@@ -361,8 +362,12 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
   }, [task.metadata]);
 
   const percentComplete = progress?.percentComplete ?? 0;
-  const completed = progress?.completed ?? 0;
-  const total = progress?.total ?? 0;
+  const rawTotal = progress?.total ?? 0;
+  const completableProgress = progress
+    ? getCompletableStepProgressCounts(progress)
+    : { completed: 0, total: 0 };
+  const completed = completableProgress.completed;
+  const total = completableProgress.total;
 
   return (
     <TwoColumnLayout
@@ -427,7 +432,7 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
       )}
 
       {/* Progress Section */}
-      {total > 0 && (
+      {rawTotal > 0 && (
         <section data-testid="execution-progress-section">
           <SectionTitle>Progress</SectionTitle>
           <DetailCard>
@@ -468,9 +473,7 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
       {isReExecuting && openIssues.length > 0 && (
         <section data-testid="open-issues-section">
           <SectionTitle>Issues to Address ({openIssues.length})</SectionTitle>
-          <DetailCard>
-            <IssueList issues={openIssues} groupBy="severity" compact />
-          </DetailCard>
+          <IssueList issues={openIssues} groupBy="severity" compact />
         </section>
       )}
 

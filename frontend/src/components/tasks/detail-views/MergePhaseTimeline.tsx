@@ -17,7 +17,7 @@ import {
   XCircle,
   SkipForward,
 } from "lucide-react";
-import { SectionTitle, DetailCard } from "./shared";
+import { SectionTitle } from "./shared";
 import { withAlpha } from "@/lib/theme-colors";
 import type { MergeProgressEvent, MergePhaseInfo } from "@/types/events";
 
@@ -109,62 +109,59 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
   return (
     <section data-testid="merge-phase-timeline">
       <SectionTitle>Merge Progress</SectionTitle>
-      <DetailCard>
-        <div className="space-y-0.5">
-          {visiblePhases.map((config, index) => {
-            const event = phaseMap.get(config.id);
-            const status = event?.status ?? "pending";
+      <div>
+        {visiblePhases.map((config, index) => {
+          const event = phaseMap.get(config.id);
+          const status = event?.status ?? "pending";
 
-            return (
-              <div
-                key={config.id}
-                className="flex items-center gap-2.5 py-1.5"
-                style={{
-                  borderTop:
-                    index > 0
-                      ? "1px solid var(--overlay-weak)"
-                      : "none",
-                }}
-              >
-                <PhaseIcon status={status} />
-                <div className="flex-1 min-w-0">
-                  <span
-                    className="text-[13px] font-medium block"
-                    style={{ color: phaseTextColor(status) }}
-                  >
-                    {config.label}
-                  </span>
-                  {config.command && (
-                    <span className="text-[10px] font-mono text-text-primary/25 truncate block max-w-[200px]">
-                      $ {config.command}
-                    </span>
-                  )}
-                  {!config.command && config.description && (
-                    <span className="text-[10px] text-text-primary/25 truncate block max-w-[280px]">
-                      {config.description}
-                    </span>
-                  )}
-                </div>
-                {event?.message && status === "started" && (
-                  <span className="text-[11px] text-text-primary/40 truncate max-w-[200px]">
-                    {event.message}
+          return (
+            <div
+              key={config.id}
+              className="flex items-center gap-2.5 px-3 py-3"
+              style={
+                index < visiblePhases.length - 1
+                  ? { borderBottom: "1px solid var(--border-subtle)" }
+                  : undefined
+              }
+            >
+              <PhaseIcon status={status} />
+              <div className="flex-1 min-w-0">
+                <span
+                  className="text-[13px] font-medium block"
+                  style={{ color: phaseTextColor(status) }}
+                >
+                  {config.label}
+                </span>
+                {config.command && (
+                  <span className="text-[10px] font-mono text-text-primary/25 truncate block max-w-[200px]">
+                    $ {config.command}
                   </span>
                 )}
-                {status === "failed" && event?.message && (
-                  <span className="text-[11px] truncate max-w-[200px]" style={{ color: "var(--status-error)" }}>
-                    {event.message}
-                  </span>
-                )}
-                {status === "skipped" && (
-                  <span className="text-[11px] text-text-primary/25 truncate max-w-[200px]">
-                    skipped
+                {!config.command && config.description && (
+                  <span className="text-[10px] text-text-primary/25 truncate block max-w-[280px]">
+                    {config.description}
                   </span>
                 )}
               </div>
-            );
-          })}
-        </div>
-      </DetailCard>
+              {event?.message && status === "started" && (
+                <span className="text-[11px] text-text-primary/40 truncate max-w-[200px]">
+                  {event.message}
+                </span>
+              )}
+              {status === "failed" && event?.message && (
+                <span className="text-[11px] truncate max-w-[200px]" style={{ color: "var(--status-error)" }}>
+                  {event.message}
+                </span>
+              )}
+              {status === "skipped" && (
+                <span className="text-[11px] text-text-primary/25 truncate max-w-[200px]">
+                  skipped
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

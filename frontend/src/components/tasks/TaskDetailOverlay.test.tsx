@@ -133,6 +133,17 @@ describe("TaskDetailOverlay", () => {
     expect(screen.getByTestId("mock-status-dropdown")).toBeInTheDocument();
   });
 
+  it("renders priority metadata below the title in DOM order", () => {
+    renderOverlay(createTestTask({ category: "feature", internalStatus: "ready" }));
+
+    const title = screen.getByTestId("task-overlay-title");
+    const priority = screen.getByTestId("task-overlay-priority");
+
+    expect(
+      title.compareDocumentPosition(priority) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it("centers task detail content when constrained by the host layout", () => {
     renderOverlay(createTestTask({ category: "feature", internalStatus: "ready" }), {
       constrainContent: true,

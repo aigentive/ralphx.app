@@ -94,6 +94,18 @@ describe("TaskDetailPanel", () => {
     expect(screen.getByTestId("task-detail-priority")).toHaveTextContent("P2");
   });
 
+  it("renders priority metadata below the title in DOM order", () => {
+    const task = createMockTask();
+    renderWithQueryClient(<TaskDetailPanel task={task} />);
+
+    const title = screen.getByTestId("task-detail-title");
+    const priority = screen.getByTestId("task-detail-priority");
+
+    expect(
+      title.compareDocumentPosition(priority) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it("renders task category and status", () => {
     const task = createMockTask();
     renderWithQueryClient(<TaskDetailPanel task={task} />);

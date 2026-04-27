@@ -432,15 +432,13 @@ export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanRevie
         {history.filter((e) => e.outcome === "changes_requested").length > 0 && (
           <section data-testid="previous-attempts-section">
             <SectionTitle>Previous Attempts</SectionTitle>
-            <DetailCard>
-              <ReviewTimeline
-                history={history}
-                filter={(e) => e.outcome === "changes_requested"}
-                showAttemptNumbers
-                emptyMessage="No previous attempts"
-                stateTransitions={stateTransitions}
-              />
-            </DetailCard>
+            <ReviewTimeline
+              history={history}
+              filter={(e) => e.outcome === "changes_requested"}
+              showAttemptNumbers
+              emptyMessage="No previous attempts"
+              stateTransitions={stateTransitions}
+            />
           </section>
         )}
 

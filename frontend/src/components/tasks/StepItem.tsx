@@ -2,7 +2,7 @@
  * StepItem component
  *
  * Displays a single task step with status icon, title, description, and completion note.
- * Visual styling adapts based on step status (in_progress, completed, skipped, failed).
+ * Containers stay neutral while status icons carry subtle state color.
  */
 
 import { Circle, Loader2, CheckCircle2, MinusCircle, XCircle, SkipForward } from 'lucide-react';
@@ -40,20 +40,20 @@ function StatusIcon({ status, className, style }: { status: TaskStepStatus; clas
 }
 
 /**
- * Get color for step status icon (Tahoe HSL colors)
+ * Get color for step status icon.
  */
 function getStatusColor(status: TaskStepStatus): string {
   switch (status) {
     case 'pending':
       return 'var(--text-muted)';
     case 'in_progress':
-      return 'var(--accent-primary)'; // accent orange
+      return 'color-mix(in srgb, var(--accent-primary) 82%, var(--text-muted))';
     case 'completed':
-      return 'var(--status-success)'; // green
+      return 'color-mix(in srgb, var(--status-success) 78%, var(--text-muted))';
     case 'skipped':
       return 'var(--text-muted)';
     case 'failed':
-      return 'var(--status-error)'; // red
+      return 'color-mix(in srgb, var(--status-error) 78%, var(--text-muted))';
     case 'cancelled':
       return 'var(--text-muted)';
   }
@@ -73,26 +73,17 @@ function getContainerStyles(status: TaskStepStatus): React.CSSProperties {
   };
 
   switch (status) {
-    case 'in_progress':
-      return {
-        ...base,
-        backgroundColor: 'color-mix(in srgb, var(--accent-primary) 6%, transparent)',
-      };
-    case 'completed':
-      return {
-        ...base,
-        backgroundColor: 'transparent',
-      };
     case 'skipped':
       return {
         ...base,
         backgroundColor: 'transparent',
         opacity: 0.5,
       };
+    case 'in_progress':
     case 'failed':
       return {
         ...base,
-        backgroundColor: 'color-mix(in srgb, var(--status-error) 6%, transparent)',
+        backgroundColor: 'var(--overlay-faint)',
       };
     default:
       return {

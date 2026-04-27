@@ -128,6 +128,7 @@ describe("ExecutionTaskDetail", () => {
         completed: 0,
         inProgress: 0,
         pending: 0,
+        skipped: 0,
         failed: 0,
         percentComplete: 0,
       },
@@ -166,6 +167,7 @@ describe("ExecutionTaskDetail", () => {
         completed: 2,
         inProgress: 1,
         pending: 1,
+        skipped: 0,
         failed: 0,
         percentComplete: 50,
       },
@@ -179,6 +181,30 @@ describe("ExecutionTaskDetail", () => {
     expect(progressSection).toBeInTheDocument();
     expect(screen.getByText("50%")).toBeInTheDocument();
     expect(progressSection.textContent).toContain("Step 2 of 4");
+  });
+
+  it("excludes skipped steps from the progress step denominator", () => {
+    const task = createTestTask();
+    mockUseStepProgress.mockReturnValue({
+      data: {
+        total: 4,
+        completed: 3,
+        inProgress: 0,
+        pending: 0,
+        skipped: 1,
+        failed: 0,
+        percentComplete: 100,
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useStepProgress>);
+
+    render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    const progressSection = screen.getByTestId("execution-progress-section");
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(progressSection.textContent).toContain("Step 3 of 3");
+    expect(progressSection.textContent).not.toContain("Step 3 of 4");
   });
 
   it("renders revision feedback section for re_executing tasks", () => {

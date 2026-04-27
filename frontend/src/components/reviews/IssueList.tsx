@@ -2,8 +2,7 @@
  * IssueList - Display review issues with severity badges and progress
  *
  * Following macOS Tahoe design:
- * - Flat, solid background colors
- * - Blue-gray palette
+ * - Flat, neutral backgrounds
  * - Small typography (11-13px)
  * - No shadows or gradients
  */
@@ -30,7 +29,6 @@ import type {
   IssueProgressSummary,
 } from "@/types/review-issue";
 import { sortBySeverity } from "@/types/review-issue";
-import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Constants
@@ -42,26 +40,26 @@ const SEVERITY_CONFIG: Record<
 > = {
   critical: {
     icon: AlertCircle,
-    color: "var(--status-error)",
-    bgColor: withAlpha("var(--status-error)", 15),
+    color: "var(--text-muted)",
+    bgColor: "var(--overlay-weak)",
     label: "Critical",
   },
   major: {
     icon: AlertTriangle,
-    color: "var(--status-warning)",
-    bgColor: withAlpha("var(--status-warning)", 15),
+    color: "var(--text-muted)",
+    bgColor: "var(--overlay-weak)",
     label: "Major",
   },
   minor: {
     icon: Info,
-    color: "var(--status-info)",
-    bgColor: withAlpha("var(--status-info)", 15),
+    color: "var(--text-muted)",
+    bgColor: "var(--overlay-weak)",
     label: "Minor",
   },
   suggestion: {
     icon: Lightbulb,
-    color: "var(--status-success)",
-    bgColor: withAlpha("var(--status-success)", 15),
+    color: "var(--text-muted)",
+    bgColor: "var(--overlay-weak)",
     label: "Suggestion",
   },
 };
@@ -72,32 +70,32 @@ const STATUS_CONFIG: Record<
 > = {
   open: {
     icon: CircleDot,
-    color: "var(--status-info)",
-    bgColor: withAlpha("var(--status-info)", 15),
+    color: "var(--text-muted)",
+    bgColor: "var(--overlay-weak)",
     label: "Open",
   },
   in_progress: {
     icon: Clock,
-    color: "var(--status-warning)",
-    bgColor: withAlpha("var(--status-warning)", 15),
+    color: "var(--text-muted)",
+    bgColor: "var(--overlay-weak)",
     label: "In Progress",
   },
   addressed: {
     icon: CheckCircle2,
-    color: "var(--status-success)",
-    bgColor: withAlpha("var(--status-success)", 15),
+    color: "var(--text-muted)",
+    bgColor: "var(--overlay-weak)",
     label: "Addressed",
   },
   verified: {
     icon: CheckCircle2,
-    color: "var(--status-success)",
-    bgColor: withAlpha("var(--status-success)", 20),
+    color: "var(--text-muted)",
+    bgColor: "var(--overlay-weak)",
     label: "Verified",
   },
   wontfix: {
     icon: XCircle,
     color: "var(--text-muted)",
-    bgColor: withAlpha("var(--text-muted)", 15),
+    bgColor: "var(--overlay-weak)",
     label: "Won't Fix",
   },
 };
@@ -181,20 +179,21 @@ interface IssueCardProps {
   issue: ReviewIssue;
   compact?: boolean | undefined;
   onClick?: (() => void) | undefined;
+  isLast?: boolean | undefined;
 }
 
-function IssueCard({ issue, compact = false, onClick }: IssueCardProps) {
+function IssueCard({ issue, compact = false, onClick, isLast = false }: IssueCardProps) {
   const hasFileLink = issue.filePath && issue.lineNumber;
 
   return (
     <div
-      className={`rounded-lg transition-colors ${
-        onClick ? "cursor-pointer hover:bg-bg-elevated" : ""
+      className={`transition-colors ${
+        onClick ? "cursor-pointer hover:bg-[var(--overlay-faint)]" : ""
       }`}
-      style={{ backgroundColor: "var(--bg-elevated)" }}
+      style={!isLast ? { borderBottom: "1px solid var(--border-subtle)" } : undefined}
       onClick={onClick}
     >
-      <div className={compact ? "p-2" : "p-3"}>
+      <div className={compact ? "px-3 py-2.5" : "px-3 py-3"}>
         {/* Header row: severity + status + category */}
         <div className="flex items-center gap-2 mb-1.5">
           <SeverityBadge severity={issue.severity} compact={compact} />
@@ -236,7 +235,7 @@ function IssueCard({ issue, compact = false, onClick }: IssueCardProps) {
             <FileCode className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
             <span
               className="text-[11px] font-mono"
-              style={{ color: "var(--status-info)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {issue.filePath}:{issue.lineNumber}
             </span>
@@ -315,13 +314,14 @@ function IssueGroup({
 
       {/* Group items */}
       {isExpanded && (
-        <div className="space-y-2 pl-5">
-          {issues.map((issue) => (
+        <div className="pl-5">
+          {issues.map((issue, index) => (
             <IssueCard
               key={issue.id}
               issue={issue}
               compact={compact}
               onClick={onIssueClick ? () => onIssueClick(issue) : undefined}
+              isLast={index === issues.length - 1}
             />
           ))}
         </div>
@@ -371,7 +371,7 @@ export function IssueProgressBar({
               className="h-full"
               style={{
                 width: `${verifiedWidth}%`,
-                backgroundColor: "var(--status-success)",
+                backgroundColor: "var(--text-muted)",
               }}
             />
           )}
@@ -381,7 +381,7 @@ export function IssueProgressBar({
               className="h-full"
               style={{
                 width: `${addressedWidth}%`,
-                backgroundColor: withAlpha("var(--status-success)", 70),
+                backgroundColor: "var(--text-muted)",
               }}
             />
           )}
@@ -401,7 +401,7 @@ export function IssueProgressBar({
               className="h-full animate-pulse"
               style={{
                 width: `${inProgressWidth}%`,
-                backgroundColor: "var(--status-warning)",
+                backgroundColor: "var(--text-muted)",
               }}
             />
           )}
@@ -411,7 +411,7 @@ export function IssueProgressBar({
               className="h-full"
               style={{
                 width: `${openWidth}%`,
-                backgroundColor: "var(--status-info)",
+                backgroundColor: "var(--text-muted)",
               }}
             />
           )}
@@ -427,22 +427,22 @@ export function IssueProgressBar({
       {/* Status counts */}
       <div className="flex items-center gap-3 text-[10px]">
         {verified > 0 && (
-          <span style={{ color: "var(--status-success)" }}>
+          <span style={{ color: "var(--text-muted)" }}>
             {verified} verified
           </span>
         )}
         {addressed > 0 && (
-          <span style={{ color: "var(--status-success)" }}>
+          <span style={{ color: "var(--text-muted)" }}>
             {addressed} addressed
           </span>
         )}
         {inProgress > 0 && (
-          <span style={{ color: "var(--status-warning)" }}>
+          <span style={{ color: "var(--text-muted)" }}>
             {inProgress} in progress
           </span>
         )}
         {open > 0 && (
-          <span style={{ color: "var(--status-info)" }}>
+          <span style={{ color: "var(--text-muted)" }}>
             {open} open
           </span>
         )}

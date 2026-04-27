@@ -23,6 +23,7 @@ interface ReviewFeedbackBodyProps {
   dialogTitle?: string;
   dialogDescription?: string;
   fullButtonLabel?: string;
+  fullButtonClassName?: string;
   previewClassName?: string;
   dialogBodyClassName?: string;
 }
@@ -45,6 +46,7 @@ export function ReviewFeedbackBody({
   dialogTitle = "Full feedback",
   dialogDescription = "Full feedback in a scrollable view.",
   fullButtonLabel = "View full details",
+  fullButtonClassName,
   previewClassName,
   dialogBodyClassName,
 }: ReviewFeedbackBodyProps) {
@@ -113,7 +115,10 @@ export function ReviewFeedbackBody({
         <>
           <button
             type="button"
-            className="mt-2 text-[12px] font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]"
+            className={cn(
+              "mt-2 font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]",
+              fullButtonClassName ?? "text-[12px]"
+            )}
             onClick={() => setIsDialogOpen(true)}
           >
             {fullButtonLabel}

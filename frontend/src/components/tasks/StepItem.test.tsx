@@ -94,12 +94,16 @@ describe('StepItem', () => {
   });
 
   describe('Visual Styling', () => {
-    it('should apply in_progress styles with border and background', () => {
+    it('should keep in-progress row neutral and tint only the icon', () => {
       const inProgressStep = { ...baseStep, status: 'in_progress' as const };
       const { container } = render(<StepItem step={inProgressStep} index={0} />);
       const stepContainer = container.firstChild as HTMLElement;
       expect(stepContainer).toHaveStyle({
-        backgroundColor: 'color-mix(in srgb, var(--accent-primary) 6%, transparent)',
+        backgroundColor: 'var(--overlay-faint)',
+      });
+      const icon = container.querySelector('svg');
+      expect(icon).toHaveStyle({
+        color: 'color-mix(in srgb, var(--accent-primary) 82%, var(--text-muted))',
       });
     });
 
@@ -120,12 +124,16 @@ describe('StepItem', () => {
       expect(titleElement).toHaveStyle({ textDecoration: 'line-through' });
     });
 
-    it('should apply failed styles with error border', () => {
+    it('should keep failed row neutral and tint only the icon', () => {
       const failedStep = { ...baseStep, status: 'failed' as const };
       const { container } = render(<StepItem step={failedStep} index={0} />);
       const stepContainer = container.firstChild as HTMLElement;
       expect(stepContainer).toHaveStyle({
-        backgroundColor: 'color-mix(in srgb, var(--status-error) 6%, transparent)',
+        backgroundColor: 'var(--overlay-faint)',
+      });
+      const icon = container.querySelector('svg');
+      expect(icon).toHaveStyle({
+        color: 'color-mix(in srgb, var(--status-error) 78%, var(--text-muted))',
       });
     });
   });

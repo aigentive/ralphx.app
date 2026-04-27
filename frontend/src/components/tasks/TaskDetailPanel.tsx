@@ -434,33 +434,31 @@ export function TaskDetailPanel({
       {/* Header with priority, title, category, status - optional */}
       {showHeader && (
         <div className="space-y-2">
-          <div className="flex items-start gap-2.5">
-            <PriorityBadge priority={task.priority} />
-            <div className="flex-1 min-w-0">
-              <h2
-                data-testid="task-detail-title"
-                className="text-base font-semibold text-text-primary/90"
+          <div className="min-w-0">
+            <h2
+              data-testid="task-detail-title"
+              className="text-base font-semibold text-text-primary/90"
+              style={{
+                letterSpacing: "-0.02em",
+                lineHeight: "1.3",
+              }}
+            >
+              {task.title}
+            </h2>
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+              <PriorityBadge priority={task.priority} />
+              <span
+                data-testid="task-detail-category"
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                 style={{
-                  letterSpacing: "-0.02em",
-                  lineHeight: "1.3",
+                  backgroundColor: "var(--overlay-weak)",
+                  border: "1px solid var(--border-subtle)",
+                  color: withAlpha("var(--text-primary)", 60),
                 }}
               >
-                {task.title}
-              </h2>
-              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                <span
-                  data-testid="task-detail-category"
-                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                  style={{
-                    backgroundColor: "var(--overlay-weak)",
-                    border: "1px solid var(--border-subtle)",
-                    color: withAlpha("var(--text-primary)", 60),
-                  }}
-                >
-                  {categoryLabel}
-                </span>
-                <StatusBadge status={task.internalStatus} />
-              </div>
+                {categoryLabel}
+              </span>
+              <StatusBadge status={task.internalStatus} />
             </div>
           </div>
         </div>

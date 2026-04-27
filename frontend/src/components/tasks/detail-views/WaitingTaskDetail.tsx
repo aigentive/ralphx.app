@@ -20,6 +20,7 @@ import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { reviewIssuesApi } from "@/api/review-issues";
 import { IssueProgressBar } from "@/components/reviews/IssueList";
 import { withAlpha } from "@/lib/theme-colors";
+import { getCompletableStepProgressCounts } from "@/types/task-step";
 import type { Task } from "@/types/task";
 
 interface WaitingTaskDetailProps {
@@ -140,8 +141,11 @@ export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
   });
 
   const hasSteps = (steps?.length ?? 0) > 0;
-  const stepsCompleted = progress?.completed ?? 0;
-  const totalSteps = progress?.total ?? 0;
+  const completableProgress = progress
+    ? getCompletableStepProgressCounts(progress)
+    : { completed: 0, total: 0 };
+  const stepsCompleted = completableProgress.completed;
+  const totalSteps = completableProgress.total;
   const hasIssueProgress = issueProgress && issueProgress.total > 0;
 
   return (
@@ -186,9 +190,7 @@ export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
       {hasIssueProgress && (
         <section data-testid="issue-progress-section">
           <SectionTitle>Issue Resolution</SectionTitle>
-          <DetailCard>
-            <IssueProgressBar progress={issueProgress} showSeverityBreakdown />
-          </DetailCard>
+          <IssueProgressBar progress={issueProgress} showSeverityBreakdown />
         </section>
       )}
 

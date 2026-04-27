@@ -17,11 +17,29 @@ import {
   SkipForward,
 } from "lucide-react";
 import { SectionTitle } from "./SectionTitle";
-import { withAlpha } from "@/lib/theme-colors";
 import type { MergeValidationStepEvent } from "@/types/events";
 
 function formatDuration(ms: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+const NEUTRAL_BADGE_STYLE = {
+  backgroundColor: "var(--overlay-weak)",
+  color: "var(--text-muted)",
+};
+
+function getValidationStatusColor(status: MergeValidationStepEvent["status"]): string {
+  switch (status) {
+    case "running":
+      return "color-mix(in srgb, var(--accent-primary) 82%, var(--text-muted))";
+    case "failed":
+      return "color-mix(in srgb, var(--status-error) 78%, var(--text-muted))";
+    case "success":
+    case "cached":
+      return "color-mix(in srgb, var(--status-success) 78%, var(--text-muted))";
+    case "skipped":
+      return "var(--text-muted)";
+  }
 }
 
 /**
@@ -35,34 +53,32 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
   const hasOutput = (step.stdout && step.stdout.trim().length > 0) ||
     (step.stderr && step.stderr.trim().length > 0);
   const [expanded, setExpanded] = useState(isRunning || isFailed);
+  const iconColor = getValidationStatusColor(step.status);
 
   const statusIcon = isRunning ? (
-    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
+    <Loader2 className="w-4 h-4 animate-spin" style={{ color: iconColor }} />
   ) : isFailed ? (
-    <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
+    <XCircle className="w-4 h-4" style={{ color: iconColor }} />
   ) : isSkipped ? (
     <SkipForward className="w-4 h-4 text-text-primary/30" />
   ) : isCached ? (
-    <Archive className="w-4 h-4" style={{ color: "var(--status-success)" }} />
+    <Archive className="w-4 h-4" style={{ color: iconColor }} />
   ) : (
-    <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />
+    <CheckCircle2 className="w-4 h-4" style={{ color: iconColor }} />
   );
 
   return (
-    <div
-      className="rounded-lg overflow-hidden"
-      style={{ backgroundColor: "var(--overlay-scrim)" }}
-    >
+    <div>
       <button
         type="button"
-        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left"
+        className="w-full flex items-center gap-2.5 px-3 py-3 text-left"
         onClick={() => hasOutput && setExpanded(!expanded)}
         style={{ cursor: hasOutput ? "pointer" : "default" }}
       >
         {statusIcon}
         <span
           className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded"
-          style={{ backgroundColor: "var(--accent-muted)", color: "var(--accent-primary)" }}
+          style={NEUTRAL_BADGE_STYLE}
         >
           validate
         </span>
@@ -72,7 +88,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
         {isCached && (
           <span
             className="text-[9px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded shrink-0"
-            style={{ backgroundColor: "var(--status-success-muted)", color: "var(--status-success)" }}
+            style={NEUTRAL_BADGE_STYLE}
           >
             Cached
           </span>
@@ -100,7 +116,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
             </pre>
           )}
           {step.stderr && step.stderr.trim() && (
-            <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "var(--status-error)" }}>
+            <pre className="text-[11px] font-mono text-text-primary/50 whitespace-pre-wrap break-all leading-relaxed">
               {step.stderr}
             </pre>
           )}
@@ -124,34 +140,31 @@ export function StepsGroup({ steps, phase, label }: {
   const [expanded, setExpanded] = useState(anyFailed);
 
   const totalMs = steps.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
-  const badgeBg = phase === "setup" ? "var(--status-info-muted)" : phase === "install" ? "var(--accent-muted)" : phase === "skipped" ? "var(--overlay-weak)" : "var(--status-success-muted)";
-  const badgeColor = phase === "setup" ? "var(--status-info)" : phase === "install" ? "var(--accent-primary)" : phase === "skipped" ? withAlpha("var(--text-primary)", 40) : "var(--status-success)";
-
   const allSkipped = steps.every((s) => s.status === "skipped");
+  const groupStatus: MergeValidationStepEvent["status"] =
+    anyRunning ? "running" : anyFailed ? "failed" : allSkipped ? "skipped" : "success";
+  const groupIconColor = getValidationStatusColor(groupStatus);
   const statusIcon = anyRunning ? (
-    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
+    <Loader2 className="w-4 h-4 animate-spin" style={{ color: groupIconColor }} />
   ) : anyFailed ? (
-    <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
+    <XCircle className="w-4 h-4" style={{ color: groupIconColor }} />
   ) : allSkipped ? (
     <SkipForward className="w-4 h-4 text-text-primary/30" />
   ) : (
-    <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />
+    <CheckCircle2 className="w-4 h-4" style={{ color: groupIconColor }} />
   );
 
   return (
-    <div
-      className="rounded-lg overflow-hidden"
-      style={{ backgroundColor: "var(--overlay-scrim)" }}
-    >
+    <div>
       <button
         type="button"
-        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left cursor-pointer"
+        className="w-full flex items-center gap-2.5 px-3 py-3 text-left cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         {statusIcon}
         <span
           className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded"
-          style={{ backgroundColor: badgeBg, color: badgeColor }}
+          style={NEUTRAL_BADGE_STYLE}
         >
           {phase}
         </span>
@@ -169,24 +182,33 @@ export function StepsGroup({ steps, phase, label }: {
           : <ChevronRight className="w-3.5 h-3.5 text-text-primary/30 shrink-0" />}
       </button>
       {expanded && (
-        <div className="px-3 pb-2.5 space-y-2">
+        <div>
           {steps.map((step, i) => {
             const isFailed = step.status === "failed";
             const isRunning = step.status === "running";
             const isSkipped = step.status === "skipped";
             const hasOutput = (step.stdout && step.stdout.trim().length > 0) ||
               (step.stderr && step.stderr.trim().length > 0);
+            const stepIconColor = getValidationStatusColor(step.status);
             return (
-              <div key={`${phase}-${step.command}-${i}`} className="space-y-1">
+              <div
+                key={`${phase}-${step.command}-${i}`}
+                className="px-3 py-3 space-y-1"
+                style={
+                  i < steps.length - 1
+                    ? { borderBottom: "1px solid var(--border-subtle)" }
+                    : undefined
+                }
+              >
                 <div className="flex items-center gap-2">
                   {isRunning ? (
-                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: "var(--status-info)" }} />
+                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: stepIconColor }} />
                   ) : isFailed ? (
-                    <XCircle className="w-3 h-3" style={{ color: "var(--status-error)" }} />
+                    <XCircle className="w-3 h-3" style={{ color: stepIconColor }} />
                   ) : isSkipped ? (
                     <SkipForward className="w-3 h-3 text-text-primary/30" />
                   ) : (
-                    <CheckCircle2 className="w-3 h-3" style={{ color: "var(--status-success)" }} />
+                    <CheckCircle2 className="w-3 h-3" style={{ color: stepIconColor }} />
                   )}
                   <span className="text-[11px] text-text-primary/60 truncate flex-1" title={step.label}>
                     {step.label}
@@ -211,7 +233,7 @@ export function StepsGroup({ steps, phase, label }: {
                       </pre>
                     )}
                     {step.stderr && step.stderr.trim() && (
-                      <pre className="text-[10px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "var(--status-error)" }}>
+                      <pre className="text-[10px] font-mono text-text-primary/40 whitespace-pre-wrap break-all leading-relaxed">
                         {step.stderr}
                       </pre>
                     )}
@@ -300,38 +322,55 @@ export function ValidationProgress({
           <span className="ml-2 text-[10px] font-normal text-text-primary/30">(live)</span>
         )}
       </SectionTitle>
-      <div className="space-y-1.5">
-        {setupSteps.length > 0 && (
-          <StepsGroup
-            steps={setupSteps}
-            phase="setup"
-            label={`${setupSteps.length} command${setupSteps.length !== 1 ? "s" : ""}`}
-          />
-        )}
-        {installSteps.length > 0 && (
-          <StepsGroup
-            steps={installSteps}
-            phase="install"
-            label={`${installSteps.length} command${installSteps.length !== 1 ? "s" : ""}`}
-          />
-        )}
-        {passedValidateSteps.length > 0 && (
-          <StepsGroup
-            steps={passedValidateSteps}
-            phase="passed"
-            label={`${passedValidateSteps.length} check${passedValidateSteps.length !== 1 ? "s" : ""} passed`}
-          />
-        )}
-        {activeValidateSteps.map((step, index) => (
-          <ValidationStepRow key={`${step.phase}-${step.command}-${index}`} step={step} />
+      <div>
+        {[
+          setupSteps.length > 0 ? (
+            <StepsGroup
+              key="setup"
+              steps={setupSteps}
+              phase="setup"
+              label={`${setupSteps.length} command${setupSteps.length !== 1 ? "s" : ""}`}
+            />
+          ) : null,
+          installSteps.length > 0 ? (
+            <StepsGroup
+              key="install"
+              steps={installSteps}
+              phase="install"
+              label={`${installSteps.length} command${installSteps.length !== 1 ? "s" : ""}`}
+            />
+          ) : null,
+          passedValidateSteps.length > 0 ? (
+            <StepsGroup
+              key="passed"
+              steps={passedValidateSteps}
+              phase="passed"
+              label={`${passedValidateSteps.length} check${passedValidateSteps.length !== 1 ? "s" : ""} passed`}
+            />
+          ) : null,
+          ...activeValidateSteps.map((step, index) => (
+            <ValidationStepRow key={`${step.phase}-${step.command}-${index}`} step={step} />
+          )),
+          skippedValidateSteps.length > 0 ? (
+            <StepsGroup
+              key="skipped"
+              steps={skippedValidateSteps}
+              phase="skipped"
+              label={`${skippedValidateSteps.length} check${skippedValidateSteps.length !== 1 ? "s" : ""} skipped`}
+            />
+          ) : null,
+        ].filter(Boolean).map((item, index, list) => (
+          <div
+            key={index}
+            style={
+              index < list.length - 1
+                ? { borderBottom: "1px solid var(--border-subtle)" }
+                : undefined
+            }
+          >
+            {item}
+          </div>
         ))}
-        {skippedValidateSteps.length > 0 && (
-          <StepsGroup
-            steps={skippedValidateSteps}
-            phase="skipped"
-            label={`${skippedValidateSteps.length} check${skippedValidateSteps.length !== 1 ? "s" : ""} skipped`}
-          />
-        )}
       </div>
     </section>
   );

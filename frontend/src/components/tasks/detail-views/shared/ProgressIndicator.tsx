@@ -4,7 +4,7 @@
  * Minimal design:
  * - No container/card wrapper
  * - Thin progress track (4px)
- * - Flat colors, no gradients or borders
+ * - Subtle status fill, no gradients or borders
  */
 
 interface ProgressIndicatorProps {
@@ -15,9 +15,9 @@ interface ProgressIndicatorProps {
 }
 
 const VARIANT_COLORS = {
-  accent: "var(--accent-primary)",
-  success: "var(--status-success)",
-  info: "var(--status-info)",
+  accent: "color-mix(in srgb, var(--accent-primary) 82%, var(--text-muted))",
+  success: "color-mix(in srgb, var(--status-success) 78%, var(--text-muted))",
+  info: "color-mix(in srgb, var(--status-info) 72%, var(--text-muted))",
 };
 
 export function ProgressIndicator({

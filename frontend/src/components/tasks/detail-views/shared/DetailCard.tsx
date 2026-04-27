@@ -3,7 +3,7 @@
  *
  * Tahoe principles:
  * - NO decorative borders
- * - Flat background with subtle color differentiation
+ * - Flat neutral background
  * - Minimal shadows (only for floating elements)
  */
 
@@ -18,41 +18,17 @@ interface DetailCardProps {
   noPadding?: boolean;
 }
 
-// Flat backgrounds only - no borders, no glows
-const VARIANT_STYLES: Record<CardVariant, { bg: string }> = {
-  default: {
-    bg: "var(--bg-surface)",
-  },
-  success: {
-    bg: "var(--status-success-muted)",
-  },
-  warning: {
-    bg: "var(--status-warning-muted)",
-  },
-  error: {
-    bg: "var(--status-error-muted)",
-  },
-  info: {
-    bg: "var(--status-info-muted)",
-  },
-  accent: {
-    bg: "var(--accent-muted)",
-  },
-};
-
 export function DetailCard({
   children,
-  variant = "default",
+  variant: _variant = "default",
   className = "",
   noPadding = false,
 }: DetailCardProps) {
-  const styles = VARIANT_STYLES[variant];
-
   return (
     <div
       className={`rounded-xl ${className}`}
       style={{
-        backgroundColor: styles.bg,
+        backgroundColor: "var(--bg-surface)",
         padding: noPadding ? undefined : "14px 16px",
       }}
     >

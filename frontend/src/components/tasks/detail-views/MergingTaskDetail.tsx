@@ -266,7 +266,7 @@ function MergeProgressSteps({
       {/* Collapsed: show only the active step */}
       <button
         type="button"
-        className="w-full flex items-center gap-3 py-2.5 text-left cursor-pointer"
+        className="w-full flex items-center gap-3 px-3 py-3 text-left cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="relative">
@@ -282,9 +282,17 @@ function MergeProgressSteps({
 
       {/* Expanded: show all steps in original style */}
       {expanded && (
-        <div className="divide-y divide-white/5">
+        <div>
           {steps.map((step, index) => (
-            <div key={index} className="flex items-center gap-3 py-2.5">
+            <div
+              key={index}
+              className="flex items-center gap-3 px-3 py-3"
+              style={
+                index < steps.length - 1
+                  ? { borderBottom: "1px solid var(--border-subtle)" }
+                  : undefined
+              }
+            >
               <div className="relative">
                 <MergeStepIcon status={step.status} isHistorical={isHistorical} />
               </div>
@@ -803,16 +811,14 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       {(isHistorical || (!isPrWait && isAgentPhase) || (isValidationRecovery && !isRevalidating)) && (
         <section data-testid="merge-progress-section">
           <SectionTitle>{isHistorical ? "Process Details" : "Merge Progress"}</SectionTitle>
-          <DetailCard variant="default">
-            <MergeProgressSteps
-              isProgrammaticPhase={isProgrammaticPhase}
-              isHistorical={isHistorical}
-              historicalMode={historicalMode}
-              isValidationRecovery={isValidationRecovery}
-              isValidating={liveSteps.length > 0}
-              isRevalidating={isRevalidating}
-            />
-          </DetailCard>
+          <MergeProgressSteps
+            isProgrammaticPhase={isProgrammaticPhase}
+            isHistorical={isHistorical}
+            historicalMode={historicalMode}
+            isValidationRecovery={isValidationRecovery}
+            isValidating={liveSteps.length > 0}
+            isRevalidating={isRevalidating}
+          />
         </section>
       )}
 

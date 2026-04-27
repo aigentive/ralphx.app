@@ -47,6 +47,7 @@ type ReviewStepStatus = "completed" | "active" | "pending";
 interface ReviewStep {
   label: string;
   status: ReviewStepStatus;
+  isLast?: boolean;
 }
 
 /**
@@ -56,9 +57,17 @@ function ReviewStepItem({
   label,
   status,
   isHistorical,
+  isLast = false,
 }: ReviewStep & { isHistorical?: boolean }) {
   return (
-    <div className="flex items-center gap-3 py-2.5">
+    <div
+      className="flex items-center gap-3 px-3 py-3"
+      style={
+        !isLast
+          ? { borderBottom: "1px solid var(--border-subtle)" }
+          : undefined
+      }
+    >
       {/* Status icon */}
       <div className="relative">
         {status === "completed" && (
@@ -137,13 +146,16 @@ function ReviewStepsCard({
         ];
 
   return (
-    <DetailCard variant={variant}>
-      <div className="divide-y divide-white/5">
-        {steps.map((step, index) => (
-          <ReviewStepItem key={index} {...step} isHistorical={isHistorical === true} />
-        ))}
-      </div>
-    </DetailCard>
+    <div data-variant={variant}>
+      {steps.map((step, index) => (
+        <ReviewStepItem
+          key={index}
+          {...step}
+          isLast={index === steps.length - 1}
+          isHistorical={isHistorical === true}
+        />
+      ))}
+    </div>
   );
 }
 

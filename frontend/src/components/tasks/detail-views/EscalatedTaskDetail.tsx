@@ -487,24 +487,20 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
       {issues.length > 0 && (
         <section data-testid="issues-section">
           <SectionTitle>Issues Found ({issues.length})</SectionTitle>
-          <DetailCard>
-            <IssueList issues={issues} groupBy="severity" compact />
-          </DetailCard>
+          <IssueList issues={issues} groupBy="severity" compact />
         </section>
       )}
 
       {/* Previous Attempts */}
       <section data-testid="previous-attempts-section">
         <SectionTitle>Previous Attempts</SectionTitle>
-        <DetailCard>
-          <ReviewTimeline
-            history={history ?? []}
-            filter={(e) => e.outcome === "changes_requested"}
-            showAttemptNumbers
-            emptyMessage="No previous attempts"
-            stateTransitions={stateTransitions}
-          />
-        </DetailCard>
+        <ReviewTimeline
+          history={history ?? []}
+          filter={(e) => e.outcome === "changes_requested"}
+          showAttemptNumbers
+          emptyMessage="No previous attempts"
+          stateTransitions={stateTransitions}
+        />
       </section>
 
       {/* Decision Buttons (hidden in historical mode) */}

@@ -515,34 +515,32 @@ export function TaskDetailOverlay({
                 <span className="text-[12px] font-medium" style={{ color: "var(--accent-primary)" }}>Archived</span>
               </div>
             )}
-            <div className="flex items-start gap-2.5 pr-28">
-              <PriorityBadge priority={task.priority} />
-              <div className="flex-1 min-w-0">
-                <h2
-                  data-testid="task-overlay-title"
-                  className="text-base font-semibold truncate"
+            <div className="pr-28">
+              <h2
+                data-testid="task-overlay-title"
+                className="text-base font-semibold truncate"
+                style={{
+                  color: "var(--text-primary)",
+                  letterSpacing: "-0.02em",
+                  lineHeight: "1.3",
+                }}
+              >
+                {task.title}
+              </h2>
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                <PriorityBadge priority={task.priority} />
+                <span
+                  data-testid="task-overlay-category"
+                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                   style={{
-                    color: "var(--text-primary)",
-                    letterSpacing: "-0.02em",
-                    lineHeight: "1.3",
+                    backgroundColor: "var(--overlay-weak)",
+                    border: "1px solid var(--overlay-moderate)",
+                    color: "var(--text-secondary)",
                   }}
                 >
-                  {task.title}
-                </h2>
-                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                  <span
-                    data-testid="task-overlay-category"
-                    className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                    style={{
-                      backgroundColor: "var(--overlay-weak)",
-                      border: "1px solid var(--overlay-moderate)",
-                      color: "var(--text-secondary)",
-                    }}
-                  >
-                    {categoryLabel}
-                  </span>
-                  <StatusBadge status={task.internalStatus} />
-                </div>
+                  {categoryLabel}
+                </span>
+                <StatusBadge status={task.internalStatus} />
               </div>
             </div>
 
