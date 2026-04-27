@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import type {
   IdeationSession,
   TaskProposal,
+  VerificationStatus,
 } from "@/types/ideation";
 import type { ApplyProposalsInput, ApplyProposalsResultResponse } from "@/api/ideation.types";
 import { Button } from "@/components/ui/button";
@@ -357,6 +358,11 @@ export function PlanningView({
   const lastVerificationChildId = useIdeationStore(
     (s) => s.lastVerificationChildId[session?.id ?? ''] ?? null
   );
+  const [displayedVerificationChildId, setDisplayedVerificationChildId] = useState<string | null>(null);
+  const [displayedVerificationStatus, setDisplayedVerificationStatus] = useState<{
+    status: VerificationStatus;
+    inProgress: boolean;
+  } | null>(null);
 
   // Poll status for verification child and direct child session views to detect pending_initial_prompt
   // Eagerly fetch verification child sessions so lastVerificationChildId is populated
@@ -377,7 +383,11 @@ export function PlanningView({
   }, [verificationChildren]);
 
   const verificationChatSessionId =
-    lastVerificationChildId ?? activeVerificationChildId ?? latestVerificationChildId ?? null;
+    displayedVerificationChildId ??
+    lastVerificationChildId ??
+    activeVerificationChildId ??
+    latestVerificationChildId ??
+    null;
 
   const { data: verificationChildStatus } = useChildSessionStatus(verificationChatSessionId);
   // Poll for the current session unconditionally — works for both child and top-level sessions.
@@ -405,6 +415,10 @@ export function PlanningView({
       // per-session verification routing state so coming back stays reliable.
       setActiveIdeationTab(session.id, 'plan');
     }
+    if (prevSessionIdRef.current !== session.id) {
+      setDisplayedVerificationChildId(null);
+      setDisplayedVerificationStatus(null);
+    }
     prevSessionIdRef.current = session.id;
   }, [session?.id, setActiveIdeationTab]);
 
@@ -431,14 +445,18 @@ export function PlanningView({
     !hasKnownPlan && !isVerificationActive && isTerminalVerificationStatus
       ? "unverified"
       : rawVerificationStatus;
+  const effectiveVerificationStatus =
+    displayedVerificationStatus?.status ?? verificationStatus;
+  const effectiveVerificationInProgress =
+    displayedVerificationStatus?.inProgress ?? isVerificationActive;
   const showVerificationTab = Boolean(
-    verificationStatus !== "unverified" || hasKnownPlan
+    effectiveVerificationStatus !== "unverified" || hasKnownPlan
   );
   const verificationBadge: "in_progress" | "verified" | "warning" | null = (() => {
     if (!session) return null;
-    if (isVerificationActive) return "in_progress";
-    if (verificationStatus === "verified" || verificationStatus === "imported_verified") return "verified";
-    if (verificationStatus === "needs_revision") return "warning";
+    if (effectiveVerificationInProgress) return "in_progress";
+    if (effectiveVerificationStatus === "verified" || effectiveVerificationStatus === "imported_verified") return "verified";
+    if (effectiveVerificationStatus === "needs_revision") return "warning";
     return null;
   })();
 
@@ -721,6 +739,13 @@ export function PlanningView({
     setActiveVerificationChildId,
     setLastVerificationChildId,
   ]);
+
+  const handleDisplayedVerificationStatusChange = useCallback(
+    (status: VerificationStatus, inProgress: boolean) => {
+      setDisplayedVerificationStatus({ status, inProgress });
+    },
+    [],
+  );
 
   return (
     <>
@@ -1189,7 +1214,11 @@ export function PlanningView({
                         data-testid="verification-tab-content"
                         className="flex flex-col flex-1 min-h-0"
                       >
-                        <VerificationPanel session={session} />
+                        <VerificationPanel
+                          session={session}
+                          onDisplayedVerificationChildChange={setDisplayedVerificationChildId}
+                          onDisplayedVerificationStatusChange={handleDisplayedVerificationStatusChange}
+                        />
                       </div>
                     )}
 

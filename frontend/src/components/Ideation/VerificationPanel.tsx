@@ -37,6 +37,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { getModelLabel } from "@/lib/model-utils";
 import type { IdeationSession, VerificationStatus } from "@/types/ideation";
+import type { VerificationStatusResponse } from "@/api/ideation.types";
 
 // ============================================================================
 // Types
@@ -44,6 +45,8 @@ import type { IdeationSession, VerificationStatus } from "@/types/ideation";
 
 interface VerificationPanelProps {
   session: IdeationSession;
+  onDisplayedVerificationChildChange?: (childSessionId: string | null) => void;
+  onDisplayedVerificationStatusChange?: (status: VerificationStatus, inProgress: boolean) => void;
 }
 
 interface VerificationRunEntry {
@@ -143,6 +146,39 @@ function verificationAgentLabel(agentState: string | undefined): string {
   }
 }
 
+function runHasDisplayEvidence(run: {
+  status?: VerificationStatus;
+  inProgress?: boolean;
+  currentRound?: number;
+  maxRounds?: number;
+  roundCount?: number;
+  gapCount?: number;
+}): boolean {
+  return Boolean(
+    run.inProgress ||
+      (run.status && run.status !== "unverified") ||
+      (run.currentRound ?? 0) > 0 ||
+      (run.maxRounds ?? 0) > 0 ||
+      (run.roundCount ?? 0) > 0 ||
+      (run.gapCount ?? 0) > 0,
+  );
+}
+
+function verificationDataHasDisplayEvidence(
+  data: VerificationStatusResponse | null | undefined,
+): boolean {
+  if (!data) return false;
+  return Boolean(
+    data.inProgress ||
+      data.status !== "unverified" ||
+      (data.currentRound ?? 0) > 0 ||
+      (data.maxRounds ?? 0) > 0 ||
+      (data.gaps?.length ?? 0) > 0 ||
+      (data.rounds?.length ?? 0) > 0 ||
+      (data.roundDetails?.length ?? 0) > 0,
+  );
+}
+
 // ============================================================================
 // VerificationRunPicker sub-component
 // ============================================================================
@@ -199,6 +235,7 @@ function VerificationRunPicker({
     return (
       <div
         className="flex items-center gap-1.5 px-2 py-1 rounded-md"
+        data-testid="verification-run-picker-trigger"
         style={{ background: "var(--overlay-faint)" }}
       >
         <History className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
@@ -319,7 +356,11 @@ function VerificationRunPicker({
 // Component
 // ============================================================================
 
-export function VerificationPanel({ session }: VerificationPanelProps) {
+export function VerificationPanel({
+  session,
+  onDisplayedVerificationChildChange,
+  onDisplayedVerificationStatusChange,
+}: VerificationPanelProps) {
   const queryClient = useQueryClient();
   const [selectedGaps, setSelectedGaps] = useState<Set<number>>(new Set());
   const [selectedGeneration, setSelectedGeneration] = useState<number | null>(null);
@@ -384,17 +425,13 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   });
 
   const currentGeneration = currentVerificationData?.generation ?? null;
-  const autoDisplayGeneration =
-    selectedGeneration ??
-    currentGeneration ??
-    currentVerificationData?.runHistory?.find(
-      (run) => run.roundCount > 0 || run.gapCount > 0
-    )?.generation ??
-    null;
+  const defaultDisplayGeneration =
+    currentVerificationData?.selectedGeneration ?? currentGeneration;
+  const autoDisplayGeneration = selectedGeneration ?? defaultDisplayGeneration ?? null;
   const shouldLoadHistoricalGeneration =
     autoDisplayGeneration != null &&
-    currentGeneration != null &&
-    autoDisplayGeneration !== currentGeneration;
+    defaultDisplayGeneration != null &&
+    autoDisplayGeneration !== defaultDisplayGeneration;
   const { data: historicalVerificationData } = useQuery({
     queryKey: verificationGenerationKey(session.id, autoDisplayGeneration ?? -1),
     queryFn: () => ideationApi.verification.getStatus(session.id, autoDisplayGeneration ?? undefined),
@@ -414,11 +451,26 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     shouldLoadHistoricalGeneration && historicalVerificationData
       ? historicalVerificationData
       : currentVerificationData;
+  const displayedVerificationHasEvidence = verificationDataHasDisplayEvidence(verificationData);
 
-  const verificationStatus = currentVerificationData?.status ?? sessionVerificationStatus;
-  const baseVerificationInProgress =
-    currentVerificationData?.inProgress ?? (session.verificationInProgress ?? false);
-  const isInProgress = baseVerificationInProgress || !!activeVerificationChildId;
+  const displayedGenerationIsCurrent =
+    autoDisplayGeneration == null ||
+    currentGeneration == null ||
+    autoDisplayGeneration === currentGeneration;
+  const verificationStatus = verificationData?.status ?? sessionVerificationStatus;
+  const baseVerificationInProgress = displayedGenerationIsCurrent
+    ? currentVerificationData?.inProgress ?? (session.verificationInProgress ?? false)
+    : verificationData?.inProgress ?? false;
+  const isInProgress =
+    baseVerificationInProgress ||
+    (displayedGenerationIsCurrent && !!activeVerificationChildId);
+  const displayedVerificationChildId =
+    (displayedVerificationHasEvidence
+      ? verificationData?.verificationChild?.latestChildSessionId ??
+        (displayedGenerationIsCurrent
+          ? activeVerificationChildId ?? lastVerificationChildId
+          : lastVerificationChildId)
+      : null) ?? null;
 
   // Fetch all verification child sessions for the history picker
   const { data: rawChildSessions } = useQuery({
@@ -434,8 +486,9 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   // The session schema defaults verificationStatus to "unverified", so if the server
   // omits it the query gate would have blocked loading — this effect bootstraps the UI.
   useEffect(() => {
-    if (!currentVerificationData) return;
-    if (currentVerificationData.status === "unverified") return;
+    if (!verificationData) return;
+    if (!displayedVerificationHasEvidence) return;
+    if (verificationData.status === "unverified") return;
     // Only update if the session still shows the default (unverified); avoids overwriting
     // live event-driven updates that may have already set the correct status.
     if (sessionVerificationStatus !== "unverified") return;
@@ -447,13 +500,27 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
               ...old,
               session: {
                 ...old.session,
-                verificationStatus: currentVerificationData.status as VerificationStatus,
-                verificationInProgress: currentVerificationData.inProgress,
+                verificationStatus: verificationData.status as VerificationStatus,
+                verificationInProgress: verificationData.inProgress,
               },
             }
           : old
     );
-  }, [currentVerificationData, sessionVerificationStatus, session.id, queryClient]);
+  }, [
+    displayedVerificationHasEvidence,
+    verificationData,
+    sessionVerificationStatus,
+    session.id,
+    queryClient,
+  ]);
+
+  useEffect(() => {
+    onDisplayedVerificationChildChange?.(displayedVerificationChildId);
+  }, [displayedVerificationChildId, onDisplayedVerificationChildChange]);
+
+  useEffect(() => {
+    onDisplayedVerificationStatusChange?.(verificationStatus, isInProgress);
+  }, [verificationStatus, isInProgress, onDisplayedVerificationStatusChange]);
 
   // Stable boolean extracted from verificationData to prevent object-identity re-fires in the effect below.
   const apiInProgress = currentVerificationData?.inProgress ?? false;
@@ -585,7 +652,9 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const hasRounds = rounds.length > 0 || roundDetails.length > 0;
   const currentRunSelected =
     currentGeneration != null && autoDisplayGeneration === currentGeneration;
-  const verificationChild = currentVerificationData?.verificationChild;
+  const verificationChild = displayedVerificationHasEvidence
+    ? verificationData?.verificationChild
+    : undefined;
   const showCurrentRunBootstrap =
     currentRunSelected &&
     isInProgress &&
@@ -594,7 +663,8 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const hasVerificationRunEvidence =
     childSessions.length > 0 ||
     activeVerificationChildId != null ||
-    lastVerificationChildId != null;
+    lastVerificationChildId != null ||
+    runEntries.some(runHasDisplayEvidence);
 
   const isVerified = verificationStatus === "verified" || verificationStatus === "imported_verified";
   const isSkipped = verificationStatus === "skipped";

@@ -36,7 +36,7 @@ import { ideationKeys } from "@/hooks/useIdeation";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { useVerificationStatus } from "@/hooks/useVerificationStatus";
 import type { Artifact } from "@/types/artifact";
-import type { IdeationSession, TaskProposal } from "@/types/ideation";
+import type { IdeationSession, TaskProposal, VerificationStatus } from "@/types/ideation";
 import type {
   DependencyGraphResponse,
   IdeationSessionResponse,
@@ -114,7 +114,7 @@ interface AgentsArtifactPaneProps {
   onTaskModeChange: (mode: AgentTaskArtifactMode) => void;
   onPublishWorkspace: ((conversationId: string) => Promise<void>) | undefined;
   isPublishingWorkspace?: boolean;
-  onFocusVerificationSession?: (parentSessionId: string, childSessionId: string) => void;
+  onFocusVerificationSession: ((parentSessionId: string, childSessionId: string) => void) | undefined;
   onClose: () => void;
 }
 
@@ -173,6 +173,13 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
       workspace?.linkedIdeationSessionId,
     ],
   );
+  const [displayedVerificationStatus, setDisplayedVerificationStatus] = useState<{
+    status: VerificationStatus;
+    inProgress: boolean;
+  } | null>(null);
+  useEffect(() => {
+    setDisplayedVerificationStatus(null);
+  }, [attachedSessionId]);
   const sessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedSessionId ?? ""),
     queryFn: () => ideationApi.sessions.getWithData(attachedSessionId!),
@@ -257,9 +264,15 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
   const dependencyGraph = attachedSessionId && sessionData ? dependencyQuery.data ?? null : null;
   const proposalCount = proposals.length;
   const verificationState =
-    verificationData?.status ?? sessionData?.session.verificationStatus ?? "unverified";
+    displayedVerificationStatus?.status ??
+    verificationData?.status ??
+    sessionData?.session.verificationStatus ??
+    "unverified";
   const verificationInProgress =
-    verificationData?.inProgress ?? sessionData?.session.verificationInProgress ?? false;
+    displayedVerificationStatus?.inProgress ??
+    verificationData?.inProgress ??
+    sessionData?.session.verificationInProgress ??
+    false;
   const latestVerificationChildId = useMemo(
     () => getLatestIdeationChildId(verificationChildrenQuery.data),
     [verificationChildrenQuery.data],
@@ -470,6 +483,8 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
           proposals={proposals}
           onPublishWorkspace={onPublishWorkspace}
           isPublishingWorkspace={isPublishingWorkspace}
+          onFocusVerificationSession={onFocusVerificationSession}
+          onDisplayedVerificationStatusChange={setDisplayedVerificationStatus}
         />
       </div>
     </aside>
@@ -504,6 +519,11 @@ type ArtifactContentProps = {
   proposals: TaskProposal[];
   onPublishWorkspace: ((conversationId: string) => Promise<void>) | undefined;
   isPublishingWorkspace: boolean;
+  onFocusVerificationSession: ((parentSessionId: string, childSessionId: string) => void) | undefined;
+  onDisplayedVerificationStatusChange: (status: {
+    status: VerificationStatus;
+    inProgress: boolean;
+  } | null) => void;
 };
 
 function ArtifactContent({
@@ -522,10 +542,25 @@ function ArtifactContent({
   proposals,
   onPublishWorkspace,
   isPublishingWorkspace,
+  onFocusVerificationSession,
+  onDisplayedVerificationStatusChange,
 }: ArtifactContentProps) {
   const criticalPathSet = useMemo(
     () => new Set(dependencyGraph?.criticalPath ?? []),
     [dependencyGraph?.criticalPath],
+  );
+  const handleDisplayedVerificationChildChange = useCallback(
+    (childSessionId: string | null) => {
+      if (!attachedSessionId || !childSessionId) return;
+      onFocusVerificationSession?.(attachedSessionId, childSessionId);
+    },
+    [attachedSessionId, onFocusVerificationSession],
+  );
+  const handleDisplayedVerificationStatusChange = useCallback(
+    (status: VerificationStatus, inProgress: boolean) => {
+      onDisplayedVerificationStatusChange({ status, inProgress });
+    },
+    [onDisplayedVerificationStatusChange],
   );
 
   if (activeTab === "publish") {
@@ -571,7 +606,11 @@ function ArtifactContent({
     return (
       <div className="flex h-full min-h-0 flex-col">
         <Suspense fallback={<EmptyArtifactState title="Loading verification..." />}>
-          <LazyVerificationPanel session={session} />
+          <LazyVerificationPanel
+            session={session}
+            onDisplayedVerificationChildChange={handleDisplayedVerificationChildChange}
+            onDisplayedVerificationStatusChange={handleDisplayedVerificationStatusChange}
+          />
         </Suspense>
       </div>
     );
