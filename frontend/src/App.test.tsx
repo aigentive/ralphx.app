@@ -24,6 +24,17 @@ Object.defineProperty(window, "matchMedia", {
   })),
 });
 
+// App shell tests exercise navigation/layout behavior. Keep global startup
+// listeners out of this suite; EventProvider and PermissionDialog have their
+// own focused coverage.
+vi.mock("@/providers/EventProvider", () => ({
+  EventProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useEventBus: () => ({
+    subscribe: vi.fn(() => () => {}),
+    emit: vi.fn(),
+  }),
+}));
+
 // Mock the useEvents hooks to prevent Tauri API calls
 vi.mock("@/hooks/useEvents", () => ({
   useTaskEvents: vi.fn(),
@@ -35,6 +46,10 @@ vi.mock("@/hooks/useEvents", () => ({
   useAgentEvents: vi.fn(),
   useExecutionErrorEvents: vi.fn(),
   useRecoveryPromptEvents: vi.fn(),
+}));
+
+vi.mock("@/components/PermissionDialog", () => ({
+  PermissionDialog: () => null,
 }));
 
 // Mock TaskBoard to avoid Tauri API calls during tests
