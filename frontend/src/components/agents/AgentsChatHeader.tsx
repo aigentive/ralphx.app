@@ -56,14 +56,16 @@ const HEADER_ARTIFACT_TABS: Array<{
 
 const FOCUS_TONE_STYLES: Record<
   AgentsChatFocusTone,
-  { color: string; border: string }
+  { color: string; background: string; border: string }
 > = {
   accent: {
     color: "var(--accent-primary)",
+    background: "var(--accent-muted)",
     border: "var(--accent-border)",
   },
   warning: {
     color: "var(--status-warning)",
+    background: "var(--status-warning-muted)",
     border: "var(--status-warning-border)",
   },
 };
@@ -155,18 +157,18 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
                       ? toneStyle
                         ? {
                             color: toneStyle.color,
-                            background: "transparent",
+                            background: toneStyle.background,
                             borderColor: toneStyle.border,
                           }
                         : {
                             color: "var(--text-primary)",
-                            background: "transparent",
+                            background: "var(--bg-surface)",
                             borderColor: "var(--overlay-moderate)",
                           }
                       : {
                           color: "var(--text-muted)",
-                          background: "transparent",
-                          borderColor: "transparent",
+                          background: "var(--bg-base)",
+                          borderColor: "var(--overlay-faint)",
                         }
                   }
                   onClick={() => onSelectFocus(option.type)}
@@ -470,7 +472,7 @@ const AgentsWorkspaceStatusPill = memo(function AgentsWorkspaceStatusPill({
           className="inline-flex min-w-0 max-w-[180px] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:max-w-[300px]"
           style={{
             color: "var(--text-secondary)",
-            background: "transparent",
+            background: "var(--bg-surface)",
             borderColor: "var(--overlay-weak)",
           }}
           data-testid="agents-workspace-status"
