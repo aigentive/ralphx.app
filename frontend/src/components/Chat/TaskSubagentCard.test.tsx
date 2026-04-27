@@ -113,7 +113,7 @@ describe("TaskSubagentCard", () => {
   });
 
   it("does not fetch the delegated conversation until the streaming card is expanded", () => {
-    const getConversationSpy = vi.spyOn(chatApi, "getConversation").mockResolvedValue({
+    const getConversationMessagesPageSpy = vi.spyOn(chatApi, "getConversationMessagesPage").mockResolvedValue({
       conversation: {
         id: "child-conv-1",
         contextType: "project",
@@ -130,6 +130,10 @@ describe("TaskSubagentCard", () => {
         updatedAt: "2026-04-12T10:00:00Z",
       },
       messages: [],
+      limit: 40,
+      offset: 0,
+      totalMessageCount: 0,
+      hasOlder: false,
     });
 
     renderWithQueryClient(
@@ -145,11 +149,11 @@ describe("TaskSubagentCard", () => {
       />,
     );
 
-    expect(getConversationSpy).not.toHaveBeenCalled();
+    expect(getConversationMessagesPageSpy).not.toHaveBeenCalled();
   });
 
   it("renders the delegated conversation transcript inside the expanded streaming card", async () => {
-    const getConversationSpy = vi.spyOn(chatApi, "getConversation").mockResolvedValue({
+    const getConversationMessagesPageSpy = vi.spyOn(chatApi, "getConversationMessagesPage").mockResolvedValue({
       conversation: {
         id: "child-conv-1",
         contextType: "project",
@@ -197,6 +201,10 @@ describe("TaskSubagentCard", () => {
           createdAt: "2026-04-12T10:00:06Z",
         } satisfies ChatMessageResponse,
       ],
+      limit: 40,
+      offset: 0,
+      totalMessageCount: 2,
+      hasOlder: false,
     });
     const user = userEvent.setup();
 
@@ -217,7 +225,7 @@ describe("TaskSubagentCard", () => {
       screen.getByRole("button", { name: /delegated subagent: review delegated patch/i }),
     );
 
-    await waitFor(() => expect(getConversationSpy).toHaveBeenCalledWith("child-conv-1"));
+    await waitFor(() => expect(getConversationMessagesPageSpy).toHaveBeenCalledWith("child-conv-1", 40, 0));
     expect(await screen.findByText("Delegated conversation")).toBeInTheDocument();
     expect(screen.getByText("Please inspect the patch")).toBeInTheDocument();
     expect(screen.getByText("Review complete with no blockers")).toBeInTheDocument();
