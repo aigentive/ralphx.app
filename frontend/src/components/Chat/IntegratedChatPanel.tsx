@@ -1055,7 +1055,7 @@ export function IntegratedChatPanel({
       >
         {/* Inner surface — flat with blur, no perimeter or radius. */}
         <div
-          className="relative flex-1 flex flex-col overflow-hidden"
+          className="flex-1 flex flex-col overflow-hidden"
           style={{
             background: surfaceBackground ?? withAlpha("var(--bg-surface)", 92),
             backdropFilter: "blur(20px) saturate(180%)",
@@ -1123,11 +1123,7 @@ export function IntegratedChatPanel({
               </div>
             )}
           </div>
-          {headerSubContent ? (
-            <div className="pointer-events-none absolute left-0 right-0 top-11 z-10 [&>*]:pointer-events-auto">
-              {headerSubContent}
-            </div>
-          ) : null}
+          {headerSubContent}
 
           {/* Session Toolbar — houses StatusActivityBadge + optional back
               action. Provider-context chips are now rendered inline in
