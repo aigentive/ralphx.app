@@ -1,13 +1,31 @@
 use super::publish_resilience::review_base_for_publish;
 use super::publish_resilience::{
-    classify_publish_failure, publish_branch_freshness_outcome_from_source_update,
+    classify_publish_failure, count_unpublished_publish_commits,
+    publish_branch_freshness_outcome_from_source_update,
     publish_branch_freshness_status_from_commits,
     publish_branch_freshness_status_from_commits_and_branch, remote_tracking_ref_for_publish,
     verify_agent_workspace_repair_completion, AgentWorkspaceRepairCompletionCheck,
     PublishBranchFreshnessOutcome, PublishFailureClass,
 };
 use crate::domain::state_machine::transition_handler::SourceUpdateResult;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn git(repo: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .expect("git command should spawn");
+    assert!(
+        output.status.success(),
+        "git {:?} failed\nstdout:\n{}\nstderr:\n{}",
+        args,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
 
 #[test]
 fn classifies_commit_hook_policy_failures_as_agent_fixable() {
@@ -122,6 +140,51 @@ fn derives_remote_tracking_ref_for_publish_base() {
     assert_eq!(
         remote_tracking_ref_for_publish("origin/main"),
         "origin/main"
+    );
+}
+
+#[tokio::test]
+async fn counts_unpublished_commits_against_remote_workspace_branch() {
+    let repo = tempfile::TempDir::new().expect("repo tempdir");
+    git(repo.path(), &["init", "-b", "main"]);
+    git(repo.path(), &["config", "user.email", "test@example.com"]);
+    git(repo.path(), &["config", "user.name", "RalphX Test"]);
+    std::fs::write(repo.path().join("README.md"), "base\n").expect("write base");
+    git(repo.path(), &["add", "README.md"]);
+    git(repo.path(), &["commit", "-m", "base"]);
+    git(repo.path(), &["checkout", "-b", "ralphx/test/workspace"]);
+
+    assert_eq!(
+        count_unpublished_publish_commits(repo.path(), "ralphx/test/missing")
+            .await
+            .expect("count missing remote"),
+        None
+    );
+
+    git(
+        repo.path(),
+        &[
+            "update-ref",
+            "refs/remotes/origin/ralphx/test/workspace",
+            "HEAD",
+        ],
+    );
+    assert_eq!(
+        count_unpublished_publish_commits(repo.path(), "ralphx/test/workspace")
+            .await
+            .expect("count published branch"),
+        Some(0)
+    );
+
+    std::fs::write(repo.path().join("agent.txt"), "local\n").expect("write local");
+    git(repo.path(), &["add", "agent.txt"]);
+    git(repo.path(), &["commit", "-m", "local update"]);
+
+    assert_eq!(
+        count_unpublished_publish_commits(repo.path(), "ralphx/test/workspace")
+            .await
+            .expect("count unpublished branch"),
+        Some(1)
     );
 }
 

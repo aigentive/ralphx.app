@@ -109,6 +109,20 @@ pub async fn count_existing_publish_branch_reviewable_commits(
     count_publish_reviewable_commits(repo_path, source_branch, review_base).await
 }
 
+pub async fn count_unpublished_publish_commits(
+    repo_path: &Path,
+    source_branch: &str,
+) -> AppResult<Option<u32>> {
+    let remote_ref = remote_tracking_ref_for_publish(source_branch);
+    if !GitService::ref_exists(repo_path, &remote_ref).await? {
+        return Ok(None);
+    }
+
+    count_publish_reviewable_commits(repo_path, source_branch, &remote_ref)
+        .await
+        .map(Some)
+}
+
 pub async fn push_publish_branch(
     github: &Arc<dyn GithubServiceTrait>,
     repo_path: &Path,

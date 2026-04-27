@@ -28,6 +28,7 @@ import { PublishEventLog } from "./AgentsPublishEventLog";
 import { PublishFact } from "./AgentsPublishFact";
 import { PublishPipelineSteps } from "./AgentsPublishPipelineSteps";
 import { formatPullRequestUrlLabel } from "./agentPublishFormatting";
+import { isAgentWorkspacePublishCurrent } from "./agentWorkspacePublishState";
 
 const LazyDiffViewer = lazy(() =>
   import("@/components/diff").then((module) => ({ default: module.DiffViewer })),
@@ -164,6 +165,7 @@ export function AgentPublishPanel({
     : null;
   const freshness = freshnessQuery.data;
   const isBranchUpdateNeeded = Boolean(freshness?.isBaseAhead);
+  const isPublishCurrent = isAgentWorkspacePublishCurrent(workspace, freshness);
   const isUpdatingFromBase = updateFromBaseMutation.isPending;
   const effectivePublishing = isPublishingWorkspace || isUpdatingFromBase;
   const isRepairPending = workspace.publicationPushStatus === "needs_agent";
@@ -180,7 +182,19 @@ export function AgentPublishPanel({
     !onPublishWorkspace ||
     effectivePublishing ||
     isRepairPending ||
+    isPublishCurrent ||
     workspace.status === "missing";
+  const publishButtonLabel = isPublishCurrent ? "Published" : "Commit & Publish";
+  const publishSummary =
+    isChangesLoading
+      ? "Loading changed files..."
+      : isPublishCurrent
+        ? changes.length > 0
+          ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} published for review.`
+          : "Workspace is published and current."
+        : changes.length > 0
+          ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} ready for review.`
+          : "No changed files detected yet.";
 
   return (
     <div className="min-h-full p-4" data-testid="agents-publish-pane">
@@ -283,11 +297,7 @@ export function AgentPublishPanel({
                 Commit & Publish
               </div>
               <div className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
-                {isChangesLoading
-                  ? "Loading changed files..."
-                  : changes.length > 0
-                    ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} ready for review.`
-                    : "No changed files detected yet."}
+                {publishSummary}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -331,10 +341,12 @@ export function AgentPublishPanel({
                 >
                   {isPublishingWorkspace ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : isPublishCurrent ? (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
                   ) : (
                     <GitPullRequestArrow className="h-3.5 w-3.5" />
                   )}
-                  Commit & Publish
+                  {publishButtonLabel}
                 </Button>
               )}
             </div>

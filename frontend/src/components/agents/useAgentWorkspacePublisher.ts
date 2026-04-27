@@ -53,7 +53,16 @@ export function useAgentWorkspacePublisher({
             queryKey: ["agents", "conversation-workspace", conversationId],
           }),
           queryClient.invalidateQueries({
+            queryKey: ["agents", "conversation-workspace-freshness", conversationId],
+          }),
+          queryClient.invalidateQueries({
             queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["agents", "workspace-diff", conversationId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["agents", "workspace-commits", conversationId],
           }),
           conversation?.projectId
             ? invalidateProjectConversations(conversation.projectId)
@@ -66,6 +75,9 @@ export function useAgentWorkspacePublisher({
           refreshedWorkspace = await chatApi.getAgentConversationWorkspace(conversationId);
           void queryClient.invalidateQueries({
             queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ["agents", "conversation-workspace-freshness", conversationId],
           });
           if (refreshedWorkspace) {
             queryClient.setQueryData(

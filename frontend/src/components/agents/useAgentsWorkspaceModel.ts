@@ -13,6 +13,7 @@ import {
   getAgentTerminalUnavailableReason,
   runtimeFromConversation,
 } from "./agentConversationRuntime";
+import { isAgentWorkspacePublishCurrent } from "./agentWorkspacePublishState";
 import { normalizeRuntimeSelection } from "./agentOptions";
 import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
 
@@ -67,9 +68,15 @@ export function useAgentsWorkspaceModel({
       activeWorkspace.status !== "missing",
     staleTime: 5_000,
   });
+  const isPublishShortcutCurrent = isAgentWorkspacePublishCurrent(
+    activeWorkspace,
+    activeWorkspaceFreshnessQuery.data,
+  );
   const publishShortcutLabel = activeWorkspaceFreshnessQuery.data?.isBaseAhead
     ? `Update from ${activeWorkspace?.baseRef ?? activeWorkspaceFreshnessQuery.data.baseRef}`
-    : "Commit & Publish";
+    : isPublishShortcutCurrent
+      ? "Published"
+      : "Commit & Publish";
   const activeConversationModeLocked =
     activeConversationMode === "ideation" || isWorkspaceModeLocked(activeWorkspace);
   const terminalUnavailableReason = getAgentTerminalUnavailableReason(

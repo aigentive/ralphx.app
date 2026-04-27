@@ -27,10 +27,10 @@ use crate::application::chat_service::{
 };
 use crate::application::git_service::GitService;
 use crate::application::publish_resilience::{
-    classify_publish_failure, count_publish_reviewable_commits, ensure_publish_branch_fresh,
-    inspect_publish_branch_freshness_for_source, publish_push_status_for_failure,
-    push_publish_branch, review_base_for_publish, PublishBranchFreshnessOutcome,
-    PublishBranchFreshnessStatus, PublishFailureClass,
+    classify_publish_failure, count_publish_reviewable_commits, count_unpublished_publish_commits,
+    ensure_publish_branch_fresh, inspect_publish_branch_freshness_for_source,
+    publish_push_status_for_failure, push_publish_branch, review_base_for_publish,
+    PublishBranchFreshnessOutcome, PublishBranchFreshnessStatus, PublishFailureClass,
 };
 use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, ChatServiceError, SendResult,
@@ -220,12 +220,16 @@ pub struct AgentConversationWorkspaceFreshnessResponse {
     pub captured_base_commit: Option<String>,
     pub target_base_commit: String,
     pub is_base_ahead: bool,
+    pub has_uncommitted_changes: bool,
+    pub unpublished_commit_count: Option<u32>,
 }
 
 impl AgentConversationWorkspaceFreshnessResponse {
     fn from_workspace_status(
         workspace: &AgentConversationWorkspace,
         status: PublishBranchFreshnessStatus,
+        has_uncommitted_changes: bool,
+        unpublished_commit_count: Option<u32>,
     ) -> Self {
         Self {
             conversation_id: workspace.conversation_id.as_str(),
@@ -235,6 +239,8 @@ impl AgentConversationWorkspaceFreshnessResponse {
             captured_base_commit: status.captured_base_commit,
             target_base_commit: status.target_base_commit,
             is_base_ahead: status.is_base_ahead,
+            has_uncommitted_changes,
+            unpublished_commit_count,
         }
     }
 }
@@ -1778,7 +1784,22 @@ pub async fn get_agent_conversation_workspace_freshness(
             .unwrap_or(workspace);
     }
 
-    Ok(AgentConversationWorkspaceFreshnessResponse::from_workspace_status(&workspace, status))
+    let has_uncommitted_changes = GitService::has_uncommitted_changes(&worktree_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let unpublished_commit_count =
+        count_unpublished_publish_commits(&worktree_path, &workspace.branch_name)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    Ok(
+        AgentConversationWorkspaceFreshnessResponse::from_workspace_status(
+            &workspace,
+            status,
+            has_uncommitted_changes,
+            unpublished_commit_count,
+        ),
+    )
 }
 
 /// Update an edit-agent workspace branch from its captured base ref without publishing it.

@@ -509,6 +509,8 @@ export function setupAgentsViewTest() {
     capturedBaseCommit: "base-sha",
     targetBaseCommit: "base-sha",
     isBaseAhead: false,
+    hasUncommittedChanges: false,
+    unpublishedCommitCount: null,
   });
   listAgentConversationWorkspacesByProjectMock.mockResolvedValue([]);
   listConversationsMock.mockResolvedValue([]);

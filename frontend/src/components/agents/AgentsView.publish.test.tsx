@@ -59,6 +59,8 @@ describe("AgentsView publish", () => {
       capturedBaseCommit: "old-base",
       targetBaseCommit: "new-base",
       isBaseAhead: true,
+      hasUncommittedChanges: false,
+      unpublishedCommitCount: null,
     });
 
     renderAgentsView();
@@ -67,6 +69,37 @@ describe("AgentsView publish", () => {
     await waitFor(() =>
       expect(screen.getByTestId("agents-publish-workspace")).toHaveTextContent(
         "Update from feature/agent-screen"
+      )
+    );
+  });
+
+  it("shows Published in the header shortcut when the workspace branch is already current", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(
+      conversationWorkspace({
+        mode: "edit",
+        publicationPushStatus: "pushed",
+        publicationPrNumber: 78,
+      })
+    );
+    getAgentConversationWorkspaceFreshnessMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      baseRef: "feature/agent-screen",
+      baseDisplayName: "Current branch (feature/agent-screen)",
+      targetRef: "origin/feature/agent-screen",
+      capturedBaseCommit: "base-sha",
+      targetBaseCommit: "base-sha",
+      isBaseAhead: false,
+      hasUncommittedChanges: false,
+      unpublishedCommitCount: 0,
+    });
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-publish-workspace")).toHaveTextContent(
+        "Published"
       )
     );
   });

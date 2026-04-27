@@ -206,6 +206,8 @@ describe("AgentsArtifactPane", () => {
       capturedBaseCommit: "base-sha",
       targetBaseCommit: "base-sha",
       isBaseAhead: false,
+      hasUncommittedChanges: false,
+      unpublishedCommitCount: null,
     });
     updateWorkspaceFromBaseMock.mockResolvedValue({
       workspace: workspace({ mode: "edit", baseCommit: "base-sha" }),
@@ -371,6 +373,77 @@ describe("AgentsArtifactPane", () => {
     expect(publish).toHaveBeenCalledWith("conversation-1");
   });
 
+  it("disables publish once the workspace branch is pushed and current", async () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    getWorkspaceFreshnessMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      baseRef: "feature/agent-screen",
+      baseDisplayName: "Current branch (feature/agent-screen)",
+      targetRef: "origin/feature/agent-screen",
+      capturedBaseCommit: "base-sha",
+      targetBaseCommit: "base-sha",
+      isBaseAhead: false,
+      hasUncommittedChanges: false,
+      unpublishedCommitCount: 0,
+    });
+
+    renderPane(
+      "publish",
+      workspace({
+        mode: "edit",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+        publicationPushStatus: "pushed",
+        publicationPrNumber: 78,
+      }),
+      publish,
+    );
+
+    const publishButton = await screen.findByTestId("agents-publish-confirm");
+    await waitFor(() => expect(publishButton).toHaveTextContent("Published"));
+    expect(publishButton).toBeDisabled();
+    expect(screen.getByText("1 changed file published for review.")).toBeInTheDocument();
+
+    fireEvent.click(publishButton);
+
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("keeps publish enabled when a pushed workspace has new local commits", async () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    getWorkspaceFreshnessMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      baseRef: "feature/agent-screen",
+      baseDisplayName: "Current branch (feature/agent-screen)",
+      targetRef: "origin/feature/agent-screen",
+      capturedBaseCommit: "base-sha",
+      targetBaseCommit: "base-sha",
+      isBaseAhead: false,
+      hasUncommittedChanges: false,
+      unpublishedCommitCount: 1,
+    });
+
+    renderPane(
+      "publish",
+      workspace({
+        mode: "edit",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+        publicationPushStatus: "pushed",
+        publicationPrNumber: 78,
+      }),
+      publish,
+    );
+
+    const publishButton = await screen.findByTestId("agents-publish-confirm");
+    await waitFor(() => expect(publishButton).toHaveTextContent("Commit & Publish"));
+    expect(publishButton).toBeEnabled();
+
+    fireEvent.click(publishButton);
+
+    expect(publish).toHaveBeenCalledWith("conversation-1");
+  });
+
   it("opens the published PR from the publish pane", async () => {
     renderPane(
       "publish",
@@ -417,6 +490,8 @@ describe("AgentsArtifactPane", () => {
       capturedBaseCommit: "old-base",
       targetBaseCommit: "new-base",
       isBaseAhead: true,
+      hasUncommittedChanges: false,
+      unpublishedCommitCount: null,
     });
     updateWorkspaceFromBaseMock.mockResolvedValue({
       workspace: workspace({
@@ -464,6 +539,8 @@ describe("AgentsArtifactPane", () => {
       capturedBaseCommit: "old-base",
       targetBaseCommit: "new-base",
       isBaseAhead: true,
+      hasUncommittedChanges: false,
+      unpublishedCommitCount: null,
     });
 
     renderPane(

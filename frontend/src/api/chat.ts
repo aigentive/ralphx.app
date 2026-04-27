@@ -1160,6 +1160,8 @@ export interface AgentConversationWorkspaceFreshness {
   capturedBaseCommit: string | null;
   targetBaseCommit: string;
   isBaseAhead: boolean;
+  hasUncommittedChanges: boolean;
+  unpublishedCommitCount: number | null;
 }
 
 export interface UpdateAgentConversationWorkspaceFromBaseResult {
@@ -1223,6 +1225,8 @@ const AgentConversationWorkspaceFreshnessResponseSchema = z.object({
   captured_base_commit: z.string().nullable(),
   target_base_commit: z.string(),
   is_base_ahead: z.boolean(),
+  has_uncommitted_changes: z.boolean(),
+  unpublished_commit_count: z.number().nullable(),
 });
 
 const StartAgentConversationResponseSchema = z.object({
@@ -1366,6 +1370,8 @@ function transformAgentConversationWorkspaceFreshness(
     capturedBaseCommit: raw.captured_base_commit,
     targetBaseCommit: raw.target_base_commit,
     isBaseAhead: raw.is_base_ahead,
+    hasUncommittedChanges: raw.has_uncommitted_changes,
+    unpublishedCommitCount: raw.unpublished_commit_count,
   };
 }
 

@@ -678,6 +678,8 @@ describe("chat api", () => {
       captured_base_commit: "old-base",
       target_base_commit: "new-base",
       is_base_ahead: true,
+      has_uncommitted_changes: true,
+      unpublished_commit_count: 2,
     });
 
     const result = await getAgentConversationWorkspaceFreshness("conversation-1");
@@ -691,6 +693,8 @@ describe("chat api", () => {
       baseRef: "feature/agent-screen",
       targetRef: "origin/feature/agent-screen",
       isBaseAhead: true,
+      hasUncommittedChanges: true,
+      unpublishedCommitCount: 2,
     });
   });
 
