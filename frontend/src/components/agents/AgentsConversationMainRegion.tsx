@@ -14,6 +14,7 @@ interface AgentsConversationMainRegionProps {
   activeProjectOptions: ActiveConversationPanelProps["activeProjectOptions"];
   activeWorkspace: ActiveConversationPanelProps["activeWorkspace"];
   attachedIdeationSessionId: ActiveConversationPanelProps["attachedIdeationSessionId"];
+  availableArtifactTabs: ActiveConversationPanelProps["availableArtifactTabs"];
   defaultProjectId: StartConversationPanelProps["defaultProjectId"];
   defaultRuntime: StartConversationPanelProps["defaultRuntime"];
   hasAutoOpenArtifacts: ActiveConversationPanelProps["hasAutoOpenArtifacts"];
@@ -47,6 +48,7 @@ export const AgentsConversationMainRegion = memo(function AgentsConversationMain
   activeProjectOptions,
   activeWorkspace,
   attachedIdeationSessionId,
+  availableArtifactTabs,
   defaultProjectId,
   defaultRuntime,
   hasAutoOpenArtifacts,
@@ -81,6 +83,7 @@ export const AgentsConversationMainRegion = memo(function AgentsConversationMain
         activeProjectOptions={activeProjectOptions}
         activeWorkspace={activeWorkspace}
         attachedIdeationSessionId={attachedIdeationSessionId}
+        availableArtifactTabs={availableArtifactTabs}
         hasAutoOpenArtifacts={hasAutoOpenArtifacts}
         normalizedActiveRuntime={normalizedActiveRuntime}
         onActiveConversationModeChange={onActiveConversationModeChange}

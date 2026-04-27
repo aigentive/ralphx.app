@@ -68,4 +68,10 @@ describe("resolveAttachedIdeationSessionId", () => {
 
     expect(result).toBe("session-from-text");
   });
+
+  it("falls back to the linked workspace session when no transcript tool result is available", () => {
+    const result = resolveAttachedIdeationSessionId(conversation, [], "session-linked");
+
+    expect(result).toBe("session-linked");
+  });
 });

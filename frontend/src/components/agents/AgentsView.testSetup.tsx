@@ -271,18 +271,53 @@ vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
     headerContent,
     contentWidthClassName,
     renderComposer,
+    ideationSessionId,
+    conversationIdOverride,
+    storeContextKeyOverride,
+    agentProcessContextIdOverride,
+    sendOptions,
+    onChildSessionNavigate,
   }: {
     headerContent?: ReactNode;
     contentWidthClassName?: string;
     renderComposer?: (props: Record<string, unknown>) => ReactNode;
+    ideationSessionId?: string;
+    conversationIdOverride?: string;
+    storeContextKeyOverride?: string;
+    agentProcessContextIdOverride?: string;
+    sendOptions?: Record<string, unknown>;
+    onChildSessionNavigate?: (sessionId: string) => void | Promise<void>;
   }) => {
-    integratedChatPanelRenderMock();
+    integratedChatPanelRenderMock({
+      ideationSessionId,
+      conversationIdOverride,
+      storeContextKeyOverride,
+      agentProcessContextIdOverride,
+      sendOptions,
+      hasChildSessionNavigate: Boolean(onChildSessionNavigate),
+    });
     return (
       <div
         data-testid="integrated-chat-panel"
         data-content-width-class={contentWidthClassName ?? ""}
+        data-ideation-session-id={ideationSessionId ?? ""}
+        data-conversation-id-override={conversationIdOverride ?? ""}
+        data-store-context-key-override={storeContextKeyOverride ?? ""}
+        data-agent-process-context-id-override={agentProcessContextIdOverride ?? ""}
+        data-send-conversation-id={
+          typeof sendOptions?.conversationId === "string" ? sendOptions.conversationId : ""
+        }
       >
         {headerContent}
+        {onChildSessionNavigate ? (
+          <button
+            type="button"
+            data-testid="mock-open-child-session"
+            onClick={() => void onChildSessionNavigate("session-child")}
+          >
+            Open child session
+          </button>
+        ) : null}
         {renderComposer?.({
           onSend: vi.fn(),
           onStop: vi.fn(),

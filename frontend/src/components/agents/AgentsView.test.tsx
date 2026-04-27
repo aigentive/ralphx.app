@@ -114,6 +114,44 @@ describe("AgentsView", () => {
     expect(vi.mocked(ideationApi.sessions.getWithData)).not.toHaveBeenCalled();
   });
 
+  it("focuses the main chat on an attached ideation run when Open Run is used", async () => {
+    mockAgentViewData();
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    const panel = await screen.findByTestId("integrated-chat-panel");
+    expect(panel).toHaveAttribute("data-conversation-id-override", "conversation-1");
+    expect(panel).toHaveAttribute("data-ideation-session-id", "");
+
+    fireEvent.click(screen.getByTestId("mock-open-child-session"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+        "data-ideation-session-id",
+        "session-child",
+      );
+    });
+    expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+      "data-conversation-id-override",
+      "",
+    );
+    expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+      "data-send-conversation-id",
+      "",
+    );
+    expect(screen.getByTestId("agents-chat-focus-return")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("agents-chat-focus-return"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+        "data-conversation-id-override",
+        "conversation-1",
+      );
+    });
+  });
+
   it("uses a collapsed sidebar strip on small screens and opens the overlay on demand", async () => {
     mockSidebarBreakpoint({ isLarge: false, isMedium: false });
     mockAgentViewData();

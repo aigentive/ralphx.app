@@ -11,6 +11,7 @@ import { ideationApi } from "@/api/ideation";
 import { ideationKeys } from "@/hooks/useIdeation";
 
 import type { AgentConversation } from "./agentConversations";
+import { getVisibleIdeationArtifactTabs } from "./agentArtifactTabs";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 
 interface UseAgentsAttachedIdeationArgs {
@@ -37,9 +38,18 @@ export function useAgentsAttachedIdeation({
   const attachedIdeationSessionId = useMemo(
     () =>
       shouldHydrateAttachedIdeation
-        ? resolveAttachedIdeationSessionId(activeConversation, selectedConversationMessages)
+        ? resolveAttachedIdeationSessionId(
+            activeConversation,
+            selectedConversationMessages,
+            activeWorkspace?.linkedIdeationSessionId ?? null,
+          )
         : null,
-    [activeConversation, selectedConversationMessages, shouldHydrateAttachedIdeation],
+    [
+      activeConversation,
+      activeWorkspace?.linkedIdeationSessionId,
+      selectedConversationMessages,
+      shouldHydrateAttachedIdeation,
+    ],
   );
   const attachedIdeationSessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedIdeationSessionId ?? ""),
@@ -67,6 +77,23 @@ export function useAgentsAttachedIdeation({
         attachedIdeationSessionData.proposals.length > 0
     );
   }, [attachedIdeationSessionData]);
+  const availableArtifactTabs = useMemo(() => {
+    const session = attachedIdeationSessionData?.session;
+    const hasPlanArtifact = Boolean(
+      session?.planArtifactId || session?.inheritedPlanArtifactId,
+    );
+    const hasExecutionTasks = Boolean(
+      activeWorkspace?.linkedPlanBranchId ||
+        session?.acceptanceStatus === "accepted" ||
+        session?.convertedAt,
+    );
+
+    return getVisibleIdeationArtifactTabs({
+      hasAttachedIdeationSession: Boolean(attachedIdeationSessionData),
+      hasPlanArtifact,
+      hasExecutionTasks,
+    });
+  }, [activeWorkspace?.linkedPlanBranchId, attachedIdeationSessionData]);
   useEffect(() => {
     if (
       activeConversation?.contextType !== "project" ||
@@ -96,6 +123,7 @@ export function useAgentsAttachedIdeation({
   return {
     attachedIdeationSessionData,
     attachedIdeationSessionId,
+    availableArtifactTabs,
     hasAutoOpenArtifacts,
   };
 }

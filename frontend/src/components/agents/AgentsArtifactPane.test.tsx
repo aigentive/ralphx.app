@@ -18,6 +18,7 @@ const {
   listPublicationEventsMock,
   getWorkspaceFreshnessMock,
   updateWorkspaceFromBaseMock,
+  getArtifactMock,
   getIdeationSessionMock,
   useConversationMock,
   useDependencyGraphMock,
@@ -32,6 +33,7 @@ const {
   listPublicationEventsMock: vi.fn(),
   getWorkspaceFreshnessMock: vi.fn(),
   updateWorkspaceFromBaseMock: vi.fn(),
+  getArtifactMock: vi.fn(),
   getIdeationSessionMock: vi.fn(),
   useConversationMock: vi.fn(),
   useDependencyGraphMock: vi.fn(),
@@ -80,6 +82,17 @@ vi.mock("@/api/ideation", async (importOriginal) => {
         ...actual.ideationApi.sessions,
         getWithData: (...args: unknown[]) => getIdeationSessionMock(...args),
       },
+    },
+  };
+});
+
+vi.mock("@/api/artifact", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/artifact")>();
+  return {
+    ...actual,
+    artifactApi: {
+      ...actual.artifactApi,
+      get: (...args: unknown[]) => getArtifactMock(...args),
     },
   };
 });
@@ -215,6 +228,7 @@ describe("AgentsArtifactPane", () => {
       targetRef: "origin/main",
       baseCommit: "base-sha",
     });
+    getArtifactMock.mockResolvedValue(null);
     getIdeationSessionMock.mockResolvedValue(null);
     useConversationMock.mockReturnValue({
       data: null,
@@ -231,11 +245,44 @@ describe("AgentsArtifactPane", () => {
     openUrlMock.mockResolvedValue(undefined);
   });
 
-  it("anchors the active tab border to the bottom edge of the tab bar", () => {
-    renderPane();
+  it("anchors the active tab border to the bottom edge of the tab bar", async () => {
+    getIdeationSessionMock.mockResolvedValue({
+      session: {
+        id: "session-1",
+        projectId: "project-1",
+        title: "Agent Plan",
+        titleSource: "auto",
+        status: "active",
+        planArtifactId: "artifact-1",
+        seedTaskId: null,
+        parentSessionId: null,
+        teamMode: null,
+        teamConfig: null,
+        createdAt: "2026-04-23T09:00:00Z",
+        updatedAt: "2026-04-23T09:00:00Z",
+        archivedAt: null,
+        convertedAt: "2026-04-23T10:00:00Z",
+        verificationStatus: "unverified",
+        verificationInProgress: false,
+        gapScore: null,
+        inheritedPlanArtifactId: null,
+        sessionPurpose: "general",
+        acceptanceStatus: "accepted",
+      },
+      proposals: [],
+      messages: [],
+    });
+
+    renderPane(
+      "tasks",
+      workspace({ mode: "ideation", linkedIdeationSessionId: "session-1" }),
+      vi.fn(),
+      false,
+      conversation(),
+    );
 
     const tabRow = screen.getByTestId("agents-artifact-tab-row");
-    const activeTab = screen.getByTestId("agents-artifact-tab-tasks");
+    const activeTab = await screen.findByTestId("agents-artifact-tab-tasks");
     const inactiveTab = screen.getByTestId("agents-artifact-tab-plan");
 
     expect(tabRow.getAttribute("style")).toContain(
@@ -362,6 +409,73 @@ describe("AgentsArtifactPane", () => {
     await waitFor(() => expect(getIdeationSessionMock).toHaveBeenCalledWith("session-1"));
     expect(useDependencyGraphMock).toHaveBeenCalledWith("");
     expect(useVerificationStatusMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it("hides plan-derived tabs until the attached ideation run has a plan", async () => {
+    useConversationMock.mockReturnValue({
+      data: {
+        conversation: conversation(),
+        messages: [
+          {
+            id: "message-1",
+            conversationId: "conversation-1",
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "tool-1",
+                name: "v1_start_ideation",
+                arguments: {},
+                result: { session_id: "session-1" },
+              },
+            ],
+            contentBlocks: [],
+            createdAt: "2026-04-23T09:00:00Z",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+    getIdeationSessionMock.mockResolvedValue({
+      session: {
+        id: "session-1",
+        projectId: "project-1",
+        title: "Agent Plan",
+        titleSource: "auto",
+        status: "active",
+        planArtifactId: null,
+        seedTaskId: null,
+        parentSessionId: null,
+        teamMode: null,
+        teamConfig: null,
+        createdAt: "2026-04-23T09:00:00Z",
+        updatedAt: "2026-04-23T09:00:00Z",
+        archivedAt: null,
+        convertedAt: null,
+        verificationStatus: "unverified",
+        verificationInProgress: false,
+        gapScore: null,
+        inheritedPlanArtifactId: null,
+        sessionPurpose: "general",
+        acceptanceStatus: null,
+      },
+      proposals: [],
+      messages: [],
+    });
+
+    renderPane(
+      "plan",
+      workspace({ mode: "ideation" }),
+      vi.fn(),
+      false,
+      conversation(),
+    );
+
+    await waitFor(() => expect(getIdeationSessionMock).toHaveBeenCalledWith("session-1"));
+    expect(screen.queryByTestId("agents-artifact-tab-plan")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agents-artifact-tab-verification")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agents-artifact-tab-proposal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agents-artifact-tab-tasks")).not.toBeInTheDocument();
   });
 
   it("confirms publish from the publish pane", () => {

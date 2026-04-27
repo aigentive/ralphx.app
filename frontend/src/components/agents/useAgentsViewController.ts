@@ -123,6 +123,7 @@ export function useAgentsViewController({
   const invalidateProjectConversations = useAgentConversationInvalidation(queryClient);
   const {
     attachedIdeationSessionId,
+    availableArtifactTabs,
     hasAutoOpenArtifacts,
   } = useAgentsAttachedIdeation({
     activeConversation,
@@ -271,6 +272,7 @@ export function useAgentsViewController({
       activeProjectOptions,
       activeWorkspace,
       attachedIdeationSessionId,
+      availableArtifactTabs,
       defaultProjectId,
       defaultRuntime,
       hasAutoOpenArtifacts,

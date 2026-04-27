@@ -7,9 +7,10 @@ import type { AgentConversation } from "./agentConversations";
 export function resolveAttachedIdeationSessionId(
   conversation: AgentConversation | null,
   messages: ChatMessageResponse[],
+  fallbackSessionId?: string | null,
 ): string | null {
   if (!conversation) {
-    return null;
+    return fallbackSessionId ?? null;
   }
   if (conversation.contextType === "ideation") {
     return conversation.contextId;
@@ -35,7 +36,7 @@ export function resolveAttachedIdeationSessionId(
     }
   }
 
-  return null;
+  return fallbackSessionId ?? null;
 }
 
 function extractAttachedSessionId(toolCall: ToolCall): string | null {

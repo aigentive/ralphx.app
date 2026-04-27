@@ -39,6 +39,10 @@ import type { Artifact } from "@/types/artifact";
 import type { IdeationSession, TaskProposal } from "@/types/ideation";
 import type { DependencyGraphResponse } from "@/api/ideation.types";
 import type { AgentConversation } from "./agentConversations";
+import {
+  getVisibleIdeationArtifactTabs,
+  type IdeationArtifactTab,
+} from "./agentArtifactTabs";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 import { EmptyArtifactState } from "./AgentsArtifactEmptyState";
 import { AgentPublishPanel } from "./AgentsPublishPanel";
@@ -81,7 +85,7 @@ const LazyVerificationPanel = lazy(() =>
 );
 
 const ARTIFACT_TABS: Array<{
-  id: AgentArtifactTab;
+  id: IdeationArtifactTab;
   label: string;
   icon: ElementType;
 }> = [
@@ -121,28 +125,14 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
   onClose,
 }: AgentsArtifactPaneProps) {
   const queryClient = useQueryClient();
-  const showIdeationTabs = workspace?.mode === "ideation";
+  const canHydrateIdeationArtifacts = Boolean(
+    workspace?.mode === "ideation" ||
+      workspace?.linkedIdeationSessionId ||
+      workspace?.linkedPlanBranchId,
+  );
   const showPublishTab =
     workspace?.mode === "edit" && !workspace.linkedIdeationSessionId && !workspace.linkedPlanBranchId;
-  const shouldLoadIdeationData = showIdeationTabs;
-  const visibleTabs = useMemo(
-    () => [
-      ...(showIdeationTabs ? ARTIFACT_TABS : []),
-      ...(showPublishTab ? [PUBLISH_TAB] : []),
-    ],
-    [showIdeationTabs, showPublishTab],
-  );
-  const effectiveActiveTab =
-    visibleTabs.some((tab) => tab.id === activeTab)
-      ? activeTab
-      : showPublishTab
-        ? "publish"
-        : "plan";
-  const shouldLoadVerificationData =
-    shouldLoadIdeationData && effectiveActiveTab === "verification";
-  const shouldLoadDependencyGraph =
-    shouldLoadIdeationData &&
-    (effectiveActiveTab === "proposal" || effectiveActiveTab === "tasks");
+  const shouldLoadIdeationData = canHydrateIdeationArtifacts;
   const conversationQuery = useConversationHistoryWindow(conversation?.id ?? null, {
     enabled: shouldLoadIdeationData && !!conversation?.id,
     pageSize: 40,
@@ -160,9 +150,18 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
   const attachedSessionId = useMemo(
     () =>
       shouldLoadIdeationData
-        ? resolveAttachedIdeationSessionId(conversation, conversationMessages)
+        ? resolveAttachedIdeationSessionId(
+            conversation,
+            conversationMessages,
+            workspace?.linkedIdeationSessionId ?? null,
+          )
         : null,
-    [conversation, conversationMessages, shouldLoadIdeationData],
+    [
+      conversation,
+      conversationMessages,
+      shouldLoadIdeationData,
+      workspace?.linkedIdeationSessionId,
+    ],
   );
   const sessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedSessionId ?? ""),
@@ -188,6 +187,41 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
   const planArtifactId = shouldLoadIdeationData
     ? sessionData?.session.planArtifactId ?? sessionData?.session.inheritedPlanArtifactId ?? null
     : null;
+  const availableIdeationTabIds = useMemo(
+    () =>
+      getVisibleIdeationArtifactTabs({
+        hasAttachedIdeationSession: Boolean(sessionData),
+        hasPlanArtifact: Boolean(planArtifactId),
+        hasExecutionTasks: Boolean(
+          workspace?.linkedPlanBranchId ||
+            sessionData?.session.acceptanceStatus === "accepted" ||
+            sessionData?.session.convertedAt,
+        ),
+      }),
+    [
+      planArtifactId,
+      sessionData,
+      workspace?.linkedPlanBranchId,
+    ],
+  );
+  const visibleTabs = useMemo(
+    () => [
+      ...ARTIFACT_TABS.filter((tab) => availableIdeationTabIds.includes(tab.id)),
+      ...(showPublishTab ? [PUBLISH_TAB] : []),
+    ],
+    [availableIdeationTabIds, showPublishTab],
+  );
+  const effectiveActiveTab =
+    visibleTabs.some((tab) => tab.id === activeTab)
+      ? activeTab
+      : showPublishTab
+        ? "publish"
+        : "plan";
+  const shouldLoadVerificationData =
+    shouldLoadIdeationData && effectiveActiveTab === "verification";
+  const shouldLoadDependencyGraph =
+    shouldLoadIdeationData &&
+    (effectiveActiveTab === "proposal" || effectiveActiveTab === "tasks");
   const planArtifactQuery = useQuery({
     queryKey: ["agents", "artifact", planArtifactId],
     queryFn: () => artifactApi.get(planArtifactId!),

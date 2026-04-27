@@ -142,6 +142,8 @@ interface IntegratedChatPanelProps {
     providerHarness?: string | null;
     modelId?: string | null;
   };
+  /** Optional host-owned child session navigation. Falls back to transcript modal. */
+  onChildSessionNavigate?: (sessionId: string) => void | Promise<void>;
   renderComposer?: (props: IntegratedChatComposerRenderProps) => React.ReactNode;
   onUserMessageSent?: (payload: {
     content: string;
@@ -190,6 +192,7 @@ export function IntegratedChatPanel({
   storeContextKeyOverride,
   agentProcessContextIdOverride,
   sendOptions,
+  onChildSessionNavigate,
   renderComposer,
   onUserMessageSent,
 }: IntegratedChatPanelProps) {
@@ -925,8 +928,12 @@ export function IntegratedChatPanel({
 
   // Handler for opening a child ideation run without leaving the parent chat.
   const handleNavigateToChildSession = useCallback(async (childSessionId: string) => {
+    if (onChildSessionNavigate) {
+      await onChildSessionNavigate(childSessionId);
+      return;
+    }
     setChildSessionModalId(childSessionId);
-  }, []);
+  }, [onChildSessionNavigate]);
 
   // Hydrate effectiveModel from HTTP session data for inactive ideation sessions.
   // This covers the case where the user opens a past session that was never live

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ElementType } from "react";
 import {
+  ArrowLeft,
   CheckCircle2,
   ClipboardList,
   FileText,
@@ -31,10 +32,11 @@ import {
   getAgentConversationStoreKey,
   type AgentConversation,
 } from "./agentConversations";
+import type { IdeationArtifactTab } from "./agentArtifactTabs";
 import { resolveConversationAgentMode } from "./agentConversationMode";
 
 const HEADER_ARTIFACT_TABS: Array<{
-  id: AgentArtifactTab;
+  id: IdeationArtifactTab;
   label: string;
   icon: ElementType;
 }> = [
@@ -48,6 +50,9 @@ export interface AgentsChatHeaderProps {
   conversation: AgentConversation | null;
   workspace: AgentConversationWorkspace | null;
   modelDisplay?: ModelDisplay | undefined;
+  availableArtifactTabs?: readonly IdeationArtifactTab[] | undefined;
+  focusReturnLabel?: string | undefined;
+  onReturnToWorkspaceChat?: (() => void) | undefined;
   artifactOpen: boolean;
   activeArtifactTab: AgentArtifactTab;
   terminalOpen?: boolean;
@@ -68,6 +73,9 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   conversation,
   workspace,
   modelDisplay,
+  availableArtifactTabs = [],
+  focusReturnLabel,
+  onReturnToWorkspaceChat,
   artifactOpen,
   activeArtifactTab,
   terminalOpen = false,
@@ -87,7 +95,16 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   const conversationMode = conversation
     ? resolveConversationAgentMode(conversation, workspace)
     : null;
-  const showIdeationArtifacts = conversationMode === "ideation";
+  const visibleHeaderArtifactTabs = useMemo(
+    () =>
+      HEADER_ARTIFACT_TABS.filter((tab) =>
+        availableArtifactTabs.includes(tab.id),
+      ),
+    [availableArtifactTabs],
+  );
+  const showIdeationArtifacts =
+    conversationMode === "ideation" && visibleHeaderArtifactTabs.length > 0;
+  const showArtifactToggle = conversationMode === "ideation" || artifactOpen;
   const publishPaneOpen = artifactOpen && activeArtifactTab === "publish";
   const showPublishShortcut = Boolean(
     conversation &&
@@ -135,6 +152,26 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   return (
     <div className="flex w-full flex-1 items-center justify-between gap-3 min-w-0">
       <div className="flex min-w-0 shrink items-center gap-2">
+        {onReturnToWorkspaceChat ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs"
+                onClick={onReturnToWorkspaceChat}
+                data-testid="agents-chat-focus-return"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>{focusReturnLabel ?? "Workspace chat"}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              Return to workspace chat
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         <div className="min-w-0 shrink">
           {isEditing ? (
             <Input
@@ -249,7 +286,7 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
         )}
 
         {showIdeationArtifacts && !artifactOpen &&
-          HEADER_ARTIFACT_TABS.map(({ id, label, icon: Icon }) => {
+          visibleHeaderArtifactTabs.map(({ id, label, icon: Icon }) => {
             const isActive = activeArtifactTab === id && artifactOpen;
             return (
               <Tooltip key={id}>
@@ -282,7 +319,7 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
             );
           })}
 
-        {showIdeationArtifacts || artifactOpen ? (
+        {showArtifactToggle ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

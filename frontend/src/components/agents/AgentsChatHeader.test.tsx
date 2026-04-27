@@ -346,6 +346,7 @@ describe("AgentsChatHeader", () => {
       <AgentsChatHeader
         conversation={conversation({ agentMode: "ideation" })}
         workspace={conversationWorkspace({ mode: "ideation" })}
+        availableArtifactTabs={["plan", "verification", "proposal", "tasks"]}
         artifactOpen={false}
         activeArtifactTab="plan"
         onRenameConversation={vi.fn().mockResolvedValue(undefined)}
@@ -359,6 +360,28 @@ describe("AgentsChatHeader", () => {
     expect(screen.getByLabelText("Verification")).toBeInTheDocument();
     expect(screen.getByLabelText("Proposals")).toBeInTheDocument();
     expect(screen.getByLabelText("Tasks")).toBeInTheDocument();
+  });
+
+  it("hides ideation artifact shortcuts when no artifact tabs are available yet", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({ agentMode: "ideation" })}
+        workspace={conversationWorkspace({ mode: "ideation" })}
+        availableArtifactTabs={[]}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleTerminal={vi.fn()}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByLabelText("Plan")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Verification")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Proposals")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Tasks")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Open artifacts")).toBeInTheDocument();
   });
 
   it("toggles the terminal from the header when a workspace is available", () => {
