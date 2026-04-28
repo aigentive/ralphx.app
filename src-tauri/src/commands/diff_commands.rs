@@ -10,7 +10,20 @@ use crate::commands::git_commands::{CommitInfoResponse, TaskCommitsResponse};
 use crate::domain::entities::{ChatConversationId, PlanBranch, Project, Task, TaskId};
 use crate::error::{AppError, AppResult};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use tauri::State;
+
+fn resolve_merge_base(repo: &Path, base: &str, target: &str) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["merge-base", base, target])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
 
 /// Determine the working path for a task.
 ///
@@ -209,19 +222,22 @@ async fn get_agent_workspace_context(
         .ok_or_else(|| AppError::ProjectNotFound(workspace.project_id.as_str().to_string()))?;
 
     // For ideation workspaces linked to a plan branch, the commits live on the
-    // plan branch, not the workspace's own branch. Use the project root (which
-    // has all branches) and compare base_ref..plan_branch_name.
+    // plan branch, not the workspace's own branch. Use the project root and
+    // resolve the merge-base so the diff only shows changes introduced by the
+    // plan branch (not unrelated base-branch progress).
     if let Some(plan_branch_id) = &workspace.linked_plan_branch_id {
         if let Some(plan_branch) = app_state
             .plan_branch_repo
             .get_by_id(plan_branch_id)
             .await?
         {
-            let base_ref = plan_branch_review_base_ref(&plan_branch, &project);
+            let base_branch = plan_branch_review_base_ref(&plan_branch, &project);
             let project_path = PathBuf::from(&project.working_directory);
+            let merge_base = resolve_merge_base(&project_path, &base_branch, &plan_branch.branch_name)
+                .unwrap_or(base_branch);
             return Ok(AgentWorkspaceContext {
                 working_path: project_path,
-                base_ref,
+                base_ref: merge_base,
                 diff_target: Some(plan_branch.branch_name.clone()),
             });
         }
