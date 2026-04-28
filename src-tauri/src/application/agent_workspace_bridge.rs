@@ -541,7 +541,7 @@ fn build_wakeup(
         serde_json::to_string_pretty(&event_payload).unwrap_or_else(|_| event_payload.to_string());
     let event_word = if events.len() == 1 { "event" } else { "events" };
     let content = format!(
-        "RalphX workflow {event_word} arrived for this agent workspace. Review the payload, explain what changed, and take action with your tools if the workspace needs intervention. If no action is needed, keep the response brief.\n\n```json\n{payload_text}\n```"
+        "<!-- ralphx_internal_skill=ralphx-agent-workspace-swe -->\nRalphX workflow {event_word} arrived for this agent workspace. Use /ralphx-agent-workspace-swe skill. Review the payload and explain what changed. Only use tools for explicit intervention cases from that guidance; otherwise keep the response brief.\n\n```json\n{payload_text}\n```"
     );
     let metadata = json!({
         "source": WAKEUP_SOURCE,

@@ -68,6 +68,7 @@ use crate::infrastructure::agents::harness_agent_catalog::{
     load_canonical_claude_metadata, load_harness_agent_prompt, resolve_harness_agent_prompt_path,
     resolve_project_root_from_plugin_dir, AgentPromptHarness,
 };
+use crate::infrastructure::agents::internal_skills::inject_internal_skills_into_system_prompt;
 use crate::infrastructure::agents::mcp_runtime_context::{
     append_mcp_runtime_query, McpRuntimeContext,
 };
@@ -543,10 +544,26 @@ pub(crate) fn resolve_agent_system_prompt_path(
     resolve_harness_agent_prompt_path(&project_root, short, AgentPromptHarness::Claude)
 }
 
-pub(crate) fn load_agent_system_prompt(plugin_dir: &Path, agent_name: &str) -> Option<String> {
+fn load_agent_system_prompt_with_internal_skills(
+    plugin_dir: &Path,
+    agent_name: &str,
+    prompt: &str,
+) -> Option<(String, Vec<String>)> {
     let short = mcp_agent_type(agent_name);
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
-    load_harness_agent_prompt(&project_root, short, AgentPromptHarness::Claude)
+    let system_prompt =
+        load_harness_agent_prompt(&project_root, short, AgentPromptHarness::Claude)?;
+    match inject_internal_skills_into_system_prompt(&project_root, short, &system_prompt, prompt) {
+        Ok(injection) => Some((injection.system_prompt, injection.injected_skill_names)),
+        Err(error) => {
+            warn!(
+                agent = agent_name,
+                error = %error,
+                "Failed to inject internal skills into Claude prompt"
+            );
+            Some((system_prompt, Vec::new()))
+        }
+    }
 }
 
 /// Best-effort cleanup for `~/.claude.json` to avoid startup instability from
@@ -1218,7 +1235,41 @@ fn add_prompt_args(
             cmd.args(["--agent", agent_name]);
         } else if let Some(prompt_path) = resolve_agent_system_prompt_path(plugin_dir, agent_name) {
             let runtime = claude_runtime_config();
-            if runtime.use_append_system_prompt_file {
+            let prompt_with_internal_skills =
+                load_agent_system_prompt_with_internal_skills(plugin_dir, agent_name, prompt);
+            if let Some((system_prompt, injected_skill_names)) =
+                prompt_with_internal_skills.as_ref()
+            {
+                if !injected_skill_names.is_empty() {
+                    cmd.args(["--append-system-prompt", system_prompt]);
+                    tracing::debug!(
+                        agent = agent_name,
+                        skills = ?injected_skill_names,
+                        "Injected agent prompt with internal skills via --append-system-prompt"
+                    );
+                } else if runtime.use_append_system_prompt_file {
+                    if let Some(path_str) = prompt_path.to_str() {
+                        cmd.args(["--append-system-prompt-file", path_str]);
+                        tracing::debug!(
+                            agent = agent_name,
+                            path = path_str,
+                            "Injected agent prompt via --append-system-prompt-file"
+                        );
+                    } else {
+                        cmd.args(["--append-system-prompt", system_prompt]);
+                        tracing::debug!(
+                            agent = agent_name,
+                            "Injected agent prompt via --append-system-prompt"
+                        );
+                    }
+                } else {
+                    cmd.args(["--append-system-prompt", system_prompt]);
+                    tracing::debug!(
+                        agent = agent_name,
+                        "Injected agent prompt via --append-system-prompt"
+                    );
+                }
+            } else if runtime.use_append_system_prompt_file {
                 if let Some(path_str) = prompt_path.to_str() {
                     cmd.args(["--append-system-prompt-file", path_str]);
                     tracing::debug!(
@@ -1226,20 +1277,13 @@ fn add_prompt_args(
                         path = path_str,
                         "Injected agent prompt via --append-system-prompt-file"
                     );
-                } else if let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name)
-                {
-                    cmd.args(["--append-system-prompt", &system_prompt]);
-                    tracing::debug!(
+                } else {
+                    tracing::warn!(
                         agent = agent_name,
-                        "Injected agent prompt via --append-system-prompt"
+                        "Agent prompt path was not valid UTF-8; falling back to native --agent"
                     );
+                    cmd.args(["--agent", agent_name]);
                 }
-            } else if let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name) {
-                cmd.args(["--append-system-prompt", &system_prompt]);
-                tracing::debug!(
-                    agent = agent_name,
-                    "Injected agent prompt via --append-system-prompt"
-                );
             } else {
                 tracing::warn!(
                     agent = agent_name,

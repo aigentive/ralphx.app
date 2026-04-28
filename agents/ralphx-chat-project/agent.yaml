@@ -12,6 +12,9 @@ capabilities:
     - delegate_start
     - delegate_wait
     - delegate_cancel
+  internal_skills:
+    allowed:
+      - ralphx-agent-workspace-swe
 harnesses:
   claude:
     model: sonnet

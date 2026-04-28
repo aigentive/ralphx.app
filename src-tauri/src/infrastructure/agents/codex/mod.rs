@@ -14,9 +14,10 @@ use crate::infrastructure::agents::claude::{
     validate_mcp_tool_name,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
-    load_canonical_codex_metadata, load_harness_agent_prompt,
-    resolve_project_root_from_plugin_dir, AgentPromptHarness, CanonicalCodexAgentMetadata,
+    load_canonical_codex_metadata, load_harness_agent_prompt, resolve_project_root_from_plugin_dir,
+    AgentPromptHarness, CanonicalCodexAgentMetadata,
 };
+use crate::infrastructure::agents::internal_skills::inject_internal_skills_into_system_prompt;
 use crate::infrastructure::agents::mcp_runtime_context::{
     append_mcp_runtime_query, McpRuntimeContext,
 };
@@ -270,6 +271,22 @@ pub fn compose_codex_prompt(
         load_harness_agent_prompt(&project_root, agent_name, AgentPromptHarness::Codex);
     let Some(system_prompt) = system_prompt else {
         return prompt.to_string();
+    };
+    let system_prompt = match inject_internal_skills_into_system_prompt(
+        &project_root,
+        agent_name,
+        &system_prompt,
+        prompt,
+    ) {
+        Ok(injection) => injection.system_prompt,
+        Err(error) => {
+            warn!(
+                agent = agent_name,
+                error = %error,
+                "Failed to inject internal skills into Codex prompt"
+            );
+            system_prompt
+        }
     };
 
     format!(
