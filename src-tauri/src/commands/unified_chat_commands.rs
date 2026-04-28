@@ -1799,6 +1799,22 @@ pub async fn get_agent_conversation_workspace_freshness(
         )
         .await
         .map_err(|e| e.to_string())?;
+
+        // Clear stale needs_agent status on ideation workspaces — the edit-mode
+        // repair flow doesn't apply here, so the flag can become permanently stuck.
+        if workspace.publication_push_status.as_deref() == Some("needs_agent") {
+            let _ = state
+                .agent_conversation_workspace_repo
+                .update_publication(
+                    &workspace.conversation_id,
+                    workspace.publication_pr_number,
+                    workspace.publication_pr_url.as_deref(),
+                    workspace.publication_pr_status.as_deref(),
+                    Some("pushed"),
+                )
+                .await;
+        }
+
         return Ok(
             AgentConversationWorkspaceFreshnessResponse::from_workspace_status(
                 &workspace,
