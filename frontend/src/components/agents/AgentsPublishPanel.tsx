@@ -226,6 +226,7 @@ export function AgentPublishPanel({
       ? "checking"
       : workspace.publicationPushStatus;
   const baseActionLabel = workspace.baseRef || base;
+  const isFreshnessLoading = freshnessQuery.isLoading;
   const publishDisabled =
     !onPublishWorkspace ||
     isPipelineOwnedWorkspace ||
@@ -450,11 +451,7 @@ export function AgentPublishPanel({
                   type="button"
                   className={primaryActionClassName}
                   onClick={() => void confirmUpdateFromBase()}
-                  disabled={
-                    effectivePublishing ||
-                    (!isPipelineOwnedWorkspace && isRepairPending) ||
-                    workspace.status === "missing"
-                  }
+                  disabled={effectivePublishing}
                   data-testid="agents-update-from-base"
                 >
                   {isUpdatingFromBase ? (
@@ -469,17 +466,17 @@ export function AgentPublishPanel({
                   type="button"
                   className={primaryActionClassName}
                   onClick={() => void confirmPublishWorkspace()}
-                  disabled={publishDisabled}
+                  disabled={publishDisabled || isFreshnessLoading}
                   data-testid="agents-publish-confirm"
                 >
-                  {isPublishingWorkspace ? (
+                  {isPublishingWorkspace || isFreshnessLoading ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : isPublishCurrent || terminalPublicationStatus ? (
                     <CheckCircle2 className="h-3.5 w-3.5" />
                   ) : (
                     <GitPullRequestArrow className="h-3.5 w-3.5" />
                   )}
-                  {publishButtonLabel}
+                  {isFreshnessLoading ? "Checking..." : publishButtonLabel}
                 </Button>
               )}
             </div>
