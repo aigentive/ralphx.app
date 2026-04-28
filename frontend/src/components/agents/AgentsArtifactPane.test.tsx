@@ -19,6 +19,7 @@ const {
   listPublicationEventsMock,
   getWorkspaceFreshnessMock,
   updateWorkspaceFromBaseMock,
+  closeWorkspacePrMock,
   getArtifactMock,
   getIdeationSessionMock,
   getIdeationChildrenMock,
@@ -35,6 +36,7 @@ const {
   listPublicationEventsMock: vi.fn(),
   getWorkspaceFreshnessMock: vi.fn(),
   updateWorkspaceFromBaseMock: vi.fn(),
+  closeWorkspacePrMock: vi.fn(),
   getArtifactMock: vi.fn(),
   getIdeationSessionMock: vi.fn(),
   getIdeationChildrenMock: vi.fn(),
@@ -56,6 +58,8 @@ vi.mock("@/api/chat", async (importOriginal) => {
         getWorkspaceFreshnessMock(...args),
       updateAgentConversationWorkspaceFromBase: (...args: unknown[]) =>
         updateWorkspaceFromBaseMock(...args),
+      closeAgentWorkspacePr: (...args: unknown[]) =>
+        closeWorkspacePrMock(...args),
     },
   };
 });
@@ -240,6 +244,14 @@ describe("AgentsArtifactPane", () => {
       targetRef: "origin/main",
       baseCommit: "base-sha",
     });
+    closeWorkspacePrMock.mockResolvedValue(
+      workspace({
+        publicationPrNumber: 90,
+        publicationPrUrl: "https://github.com/mock/project/pull/90",
+        publicationPrStatus: "closed",
+        publicationPushStatus: "pushed",
+      }),
+    );
     getArtifactMock.mockResolvedValue(null);
     getIdeationSessionMock.mockResolvedValue(null);
     getIdeationChildrenMock.mockResolvedValue([]);
@@ -362,6 +374,73 @@ describe("AgentsArtifactPane", () => {
 
     fireEvent.click(publishButton);
 
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("allows PR maintenance actions for pipeline-owned ideation workspaces", async () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    getWorkspaceFreshnessMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      baseRef: "feature/agent-screen",
+      baseDisplayName: "Current branch (feature/agent-screen)",
+      targetRef: "origin/feature/agent-screen",
+      capturedBaseCommit: "old-base",
+      targetBaseCommit: "new-base",
+      isBaseAhead: true,
+      hasUncommittedChanges: false,
+      unpublishedCommitCount: null,
+    });
+    updateWorkspaceFromBaseMock.mockResolvedValue({
+      workspace: workspace({
+        mode: "ideation",
+        linkedIdeationSessionId: "session-1",
+        linkedPlanBranchId: "plan-branch-1",
+        publicationPrNumber: 90,
+        publicationPrUrl: "https://github.com/mock/project/pull/90",
+        publicationPrStatus: "Open",
+        publicationPushStatus: "pushed",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+        baseCommit: "new-base",
+      }),
+      updated: true,
+      targetRef: "origin/feature/agent-screen",
+      baseCommit: "new-base",
+    });
+
+    renderPane(
+      "publish",
+      workspace({
+        mode: "ideation",
+        linkedIdeationSessionId: "session-1",
+        linkedPlanBranchId: "plan-branch-1",
+        publicationPrNumber: 90,
+        publicationPrUrl: "https://github.com/mock/project/pull/90",
+        publicationPrStatus: "Open",
+        publicationPushStatus: "pushed",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
+        baseCommit: "old-base",
+      }),
+      publish,
+    );
+
+    expect(await screen.findByTestId("agents-base-stale")).toHaveTextContent(
+      "feature/agent-screen"
+    );
+    expect(screen.getByTestId("agents-close-pr")).toBeEnabled();
+    expect(screen.getByTestId("agents-update-from-base")).toBeEnabled();
+    expect(screen.queryByTestId("agents-publish-confirm")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("agents-update-from-base"));
+    await waitFor(() =>
+      expect(updateWorkspaceFromBaseMock).toHaveBeenCalledWith("conversation-1")
+    );
+
+    fireEvent.click(screen.getByTestId("agents-close-pr"));
+    await waitFor(() =>
+      expect(closeWorkspacePrMock).toHaveBeenCalledWith("conversation-1")
+    );
     expect(publish).not.toHaveBeenCalled();
   });
 

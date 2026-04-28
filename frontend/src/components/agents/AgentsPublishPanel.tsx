@@ -94,13 +94,14 @@ export function AgentPublishPanel({
   const terminalPublicationLabel =
     getAgentWorkspaceTerminalPublicationLabel(workspace);
   const isPipelineOwnedWorkspace = isPipelineOwnedAgentWorkspace(workspace);
+  const hasPublishedPr = hasPublishedWorkspacePr(workspace);
   const freshnessQuery = useQuery({
     queryKey: ["agents", "conversation-workspace-freshness", conversationId],
     queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(conversationId!),
     enabled:
       canHydratePublishFacts &&
       !!conversationId &&
-      workspace?.mode === "edit" &&
+      (workspace?.mode === "edit" || hasPublishedPr) &&
       !terminalPublicationStatus,
     staleTime: 5_000,
   });
@@ -238,9 +239,8 @@ export function AgentPublishPanel({
         ? "Published"
         : "Commit & Publish");
   const canClosePr =
-    hasPublishedWorkspacePr(workspace) &&
-    !terminalPublicationStatus &&
-    !isPipelineOwnedWorkspace;
+    hasPublishedPr &&
+    !terminalPublicationStatus;
   const isClosingPr = closePrMutation.isPending;
   const terminalPrLabel =
     workspace.publicationPrNumber != null
