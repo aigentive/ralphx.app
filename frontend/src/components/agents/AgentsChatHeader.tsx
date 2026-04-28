@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ElementType } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
   ChevronDown,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 
 import type { AgentConversationWorkspace } from "@/api/chat";
+import * as chatApi from "@/api/chat";
 import { ChatSessionChips } from "@/components/Chat/ChatSessionChips";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -520,9 +522,21 @@ const AgentsWorkspaceStatusPill = memo(function AgentsWorkspaceStatusPill({
   workspace: AgentConversationWorkspace;
 }) {
   const branch = formatBranchDisplay(workspace.branchName);
-  const status =
-    workspace.publicationPrStatus ?? workspace.publicationPushStatus ?? workspace.status;
-  const statusLabel = status.replace(/_/g, " ");
+  const terminalStatus = workspace.publicationPrStatus === "merged" || workspace.publicationPrStatus === "closed"
+    ? workspace.publicationPrStatus
+    : null;
+  const { data: freshness } = useQuery({
+    queryKey: ["agents", "conversation-workspace-freshness", workspace.conversationId],
+    queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(workspace.conversationId),
+    enabled: workspace.mode === "edit" && !terminalStatus,
+    staleTime: 10_000,
+  });
+  const isBehindBase = !terminalStatus && Boolean(freshness?.isBaseAhead);
+  const statusLabel = terminalStatus
+    ? terminalStatus.replace(/_/g, " ")
+    : isBehindBase
+      ? "Behind base"
+      : (workspace.publicationPushStatus ?? workspace.status).replace(/_/g, " ");
   const baseLabel = workspace.baseDisplayName ?? workspace.baseRef;
 
   return (
@@ -532,9 +546,9 @@ const AgentsWorkspaceStatusPill = memo(function AgentsWorkspaceStatusPill({
           tabIndex={0}
           className="inline-flex min-w-0 max-w-[180px] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:max-w-[300px]"
           style={{
-            color: "var(--text-secondary)",
+            color: isBehindBase ? "var(--status-warning)" : "var(--text-secondary)",
             background: "var(--bg-surface)",
-            borderColor: "var(--overlay-weak)",
+            borderColor: isBehindBase ? "var(--status-warning-border)" : "var(--overlay-weak)",
           }}
           data-testid="agents-workspace-status"
         >
@@ -542,7 +556,7 @@ const AgentsWorkspaceStatusPill = memo(function AgentsWorkspaceStatusPill({
           <span className="truncate font-mono">{branch.short}</span>
           <span
             className="h-1 w-1 shrink-0 rounded-full"
-            style={{ background: "var(--accent-primary)" }}
+            style={{ background: isBehindBase ? "var(--status-warning)" : "var(--accent-primary)" }}
           />
           <span className="shrink-0 capitalize">{statusLabel}</span>
         </div>

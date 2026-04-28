@@ -255,13 +255,15 @@ export function AgentPublishPanel({
             <span
               className="rounded-full border px-2.5 py-1 text-xs capitalize"
               style={{
-                borderColor: "var(--overlay-weak)",
-                color: "var(--text-secondary)",
+                borderColor: isBranchUpdateNeeded ? "var(--status-warning-border)" : "var(--overlay-weak)",
+                color: isBranchUpdateNeeded ? "var(--status-warning)" : "var(--text-secondary)",
               }}
             >
               {terminalPublicationLabel ??
-                workspace.publicationPushStatus ??
-                workspace.status}
+                (isBranchUpdateNeeded
+                  ? "Behind base"
+                  : workspace.publicationPushStatus ??
+                    workspace.status)}
             </span>
           </div>
 
