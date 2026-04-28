@@ -452,7 +452,7 @@ export function AgentPublishPanel({
                   onClick={() => void confirmUpdateFromBase()}
                   disabled={
                     effectivePublishing ||
-                    isRepairPending ||
+                    (!isPipelineOwnedWorkspace && isRepairPending) ||
                     workspace.status === "missing"
                   }
                   data-testid="agents-update-from-base"
