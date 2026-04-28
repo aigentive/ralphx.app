@@ -149,9 +149,11 @@ describe("AgentsView", () => {
       "",
     );
     expect(screen.getByTestId("agents-chat-focus-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("agents-chat-focus-return")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-chat-focus-trigger")).toBeInTheDocument();
     expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
 
+    // Open dropdown and select Workspace
+    fireEvent.click(screen.getByTestId("agents-chat-focus-trigger"));
     fireEvent.click(screen.getByTestId("agents-chat-focus-return"));
 
     await waitFor(() => {
@@ -179,16 +181,9 @@ describe("AgentsView", () => {
     selectSidebarConversationRow();
 
     expect(await screen.findByTestId("agents-chat-focus-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("agents-chat-focus-return")).toHaveTextContent(
+    // Trigger shows the active focus (Workspace)
+    expect(screen.getByTestId("agents-chat-focus-trigger")).toHaveTextContent(
       "Workspace",
-    );
-    expect(screen.getByTestId("agents-chat-focus-return")).toHaveAttribute(
-      "data-active",
-      "true",
-    );
-    expect(screen.getByTestId("agents-chat-focus-option-ideation")).toHaveAttribute(
-      "data-active",
-      "false",
     );
     await waitFor(() => {
       expect(getLatestChildSessionIdMock).toHaveBeenCalledWith(
@@ -197,11 +192,9 @@ describe("AgentsView", () => {
         { includeArchived: true },
       );
     });
-    expect(screen.getByTestId("agents-chat-focus-option-verification")).toHaveAttribute(
-      "data-active",
-      "false",
-    );
 
+    // Open dropdown and select Verification
+    fireEvent.click(screen.getByTestId("agents-chat-focus-trigger"));
     fireEvent.click(screen.getByTestId("agents-chat-focus-option-verification"));
 
     await waitFor(() => {
@@ -252,9 +245,9 @@ describe("AgentsView", () => {
       "",
     );
     expect(screen.getByTestId("agents-chat-focus-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("agents-chat-focus-option-ideation")).toHaveAttribute(
-      "data-active",
-      "true",
+    // Trigger shows Ideation as the active focus
+    expect(screen.getByTestId("agents-chat-focus-trigger")).toHaveTextContent(
+      "Ideation",
     );
     expect(screen.getByTestId("agents-chat-header")).toHaveAttribute(
       "data-focus-type",
@@ -301,10 +294,12 @@ describe("AgentsView", () => {
       "data-focused-ideation-session-id",
       "session-parent",
     );
-    expect(screen.getByTestId("agents-chat-focus-option-verification")).toHaveAttribute(
-      "data-active",
-      "true",
+    // Trigger shows Verification as the active focus
+    expect(screen.getByTestId("agents-chat-focus-trigger")).toHaveTextContent(
+      "Verification",
     );
+    // Open dropdown and switch to Ideation
+    fireEvent.click(screen.getByTestId("agents-chat-focus-trigger"));
     fireEvent.click(screen.getByTestId("agents-chat-focus-option-ideation"));
 
     await waitFor(() => {
@@ -313,9 +308,9 @@ describe("AgentsView", () => {
         "session-parent",
       );
     });
-    expect(screen.getByTestId("agents-chat-focus-option-ideation")).toHaveAttribute(
-      "data-active",
-      "true",
+    // Trigger now shows Ideation
+    expect(screen.getByTestId("agents-chat-focus-trigger")).toHaveTextContent(
+      "Ideation",
     );
     expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
   });

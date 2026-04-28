@@ -1149,6 +1149,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         return;
       }
 
+      const verifyTimers: ReturnType<typeof setTimeout>[] = [];
+
       const doScroll = () => {
         if (hasScrolledRef.current === targetScrollKey) return;
         virtuosoRef.current?.scrollToIndex({
@@ -1158,13 +1160,31 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         });
         scheduleBottomPin("initial conversation load", "auto");
         hasScrolledRef.current = targetScrollKey;
+
+        // Content (markdown, code blocks, tool results) can keep rendering after
+        // the initial scroll. Verify we're actually at bottom and retry if not.
+        const verifyAtBottom = () => {
+          const el = scrollerElRef.current;
+          if (!el) return;
+          const delta = el.scrollHeight - el.clientHeight - el.scrollTop;
+          if (delta > AT_BOTTOM_THRESHOLD) {
+            scrollToTrueBottom("auto");
+          }
+        };
+        verifyTimers.push(
+          setTimeout(verifyAtBottom, 500),
+          setTimeout(verifyAtBottom, 1000),
+        );
       };
 
       const scroller = scrollerElRef.current;
       if (!scroller) {
         // Fallback: scroller not yet mounted, use fixed delay
         const timer = setTimeout(doScroll, MARKDOWN_RENDER_DELAY_MS);
-        return () => clearTimeout(timer);
+        return () => {
+          clearTimeout(timer);
+          verifyTimers.forEach(clearTimeout);
+        };
       }
 
       let debounceTimer: ReturnType<typeof setTimeout>;
@@ -1188,8 +1208,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         observer.disconnect();
         clearTimeout(debounceTimer);
         clearTimeout(safetyTimer);
+        verifyTimers.forEach(clearTimeout);
       };
-    }, [conversationId, lastItemIndex, scheduleBottomPin, timeline.length]);
+    }, [conversationId, lastItemIndex, scheduleBottomPin, scrollToTrueBottom, timeline.length]);
 
     useEffect(() => {
       const previousLastItemIndex = previousLastItemIndexRef.current;

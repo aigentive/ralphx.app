@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ElementType } from "react";
 import {
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   FileText,
   GitBranch,
@@ -18,6 +19,11 @@ import type { AgentConversationWorkspace } from "@/api/chat";
 import { ChatSessionChips } from "@/components/Chat/ChatSessionChips";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
@@ -103,27 +109,34 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
   options,
   onSelectFocus,
   workspace = null,
-  surfaceBackground = false,
 }: {
   activeType: AgentsChatFocusType;
   options: readonly AgentsChatFocusSwitchOption[];
   onSelectFocus: (type: AgentsChatFocusType) => void;
   workspace?: AgentConversationWorkspace | null;
-  surfaceBackground?: boolean;
 }) {
   const showFocusSwitcher = options.length > 1;
+  const [open, setOpen] = useState(false);
+
+  const activeOption = options.find((o) => o.type === activeType) ?? options[0];
+  const activeToneStyle = activeOption?.tone
+    ? FOCUS_TONE_STYLES[activeOption.tone]
+    : null;
+  const ActiveIcon = activeOption
+    ? activeOption.type === "workspace"
+      ? MessageSquare
+      : activeOption.tone
+        ? FOCUS_TONE_ICONS[activeOption.tone]
+        : null
+    : null;
 
   return (
     <div
       className="flex h-9 shrink-0 items-center gap-3 overflow-hidden px-3"
       data-testid="agents-chat-focus-bar"
-      style={
-        surfaceBackground
-          ? { backgroundColor: "var(--bg-base)" }
-          : undefined
-      }
+      style={{ backgroundColor: "var(--bg-base)" }}
     >
-      {showFocusSwitcher ? (
+      {showFocusSwitcher && activeOption ? (
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <span
             className="shrink-0 text-[11px] font-medium uppercase tracking-[0.08em]"
@@ -131,62 +144,103 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
           >
             Chat
           </span>
-          <div
-            role="tablist"
-            aria-label="Chat focus"
-            className="flex min-w-0 items-center gap-1 overflow-x-auto"
-          >
-            {options.map((option) => {
-              const active = option.type === activeType;
-              const toneStyle = option.tone ? FOCUS_TONE_STYLES[option.tone] : null;
-              const Icon =
-                option.type === "workspace"
-                  ? MessageSquare
-                  : option.tone
-                    ? FOCUS_TONE_ICONS[option.tone]
-                    : null;
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Chat focus: ${activeOption.label}. Click to switch.`}
+                data-testid="agents-chat-focus-trigger"
+                className="inline-flex h-6 max-w-[200px] shrink-0 items-center gap-1.5 rounded-full border px-2 text-[12px] font-medium transition-colors"
+                style={
+                  activeToneStyle
+                    ? {
+                        color: activeToneStyle.color,
+                        background: activeToneStyle.background,
+                        borderColor: activeToneStyle.border,
+                      }
+                    : {
+                        color: "var(--text-primary)",
+                        background: "var(--bg-surface)",
+                        borderColor: "var(--overlay-moderate)",
+                      }
+                }
+              >
+                {ActiveIcon ? <ActiveIcon className="h-3.5 w-3.5 shrink-0" /> : null}
+                <span className="truncate">{activeOption.label}</span>
+                <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              sideOffset={4}
+              className="w-auto min-w-[160px] p-1"
+              style={{
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border-subtle)",
+              }}
+            >
+              {options.map((option) => {
+                const selected = option.type === activeType;
+                const toneStyle = option.tone ? FOCUS_TONE_STYLES[option.tone] : null;
+                const Icon =
+                  option.type === "workspace"
+                    ? MessageSquare
+                    : option.tone
+                      ? FOCUS_TONE_ICONS[option.tone]
+                      : null;
 
-              return (
-                <button
-                  key={option.type}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  aria-label={option.description}
-                  data-testid={
-                    option.type === "workspace"
-                      ? "agents-chat-focus-return"
-                      : `agents-chat-focus-option-${option.type}`
-                  }
-                  data-active={active ? "true" : "false"}
-                  className="inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1.5 rounded-full border px-2 text-[12px] font-medium transition-colors"
-                  style={
-                    active
-                      ? toneStyle
-                        ? {
-                            color: toneStyle.color,
-                            background: toneStyle.background,
-                            borderColor: toneStyle.border,
-                          }
+                return (
+                  <button
+                    key={option.type}
+                    type="button"
+                    aria-label={option.description}
+                    data-testid={
+                      option.type === "workspace"
+                        ? "agents-chat-focus-return"
+                        : `agents-chat-focus-option-${option.type}`
+                    }
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors",
+                      selected ? "cursor-default" : "cursor-pointer",
+                    )}
+                    style={
+                      selected
+                        ? toneStyle
+                          ? {
+                              color: toneStyle.color,
+                              background: toneStyle.background,
+                            }
+                          : {
+                              color: "var(--text-primary)",
+                              background: "var(--bg-surface)",
+                            }
                         : {
-                            color: "var(--text-primary)",
-                            background: "var(--bg-surface)",
-                            borderColor: "var(--overlay-moderate)",
+                            color: "var(--text-secondary)",
+                            background: "transparent",
                           }
-                      : {
-                          color: "var(--text-muted)",
-                          background: "var(--bg-base)",
-                          borderColor: "var(--overlay-faint)",
-                        }
-                  }
-                  onClick={() => onSelectFocus(option.type)}
-                >
-                  {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" /> : null}
-                  <span className="truncate">{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
+                    }
+                    onMouseEnter={(e) => {
+                      if (!selected) {
+                        e.currentTarget.style.background = "var(--overlay-faint)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!selected) {
+                        e.currentTarget.style.background = "transparent";
+                      }
+                    }}
+                    onClick={() => {
+                      onSelectFocus(option.type);
+                      setOpen(false);
+                    }}
+                  >
+                    {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" /> : null}
+                    <span>{option.label}</span>
+                  </button>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
         </div>
       ) : (
         <div className="min-w-0 flex-1" />

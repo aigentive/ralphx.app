@@ -1041,7 +1041,7 @@ export function IntegratedChatPanel({
     "w-full",
     contentWidthClassName ? ["mx-auto", contentWidthClassName] : undefined,
   );
-  const transcriptTopInsetClassName = headerSubContent ? "pt-12" : undefined;
+  const transcriptTopInsetClassName = undefined;
 
   return (
     <>
@@ -1128,11 +1128,7 @@ export function IntegratedChatPanel({
               </div>
             )}
           </div>
-          {headerSubContent ? (
-            <div className="pointer-events-none absolute left-0 right-0 top-11 z-10 [&>*]:pointer-events-auto">
-              {headerSubContent}
-            </div>
-          ) : null}
+          {headerSubContent ?? null}
 
           {/* Session Toolbar — houses StatusActivityBadge + optional back
               action. Provider-context chips are now rendered inline in

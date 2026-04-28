@@ -122,7 +122,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
   const isFocusedChildChat = chatFocus.type !== "workspace";
   const showWorkspaceStatus =
     Boolean(activeWorkspace) && !isFocusedChildChat;
-  const { artifactPaneOpen } = useResolvedAgentArtifactState(
+  useResolvedAgentArtifactState(
     selectedConversationId,
     hasAutoOpenArtifacts,
   );
@@ -132,6 +132,8 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
     }
     return getAgentConversationStoreKey(activeConversation);
   }, [activeConversation, focusedChatSessionId]);
+
+  const showFocusBar = chatFocusOptions.length > 1 || showWorkspaceStatus;
 
   return (
     <div className="flex-1 min-w-0 h-full flex flex-col">
@@ -275,14 +277,13 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
               onSelectArtifact={onSelectArtifact}
             />
           }
-          {...(chatFocusOptions.length > 1 || showWorkspaceStatus
+          {...(showFocusBar
             ? {
                 headerSubContent: (
                   <AgentsChatFocusBar
                     activeType={chatFocus.type}
                     options={chatFocusOptions}
                     workspace={showWorkspaceStatus ? activeWorkspace : null}
-                    surfaceBackground={artifactPaneOpen}
                     onSelectFocus={onSelectChatFocus}
                   />
                 ),
