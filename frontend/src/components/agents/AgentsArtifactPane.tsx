@@ -47,6 +47,7 @@ import {
 } from "./agentArtifactTabs";
 import { getLatestIdeationChildId } from "./agentIdeationChildren";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
+import type { ProposalDetailEnrichment } from "@/components/Ideation/ProposalDetailSheet";
 import { EmptyArtifactState } from "./AgentsArtifactEmptyState";
 import { AgentPublishPanel } from "./AgentsPublishPanel";
 import { shouldShowAgentWorkspacePublishSurface } from "./agentWorkspacePublishState";
@@ -80,6 +81,11 @@ const LazyPlanEmptyState = lazy(() =>
 const LazyProposalsTabContent = lazy(() =>
   import("@/components/Ideation/ProposalsTabContent").then((module) => ({
     default: module.ProposalsTabContent,
+  })),
+);
+const LazyProposalDetailSheet = lazy(() =>
+  import("@/components/Ideation/ProposalDetailSheet").then((module) => ({
+    default: module.ProposalDetailSheet,
   })),
 );
 const LazyVerificationPanel = lazy(() =>
@@ -322,12 +328,23 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
           {visibleTabs.map(({ id, label, icon: Icon }) => {
             const isActive = effectiveActiveTab === id;
             const count = id === "proposal" ? proposalCount : 0;
-            const showVerificationDot =
-              id === "verification" &&
-              (verificationInProgress ||
+
+            let iconColor: string | undefined;
+            let iconPulse = false;
+            if (id === "verification") {
+              if (verificationInProgress) {
+                iconColor = "var(--accent-primary)";
+                iconPulse = true;
+              } else if (
                 verificationState === "verified" ||
-                verificationState === "imported_verified" ||
-                verificationState === "needs_revision");
+                verificationState === "imported_verified"
+              ) {
+                iconColor = "var(--status-success)";
+              } else if (verificationState === "needs_revision") {
+                iconColor = "var(--status-warning)";
+              }
+            }
+
             return (
               <button
                 key={id}
@@ -345,24 +362,11 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
                 data-testid={`agents-artifact-tab-${id}`}
                 data-theme-button-skip="true"
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                <Icon
+                  className={cn("w-4 h-4 shrink-0", iconPulse ? "animate-pulse" : "")}
+                  style={iconColor ? { color: iconColor } : undefined}
+                />
                 <span>{label}</span>
-                {showVerificationDot && (
-                  <span
-                    className={cn(
-                      "w-2 h-2 rounded-full shrink-0",
-                      verificationInProgress ? "animate-pulse" : ""
-                    )}
-                    style={{
-                      background:
-                        verificationState === "needs_revision"
-                          ? "var(--status-warning)"
-                          : verificationState === "verified" || verificationState === "imported_verified"
-                            ? "var(--status-success)"
-                            : "var(--accent-primary)",
-                    }}
-                  />
-                )}
                 {count > 0 && (
                   <span
                     className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
@@ -537,6 +541,22 @@ function ArtifactContent({
     () => new Set(dependencyGraph?.criticalPath ?? []),
     [dependencyGraph?.criticalPath],
   );
+  const [viewingProposalId, setViewingProposalId] = useState<string | null>(null);
+  const [viewingEnrichment, setViewingEnrichment] = useState<ProposalDetailEnrichment | undefined>(undefined);
+  const viewingProposal = viewingProposalId
+    ? proposals.find((p) => p.id === viewingProposalId) ?? null
+    : null;
+  const handleViewProposal = useCallback(
+    (proposalId: string, enrichment: ProposalDetailEnrichment) => {
+      setViewingProposalId(proposalId);
+      setViewingEnrichment(enrichment);
+    },
+    [],
+  );
+  const handleCloseProposalDetail = useCallback(() => {
+    setViewingProposalId(null);
+    setViewingEnrichment(undefined);
+  }, []);
   const handleDisplayedVerificationChildChange = useCallback(
     (childSessionId: string | null) => {
       if (!attachedSessionId || !childSessionId) return;
@@ -609,26 +629,40 @@ function ArtifactContent({
       return <EmptyArtifactState title="No proposals yet" />;
     }
     return (
-      <Suspense fallback={<EmptyArtifactState title="Loading proposals..." />}>
-        <LazyProposalsTabContent
-          session={session}
-          proposals={proposals}
-          dependencyGraph={dependencyGraph}
-          criticalPathSet={criticalPathSet}
-          highlightedIds={EMPTY_PROPOSAL_HIGHLIGHTS}
-          isReadOnly
-          onEditProposal={noop}
-          onNavigateToTask={noop}
-          onViewHistoricalPlan={noop}
-          onImportPlan={noop}
-          onClearAll={noop}
-          onAcceptPlan={noop}
-          onReviewSync={noop}
-          onUndoSync={noop}
-          onDismissSync={noop}
-          hideToolbar
-        />
-      </Suspense>
+      <>
+        <Suspense fallback={<EmptyArtifactState title="Loading proposals..." />}>
+          <LazyProposalsTabContent
+            session={session}
+            proposals={proposals}
+            dependencyGraph={dependencyGraph}
+            criticalPathSet={criticalPathSet}
+            highlightedIds={EMPTY_PROPOSAL_HIGHLIGHTS}
+            isReadOnly
+            onEditProposal={noop}
+            onNavigateToTask={noop}
+            onViewProposal={handleViewProposal}
+            {...(viewingProposalId != null && { selectedProposalId: viewingProposalId })}
+            onViewHistoricalPlan={noop}
+            onImportPlan={noop}
+            onClearAll={noop}
+            onAcceptPlan={noop}
+            onReviewSync={noop}
+            onUndoSync={noop}
+            onDismissSync={noop}
+            hideToolbar
+          />
+        </Suspense>
+        {viewingProposal && (
+          <Suspense fallback={null}>
+            <LazyProposalDetailSheet
+              proposal={viewingProposal}
+              {...(viewingEnrichment !== undefined && { enrichment: viewingEnrichment })}
+              isReadOnly
+              onClose={handleCloseProposalDetail}
+            />
+          </Suspense>
+        )}
+      </>
     );
   }
 

@@ -256,9 +256,8 @@ describe("VerificationPanel — page-load hydration", () => {
     });
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
     expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Previous verification");
-    expect(screen.getByTestId("verification-badge")).toHaveTextContent("verified");
+    expect(screen.getByTestId("verification-status-card")).toHaveTextContent("Plan verified");
     expect(screen.getByTestId("verification-history")).toBeInTheDocument();
-    expect(screen.queryByText("Latest verification")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(onDisplayedVerificationChildChange).toHaveBeenCalledWith("child-verifier-1");
     });

@@ -19,6 +19,8 @@ import {
   ChevronDown,
   History,
   AlertCircle,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -593,6 +595,47 @@ export function VerificationPanel({
     })
     .reverse(); // newest first in dropdown
 
+  // Synthesize a current-generation entry when run history doesn't include it yet
+  if (
+    currentGeneration != null &&
+    currentVerificationData &&
+    !runEntries.some((e) => e.generation === currentGeneration)
+  ) {
+    runEntries.unshift({
+      generation: currentGeneration,
+      status: (currentVerificationData.status ?? "reviewing") as VerificationStatus,
+      inProgress: currentVerificationData.inProgress ?? false,
+      ...(currentVerificationData.currentRound !== undefined && {
+        currentRound: currentVerificationData.currentRound,
+      }),
+      ...(currentVerificationData.maxRounds !== undefined && {
+        maxRounds: currentVerificationData.maxRounds,
+      }),
+      roundCount: currentVerificationData.rounds?.length ?? 0,
+      gapCount: currentVerificationData.gaps?.length ?? 0,
+      ...(currentVerificationData.convergenceReason !== undefined && {
+        convergenceReason: currentVerificationData.convergenceReason,
+      }),
+    });
+  }
+
+  // Deduplicate: if the latest generation has identical results to its predecessor,
+  // drop the predecessor to avoid a redundant picker option.
+  if (runEntries.length >= 2 && currentGeneration != null) {
+    const latest = runEntries[0]!;
+    const previous = runEntries[1]!;
+    if (
+      latest.generation === currentGeneration &&
+      !latest.inProgress &&
+      !previous.inProgress &&
+      latest.status === previous.status &&
+      latest.roundCount === previous.roundCount &&
+      latest.gapCount === previous.gapCount
+    ) {
+      runEntries.splice(1, 1);
+    }
+  }
+
   const handleRunSelect = useCallback((generation: number) => {
     setSelectedGeneration(generation);
   }, []);
@@ -668,6 +711,7 @@ export function VerificationPanel({
 
   const isVerified = verificationStatus === "verified" || verificationStatus === "imported_verified";
   const isSkipped = verificationStatus === "skipped";
+  const isTerminalStatus = !isInProgress && (isVerified || verificationStatus === "needs_revision");
   const showSkipVerification = !isVerified && !isSkipped && !isApproved;
   const showAddressGaps =
     verificationStatus === "needs_revision" && !isInProgress && hasGaps;
@@ -795,7 +839,7 @@ export function VerificationPanel({
       className="flex-1 overflow-y-auto p-4 space-y-4"
     >
       {/* History picker — shown when there are any child sessions */}
-      {runEntries.length > 0 && (
+      {runEntries.length > 1 && (
         <div className="flex items-center justify-between gap-3">
           <VerificationRunPicker
             runs={runEntries}
@@ -853,32 +897,44 @@ export function VerificationPanel({
         </div>
       )}
 
-      {/* Status header row */}
-      <div className="flex items-center justify-between gap-3">
-        <VerificationBadge
-          status={verificationStatus}
-          inProgress={isInProgress}
-          {...(currentVerificationData?.currentRound !== undefined && {
-            currentRound: currentVerificationData.currentRound,
-          })}
-          {...(currentVerificationData?.maxRounds !== undefined && {
-            maxRounds: currentVerificationData.maxRounds,
-          })}
-          {...(currentVerificationData?.convergenceReason !== undefined && {
-            convergenceReason: currentVerificationData.convergenceReason,
-          })}
-          onRetry={handleTriggerVerification}
-        />
-
-        {/* Secondary action buttons */}
-        <div className="flex items-center gap-1.5">
+      {/* Terminal status card or in-progress badge */}
+      {isTerminalStatus ? (
+        <div
+          data-testid="verification-status-card"
+          className="flex items-center gap-2.5 rounded-lg px-3 py-2.5"
+          style={{
+            background: isVerified
+              ? "var(--status-success-muted)"
+              : "var(--status-error-muted)",
+            border: isVerified
+              ? "1px solid var(--status-success-border)"
+              : "1px solid var(--status-error-border)",
+          }}
+        >
+          {isVerified ? (
+            <CheckCircle2
+              className="w-4 h-4 flex-shrink-0"
+              style={{ color: "var(--status-success)" }}
+            />
+          ) : (
+            <AlertTriangle
+              className="w-4 h-4 flex-shrink-0"
+              style={{ color: "var(--status-error)" }}
+            />
+          )}
+          <div
+            className="text-[12px] font-medium flex-1 min-w-0"
+            style={{ color: isVerified ? "var(--status-success)" : "var(--status-error)" }}
+          >
+            {isVerified ? "Plan verified" : "Gaps require attention"}
+          </div>
           {showSkipVerification && (
             <Button
               variant="ghost"
               size="sm"
               onClick={handleSkipVerification}
               data-testid="skip-verification-button"
-              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg shrink-0 transition-colors duration-150"
               style={{
                 color: "var(--text-secondary)",
                 background: "transparent",
@@ -886,11 +942,9 @@ export function VerificationPanel({
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = "var(--overlay-weak)";
-                e.currentTarget.style.color = "var(--text-secondary)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "var(--text-secondary)";
               }}
             >
               <SkipForward className="w-3 h-3" />
@@ -898,7 +952,51 @@ export function VerificationPanel({
             </Button>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <VerificationBadge
+            status={verificationStatus}
+            inProgress={isInProgress}
+            {...(currentVerificationData?.currentRound !== undefined && {
+              currentRound: currentVerificationData.currentRound,
+            })}
+            {...(currentVerificationData?.maxRounds !== undefined && {
+              maxRounds: currentVerificationData.maxRounds,
+            })}
+            {...(currentVerificationData?.convergenceReason !== undefined && {
+              convergenceReason: currentVerificationData.convergenceReason,
+            })}
+            onRetry={handleTriggerVerification}
+          />
+          <div className="flex items-center gap-1.5">
+            {showSkipVerification && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSkipVerification}
+                data-testid="skip-verification-button"
+                className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
+                style={{
+                  color: "var(--text-secondary)",
+                  background: "transparent",
+                  border: "1px solid var(--overlay-weak)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--overlay-weak)";
+                  e.currentTarget.style.color = "var(--text-secondary)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "var(--text-secondary)";
+                }}
+              >
+                <SkipForward className="w-3 h-3" />
+                Skip
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       {showCurrentRunBootstrap && (
         <div
@@ -1096,15 +1194,9 @@ export function VerificationPanel({
 
       {/* Round history */}
       {hasRounds && (
-        <div
-          className="rounded-lg p-3"
-          style={{
-            background: "var(--overlay-faint)",
-            border: "1px solid var(--overlay-faint)",
-          }}
-        >
+        <>
           <div
-            className="text-[11px] font-semibold uppercase tracking-wider mb-3"
+            className="text-[11px] font-semibold uppercase tracking-wider"
             style={{ color: "var(--text-muted)" }}
           >
             Verification History
@@ -1113,13 +1205,8 @@ export function VerificationPanel({
             rounds={rounds}
             roundDetails={roundDetails}
             {...(hasGaps && { currentGaps: gaps })}
-            {...(gapScore !== undefined && { gapScore })}
-            status={verificationStatus}
-            {...(verificationData?.convergenceReason !== undefined && {
-              convergenceReason: verificationData.convergenceReason,
-            })}
           />
-        </div>
+        </>
       )}
     </div>
   );

@@ -5,23 +5,18 @@
  * the current/final gaps with severity breakdown.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   TrendingDown,
   TrendingUp,
   Minus,
-  CheckCircle2,
-  AlertTriangle,
-  ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { withAlpha } from "@/lib/theme-colors";
 import type {
   RoundSummary,
   VerificationGap,
   VerificationRoundDetail,
-  VerificationStatus,
 } from "@/types/ideation";
 
 // ============================================================================
@@ -35,26 +30,11 @@ export interface VerificationHistoryProps {
   roundDetails?: VerificationRoundDetail[];
   /** Final/current gaps for the last round */
   currentGaps?: VerificationGap[];
-  /** Gap score for the current/final round */
-  gapScore?: number;
-  /** Terminal status when verification is complete */
-  status?: VerificationStatus;
-  /** Convergence reason code from backend */
-  convergenceReason?: string;
 }
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-const CONVERGENCE_LABELS: Record<string, string> = {
-  zero_blocking: "No blocking gaps remain",
-  jaccard_converged: "Gap list stabilized across rounds",
-  max_rounds: "Maximum verification rounds reached",
-  critic_parse_failure: "Critic output could not be parsed",
-  user_skipped: "Manually skipped by user",
-  user_reverted: "Plan reverted to original version",
-};
 
 const SEVERITY_CONFIG = {
   critical: { color: "var(--status-error)", bg: "var(--status-error-muted)", label: "Critical" },
@@ -247,174 +227,242 @@ function GapBreakdown({ gaps }: { gaps: VerificationGap[] }) {
   );
 }
 
-function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[] }) {
-  const entries = useMemo(() => buildRoundLineageEntries(roundDetails), [roundDetails]);
-  const [expandedRound, setExpandedRound] = useState<number | null | undefined>(undefined);
-
-  useEffect(() => {
-    if (entries.length === 0) {
-      setExpandedRound(undefined);
-      return;
-    }
-
-    if (
-      expandedRound === undefined ||
-      (expandedRound !== null && !entries.some((entry) => entry.round.round === expandedRound))
-    ) {
-      setExpandedRound(entries[0]!.round.round);
-    }
-  }, [entries, expandedRound]);
+function AddressedGaps({
+  roundNumber,
+  previousRound,
+  resolved,
+}: {
+  roundNumber: number;
+  previousRound: number;
+  resolved: VerificationGap[];
+}) {
+  const [showResolved, setShowResolved] = useState(false);
 
   return (
-    <div className="space-y-4">
+    <div>
+      <button
+        type="button"
+        onClick={() => setShowResolved((v) => !v)}
+        className="flex items-center gap-1.5 text-[11px] font-medium transition-colors"
+        style={{ color: "var(--status-success)" }}
+        aria-expanded={showResolved}
+        aria-controls={`verification-round-${roundNumber}-resolved`}
+      >
+        <ChevronRight
+          className="h-3 w-3 transition-transform duration-150"
+          style={{ transform: showResolved ? "rotate(90deg)" : "rotate(0deg)" }}
+        />
+        {resolved.length} addressed since round {previousRound}
+      </button>
+      {showResolved && (
+        <div id={`verification-round-${roundNumber}-resolved`} className="mt-1">
+          {resolved.map((gap, gapIndex) => {
+            const sev = SEVERITY_CONFIG[gap.severity as keyof typeof SEVERITY_CONFIG];
+            const isLast = gapIndex === resolved.length - 1;
+            return (
+              <div
+                key={`${roundNumber}-resolved-${gapIndex}-${gapKey(gap)}`}
+                className="flex items-start gap-2.5 py-2"
+                style={{ borderBottom: isLast ? "none" : "1px solid var(--overlay-weak)" }}
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1"
+                  style={{ background: "var(--status-success)" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] leading-snug" style={{ color: "var(--text-primary)" }}>
+                    {gap.description}
+                  </div>
+                  <div
+                    className="text-[10px] mt-0.5 opacity-60"
+                    style={{ color: "var(--status-success)" }}
+                  >
+                    {sev?.label ?? gap.severity} · {gap.category}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[] }) {
+  const entries = useMemo(() => buildRoundLineageEntries(roundDetails), [roundDetails]);
+  const [expandedRound, setExpandedRound] = useState<number | null>(null);
+
+  return (
+    <div>
       <div
-        className="text-[11px] font-semibold uppercase tracking-wider"
+        className="text-[11px] font-semibold uppercase tracking-wider mb-3"
         style={{ color: "var(--text-muted)" }}
       >
         Round Lineage
       </div>
-      {entries.map(({ round, previousRound, resolved, isLatest }) => {
-        const isExpanded = expandedRound === round.round;
-        const toggleRound = () => {
-          setExpandedRound((current) => current === round.round ? null : round.round);
-        };
-
-        return (
+      <div className="relative">
+        {entries.length > 1 && (
           <div
-            key={round.round}
-            className="rounded-lg overflow-hidden"
+            className="absolute w-px"
             style={{
-              background: "var(--overlay-faint)",
-              border: "1px solid var(--overlay-faint)",
+              left: 5,
+              top: 12,
+              bottom: 12,
+              background: "var(--overlay-moderate)",
             }}
-          >
-            <button
-              type="button"
-              aria-expanded={isExpanded}
-              aria-controls={`verification-round-panel-${round.round}`}
-              aria-label={`Round ${round.round} summary`}
-              onClick={toggleRound}
-              className="w-full px-3 py-3 text-left transition-colors"
-              style={{ background: isExpanded ? "var(--overlay-weak)" : "transparent" }}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[12px] font-medium" style={{ color: "var(--text-primary)" }}>
-                      Round {round.round}
-                    </span>
-                    {isLatest && (
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                        style={{
-                          background: "var(--status-success-muted)",
-                          color: "var(--status-success)",
-                        }}
-                      >
-                        Latest
-                      </span>
-                    )}
-                    <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
-                      Score {round.gapScore}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span
-                      className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                      style={{
-                        background: "var(--overlay-weak)",
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      {round.gapCount} remaining
-                    </span>
-                    {resolved.length > 0 && (
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                        style={{
-                          background: "var(--status-success-muted)",
-                          color: "var(--status-success)",
-                        }}
-                      >
-                        {resolved.length} addressed
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <span
-                  className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full"
-                  style={{ background: "var(--overlay-weak)", color: "var(--text-secondary)" }}
-                >
-                  {isExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  ) : (
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  )}
-                </span>
-              </div>
-            </button>
+          />
+        )}
+        {entries.map(({ round, previousRound, resolved, isLatest }, entryIdx) => {
+          const nextEntry = entryIdx < entries.length - 1 ? entries[entryIdx + 1] : undefined;
+          const prevScore = nextEntry ? nextEntry.round.gapScore : round.gapScore;
+          const delta = round.gapScore - prevScore;
+          const hasDelta = entryIdx < entries.length - 1;
+          const isExpanded = expandedRound === round.round;
+          const isOldest = entryIdx === entries.length - 1;
+          const toggleRound = () => {
+            setExpandedRound((current) => current === round.round ? null : round.round);
+          };
 
-            {isExpanded && (
+          let dotColor = "var(--text-muted)";
+          if (isLatest && round.gapScore === 0) dotColor = "var(--status-success)";
+          else if (isLatest) dotColor = "var(--accent-primary)";
+          else if (delta < 0) dotColor = "var(--status-success)";
+          else if (delta > 0) dotColor = "var(--status-error)";
+
+          return (
+            <div key={round.round} className="relative pl-6" style={{ paddingBottom: isOldest ? 0 : 4 }}>
+              {/* Timeline dot */}
               <div
-                id={`verification-round-panel-${round.round}`}
-                className="px-3 pb-3 space-y-3"
+                className="absolute rounded-full"
+                style={{
+                  left: isLatest ? 0 : 1,
+                  top: 8,
+                  width: isLatest ? 11 : 9,
+                  height: isLatest ? 11 : 9,
+                  background: dotColor,
+                  boxShadow: isLatest ? `0 0 6px ${withAlpha(dotColor, 30)}` : "none",
+                  border: isLatest ? `2px solid ${withAlpha(dotColor, 20)}` : "none",
+                }}
+              />
+
+              {/* Round header */}
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                aria-controls={`verification-round-panel-${round.round}`}
+                aria-label={`Round ${round.round} summary`}
+                onClick={toggleRound}
+                className="w-full text-left group"
               >
-                <div>
-                  <div className="text-[11px] font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
-                    Remaining after round {round.round}
-                  </div>
+                <div className="flex items-center gap-2 py-1">
+                  <span
+                    className="text-[12px] font-semibold"
+                    style={{ color: isLatest ? "var(--text-primary)" : "var(--text-secondary)" }}
+                  >
+                    R{round.round}
+                  </span>
+                  <span
+                    className="text-[11px] tabular-nums font-medium"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {round.gapScore}
+                  </span>
+                  {hasDelta && delta !== 0 && (
+                    <span
+                      className="text-[10px] font-semibold tabular-nums"
+                      style={{ color: delta < 0 ? "var(--status-success)" : "var(--status-error)" }}
+                    >
+                      {delta > 0 ? "+" : ""}{delta}
+                    </span>
+                  )}
+                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    {round.gapCount} gaps
+                  </span>
+                  {resolved.length > 0 && (
+                    <span className="text-[10px]" style={{ color: "var(--status-success)" }}>
+                      {resolved.length} fixed
+                    </span>
+                  )}
+                  {isLatest && (
+                    <span
+                      className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-px rounded"
+                      style={{ background: withAlpha(dotColor, 12), color: dotColor }}
+                    >
+                      Latest
+                    </span>
+                  )}
+                  <ChevronRight
+                    className="ml-auto h-3.5 w-3.5 shrink-0 transition-transform duration-150 opacity-40 group-hover:opacity-70"
+                    style={{
+                      color: "var(--text-muted)",
+                      transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                    }}
+                  />
+                </div>
+              </button>
+
+              {/* Expanded round detail */}
+              {isExpanded && (
+                <div
+                  id={`verification-round-panel-${round.round}`}
+                  className="pt-1 pb-2 space-y-2"
+                >
                   {round.gaps.length > 0 ? (
-                    <div className="space-y-1.5">
-                      {round.gaps.map((gap, gapIndex) => (
-                        <div
-                          key={`${round.round}-${gapIndex}-${gapKey(gap)}`}
-                          className="rounded-md px-2.5 py-2"
-                          style={{ background: "var(--overlay-faint)" }}
-                        >
-                          <div className="text-[12px]" style={{ color: "var(--text-primary)" }}>
-                            {gap.description}
+                    <div>
+                      {round.gaps.map((gap, gapIndex) => {
+                        const sev = SEVERITY_CONFIG[gap.severity as keyof typeof SEVERITY_CONFIG];
+                        const isLast = gapIndex === round.gaps.length - 1;
+                        return (
+                          <div
+                            key={`${round.round}-${gapIndex}-${gapKey(gap)}`}
+                            className="flex items-start gap-2 py-1.5"
+                            style={{ borderBottom: isLast ? "none" : "1px solid var(--overlay-faint)" }}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-[5px]"
+                              style={{ background: sev?.color ?? "var(--text-muted)" }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div
+                                className="text-[11px] leading-snug"
+                                style={{ color: "var(--text-primary)" }}
+                              >
+                                {gap.description}
+                              </div>
+                              <div
+                                className="text-[10px] mt-0.5 opacity-50"
+                                style={{ color: sev?.color ?? "var(--text-muted)" }}
+                              >
+                                {sev?.label ?? gap.severity} · {gap.category}
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-[10px] mt-1 uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-                            {gap.severity} · {gap.category}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
-                    <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                    <div
+                      className="text-[11px] py-1"
+                      style={{ color: "var(--text-muted)" }}
+                    >
                       No gaps remained after this round.
                     </div>
                   )}
-                </div>
 
-                {resolved.length > 0 && previousRound !== undefined && (
-                  <div>
-                    <div className="text-[11px] font-medium mb-1" style={{ color: "var(--status-success)" }}>
-                      Addressed Since Round {previousRound}
-                    </div>
-                    <div className="space-y-1.5">
-                      {resolved.map((gap, gapIndex) => (
-                        <div
-                          key={`${round.round}-resolved-${gapIndex}-${gapKey(gap)}`}
-                          className="rounded-md px-2.5 py-2"
-                          style={{ background: "var(--status-success-muted)" }}
-                        >
-                          <div className="text-[12px]" style={{ color: "var(--text-primary)" }}>
-                            {gap.description}
-                          </div>
-                          <div className="text-[10px] mt-1 uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-                            {gap.severity} · {gap.category}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+                  {resolved.length > 0 && previousRound !== undefined && (
+                    <AddressedGaps
+                      roundNumber={round.round}
+                      previousRound={previousRound}
+                      resolved={resolved}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -427,60 +475,12 @@ export function VerificationHistory({
   rounds,
   roundDetails,
   currentGaps,
-  gapScore,
-  status,
-  convergenceReason,
 }: VerificationHistoryProps) {
-  const isVerified = status === "verified";
   const hasGaps = currentGaps !== undefined && currentGaps.length > 0;
   const hasRoundDetails = roundDetails !== undefined && roundDetails.length > 0;
-  const convergenceLabel = convergenceReason
-    ? (CONVERGENCE_LABELS[convergenceReason] ?? convergenceReason)
-    : undefined;
 
   return (
     <div className="py-2">
-      {/* Status summary */}
-      {status && status !== "reviewing" && (
-        <div
-          className={cn(
-            "flex items-center gap-2.5 rounded-lg px-3 py-2.5 mb-4",
-          )}
-          style={{
-            background: isVerified
-              ? "var(--status-success-muted)"
-              : "var(--status-error-muted)",
-            border: isVerified
-              ? "1px solid var(--status-success-border)"
-              : "1px solid var(--status-error-border)",
-          }}
-        >
-          {isVerified ? (
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "var(--status-success)" }} />
-          ) : (
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: "var(--status-error)" }} />
-          )}
-          <div>
-            <div
-              className="text-[12px] font-medium"
-              style={{ color: isVerified ? "var(--status-success)" : "var(--status-error)" }}
-            >
-              {isVerified ? "Plan verified" : "Gaps require attention"}
-            </div>
-            {convergenceLabel && (
-              <div className="text-[11px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                {convergenceLabel}
-              </div>
-            )}
-            {gapScore !== undefined && gapScore > 0 && (
-              <div className="text-[11px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                Gap score: {gapScore}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Round timeline */}
       {rounds.length > 0 && <RoundTimeline rounds={rounds} />}
 
