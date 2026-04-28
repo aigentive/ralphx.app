@@ -1022,6 +1022,7 @@ export const chatApi = {
   getAgentConversationWorkspaceFreshness,
   updateAgentConversationWorkspaceFromBase,
   publishAgentConversationWorkspace,
+  closeAgentWorkspacePr,
   getAgentRunStatus,
   // Message sending & queue
   startAgentConversation,
@@ -1434,6 +1435,17 @@ export async function publishAgentConversationWorkspace(
     PublishAgentConversationWorkspaceResponseSchema
   );
   return transformPublishAgentConversationWorkspaceResponse(raw);
+}
+
+export async function closeAgentWorkspacePr(
+  conversationId: string
+): Promise<AgentConversationWorkspace> {
+  const raw = await typedInvoke(
+    "close_agent_workspace_pr",
+    { conversationId },
+    AgentConversationWorkspaceResponseSchema
+  );
+  return transformAgentConversationWorkspace(raw);
 }
 
 export async function startAgentConversation(

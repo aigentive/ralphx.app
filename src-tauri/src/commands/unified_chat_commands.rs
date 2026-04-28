@@ -2039,6 +2039,72 @@ pub async fn publish_agent_conversation_workspace(
     .await
 }
 
+/// Close the PR associated with an agent conversation workspace.
+/// Sets publication_pr_status to "closed" so the existing conversation
+/// continuity mechanism will create a fresh branch on the next user message.
+#[tauri::command]
+pub async fn close_agent_workspace_pr(
+    conversation_id: String,
+    state: State<'_, AppState>,
+) -> Result<AgentConversationWorkspaceResponse, String> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let workspace = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "Agent conversation workspace not found for conversation {}",
+                conversation_id
+            )
+        })?;
+
+    let pr_number = workspace.publication_pr_number.ok_or_else(|| {
+        "No PR associated with this workspace".to_string()
+    })?;
+
+    let project = state
+        .project_repo
+        .get_by_id(&workspace.project_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", workspace.project_id))?;
+
+    let working_dir = std::path::Path::new(&project.working_directory);
+
+    if let Some(github_svc) = &state.github_service {
+        if let Err(e) = github_svc.close_pr(working_dir, pr_number).await {
+            tracing::warn!(
+                pr_number = pr_number,
+                error = %e,
+                "close_agent_workspace_pr: failed to close PR on remote (continuing with local status update)"
+            );
+        }
+    }
+
+    state
+        .agent_conversation_workspace_repo
+        .update_publication(
+            &conversation_id,
+            Some(pr_number),
+            workspace.publication_pr_url.as_deref(),
+            Some("closed"),
+            workspace.publication_push_status.as_deref(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let updated = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Workspace disappeared after update".to_string())?;
+
+    agent_workspace_response_for_state(&state, updated).await
+}
+
 #[doc(hidden)]
 pub async fn publish_agent_conversation_workspace_for_app_state(
     state: &AppState,

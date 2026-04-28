@@ -5,6 +5,7 @@ import {
   GitPullRequestArrow,
   GitBranch,
   Loader2,
+  XCircle,
 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,6 +32,7 @@ import { formatPullRequestUrlLabel } from "./agentPublishFormatting";
 import {
   getAgentWorkspaceTerminalPublicationLabel,
   getAgentWorkspaceTerminalPublicationStatus,
+  hasPublishedWorkspacePr,
   isPipelineOwnedAgentWorkspace,
   isAgentWorkspacePublishCurrent,
 } from "./agentWorkspacePublishState";
@@ -154,6 +156,32 @@ export function AgentPublishPanel({
       }
     },
   });
+  const closePrMutation = useMutation<AgentConversationWorkspace, Error>({
+    mutationFn: () => chatApi.closeAgentWorkspacePr(conversationId!),
+    onSuccess: async (updatedWorkspace) => {
+      queryClient.setQueryData(
+        ["agents", "conversation-workspace", updatedWorkspace.conversationId],
+        updatedWorkspace,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["agents", "conversation-workspace", updatedWorkspace.conversationId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["agents", "conversation-workspace-freshness", updatedWorkspace.conversationId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["agents", "conversation-workspace-publication-events", updatedWorkspace.conversationId],
+        }),
+      ]);
+      toast.success("Pull request closed");
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to close pull request",
+      );
+    },
+  });
   const changes = changesQuery.data ?? [];
   const commits = commitsQuery.data ?? [];
   const publicationEvents = publicationEventsQuery.data ?? [];
@@ -208,6 +236,11 @@ export function AgentPublishPanel({
       : isPublishCurrent
         ? "Published"
         : "Commit & Publish");
+  const canClosePr =
+    hasPublishedWorkspacePr(workspace) &&
+    !terminalPublicationStatus &&
+    !isPipelineOwnedWorkspace;
+  const isClosingPr = closePrMutation.isPending;
   const terminalPrLabel =
     workspace.publicationPrNumber != null
       ? `PR #${workspace.publicationPrNumber}`
@@ -361,6 +394,24 @@ export function AgentPublishPanel({
                 <Code className="h-3.5 w-3.5" />
                 Review Changes
               </Button>
+              {canClosePr && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-9 gap-2 px-3 text-xs"
+                  style={{ color: "var(--status-error)" }}
+                  onClick={() => closePrMutation.mutate()}
+                  disabled={isClosingPr || effectivePublishing}
+                  data-testid="agents-close-pr"
+                >
+                  {isClosingPr ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5" />
+                  )}
+                  Close PR
+                </Button>
+              )}
               {isBranchUpdateNeeded ? (
                 <Button
                   type="button"
