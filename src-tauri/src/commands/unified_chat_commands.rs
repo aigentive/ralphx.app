@@ -1763,19 +1763,52 @@ pub async fn get_agent_conversation_workspace_freshness(
             )
         })?;
 
-    if workspace.mode != AgentConversationWorkspaceMode::Edit {
-        return Err(
-            "Only edit-agent conversation workspaces can be inspected for publish freshness"
-                .to_string(),
-        );
-    }
-
     let project = state
         .project_repo
         .get_by_id(&workspace.project_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Project not found: {}", workspace.project_id))?;
+
+    // For ideation workspaces linked to a plan branch, check freshness of the
+    // plan branch against its base (the workspace's own branch has no commits).
+    if workspace.mode != AgentConversationWorkspaceMode::Edit {
+        let plan_branch_id = workspace.linked_plan_branch_id.as_ref().ok_or_else(|| {
+            "Non-edit workspace without a linked plan branch cannot be inspected for freshness"
+                .to_string()
+        })?;
+        let plan_branch = state
+            .plan_branch_repo
+            .get_by_id(plan_branch_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Plan branch not found: {}", plan_branch_id))?;
+        let base_ref = plan_branch
+            .base_branch_override
+            .as_deref()
+            .filter(|b| !b.is_empty())
+            .or_else(|| (!plan_branch.source_branch.is_empty()).then_some(plan_branch.source_branch.as_str()))
+            .or(project.base_branch.as_deref())
+            .unwrap_or("main");
+        let project_path = std::path::PathBuf::from(&project.working_directory);
+        let status = inspect_publish_branch_freshness_for_source(
+            &project_path,
+            base_ref,
+            &plan_branch.branch_name,
+            workspace.base_commit.as_deref(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        return Ok(
+            AgentConversationWorkspaceFreshnessResponse::from_workspace_status(
+                &workspace,
+                status,
+                false,
+                Some(0),
+            ),
+        );
+    }
+
     let worktree_path = resolve_valid_agent_conversation_workspace_path(&project, &workspace)
         .await
         .map_err(|e| e.to_string())?;
@@ -1871,33 +1904,68 @@ pub async fn update_agent_conversation_workspace_from_base(
             )
         })?;
 
-    if workspace.mode != AgentConversationWorkspaceMode::Edit {
-        return Err(
-            "Ideation-mode agent conversations are updated through the execution pipeline"
-                .to_string(),
-        );
-    }
-    if workspace.is_execution_owned() {
-        return Err(
-            "This agent conversation workspace is owned by an execution plan and cannot be directly updated"
-                .to_string(),
-        );
-    }
-
-    let conversation = state
-        .chat_conversation_repo
-        .get_by_id(&conversation_id)
+    let project = state
+        .project_repo
+        .get_by_id(&workspace.project_id)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Conversation not found: {}", conversation_id))?;
-    if conversation.context_type != ChatContextType::Project
-        || conversation.context_id != workspace.project_id.as_str()
-    {
-        return Err(format!(
-            "Conversation {} does not match agent workspace project {}",
-            conversation.id, workspace.project_id
-        ));
-    }
+        .ok_or_else(|| format!("Project not found: {}", workspace.project_id))?;
+
+    // For ideation workspaces with a linked plan branch, update the plan branch
+    // from its base. For edit workspaces, update the workspace's own branch.
+    let (effective_path, effective_branch, effective_base_ref) =
+        if let Some(plan_branch_id) = &workspace.linked_plan_branch_id {
+            let plan_branch = state
+                .plan_branch_repo
+                .get_by_id(plan_branch_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Plan branch not found: {}", plan_branch_id))?;
+            let base_ref = plan_branch
+                .base_branch_override
+                .as_deref()
+                .filter(|b| !b.is_empty())
+                .or_else(|| (!plan_branch.source_branch.is_empty()).then_some(plan_branch.source_branch.as_str()))
+                .or(project.base_branch.as_deref())
+                .unwrap_or("main")
+                .to_string();
+            (
+                std::path::PathBuf::from(&project.working_directory),
+                plan_branch.branch_name.clone(),
+                base_ref,
+            )
+        } else {
+            if workspace.is_execution_owned() {
+                return Err(
+                    "This agent conversation workspace is owned by an execution plan and cannot be directly updated"
+                        .to_string(),
+                );
+            }
+            let worktree_path =
+                match resolve_valid_agent_conversation_workspace_path(&project, &workspace).await {
+                    Ok(path) => path,
+                    Err(error) => {
+                        if error
+                            .to_string()
+                            .contains("Agent conversation workspace is missing")
+                        {
+                            let _ = state
+                                .agent_conversation_workspace_repo
+                                .update_status(
+                                    &workspace.conversation_id,
+                                    crate::domain::entities::AgentConversationWorkspaceStatus::Missing,
+                                )
+                                .await;
+                        }
+                        return Err(error.to_string());
+                    }
+                };
+            (
+                worktree_path,
+                workspace.branch_name.clone(),
+                workspace.base_ref.clone(),
+            )
+        };
 
     let repair_service = create_chat_service(
         &state,
@@ -1905,31 +1973,6 @@ pub async fn update_agent_conversation_workspace_from_base(
         &execution_state,
         Some(team_service.inner().clone()),
     );
-    let project = state
-        .project_repo
-        .get_by_id(&workspace.project_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Project not found: {}", workspace.project_id))?;
-    let worktree_path =
-        match resolve_valid_agent_conversation_workspace_path(&project, &workspace).await {
-            Ok(path) => path,
-            Err(error) => {
-                if error
-                    .to_string()
-                    .contains("Agent conversation workspace is missing")
-                {
-                    let _ = state
-                        .agent_conversation_workspace_repo
-                        .update_status(
-                            &workspace.conversation_id,
-                            crate::domain::entities::AgentConversationWorkspaceStatus::Missing,
-                        )
-                        .await;
-                }
-                return Err(error.to_string());
-            }
-        };
 
     mark_agent_workspace_publish_status(&state, &workspace, "refreshing")
         .await
@@ -1937,10 +1980,10 @@ pub async fn update_agent_conversation_workspace_from_base(
 
     let freshness_conversation_id = workspace.conversation_id.as_str();
     let outcome = ensure_publish_branch_fresh(
-        &worktree_path,
+        &effective_path,
         &project,
-        &workspace.branch_name,
-        &workspace.base_ref,
+        &effective_branch,
+        &effective_base_ref,
         &freshness_conversation_id,
         None,
     )

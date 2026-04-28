@@ -528,7 +528,7 @@ const AgentsWorkspaceStatusPill = memo(function AgentsWorkspaceStatusPill({
   const { data: freshness } = useQuery({
     queryKey: ["agents", "conversation-workspace-freshness", workspace.conversationId],
     queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(workspace.conversationId),
-    enabled: workspace.mode === "edit" && !terminalStatus,
+    enabled: !terminalStatus,
     staleTime: 10_000,
   });
   const isBehindBase = !terminalStatus && Boolean(freshness?.isBaseAhead);
