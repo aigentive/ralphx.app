@@ -8,7 +8,8 @@ use serde_json::{json, Map as JsonMap, Value as JsonValue};
 use crate::application::chat_service::{ChatService, SendCallerContext, SendMessageOptions};
 use crate::application::AppState;
 use crate::domain::entities::{
-    AgentConversationWorkspace, AgentConversationWorkspaceStatus, ChatContextType,
+    AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentConversationWorkspaceStatus,
+    ChatContextType,
     ChatConversationId, ChatMessage, TaskId,
 };
 use crate::domain::repositories::{
@@ -145,6 +146,7 @@ pub async fn dispatch_agent_workspace_bridge_events_once_with_deps<S: ChatServic
 
 fn workspace_should_receive_bridge_events(workspace: &AgentConversationWorkspace) -> bool {
     workspace.status == AgentConversationWorkspaceStatus::Active
+        && workspace.mode == AgentConversationWorkspaceMode::Ideation
         && workspace.linked_ideation_session_id.is_some()
 }
 
@@ -234,6 +236,10 @@ pub async fn prepare_agent_workspace_bridge_wakeup_with_deps(
         refresh_conversation_stats(deps, conversation_id).await?;
     }
     collect_queued_bridge_event_keys(deps, conversation_id, &mut delivered_event_keys);
+
+    if !workspace_should_receive_bridge_events(&workspace) {
+        return Ok(None);
+    }
 
     let Some(session_id) = workspace.linked_ideation_session_id.as_ref() else {
         return Ok(None);
@@ -621,6 +627,21 @@ mod tests {
         title: &str,
         linked_session_id: Option<&str>,
     ) -> ChatConversationId {
+        let mode = if linked_session_id.is_some() {
+            AgentConversationWorkspaceMode::Ideation
+        } else {
+            AgentConversationWorkspaceMode::Edit
+        };
+        create_workspace_with_mode(state, project_id, title, linked_session_id, mode).await
+    }
+
+    async fn create_workspace_with_mode(
+        state: &AppState,
+        project_id: ProjectId,
+        title: &str,
+        linked_session_id: Option<&str>,
+        mode: AgentConversationWorkspaceMode,
+    ) -> ChatConversationId {
         let mut conversation = ChatConversation::new_project(project_id.clone());
         conversation.title = Some(title.to_string());
         let conversation_id = conversation.id;
@@ -633,11 +654,7 @@ mod tests {
         let mut workspace = AgentConversationWorkspace::new(
             conversation_id,
             project_id,
-            if linked_session_id.is_some() {
-                AgentConversationWorkspaceMode::Ideation
-            } else {
-                AgentConversationWorkspaceMode::Edit
-            },
+            mode,
             IdeationAnalysisBaseRefKind::CurrentBranch,
             "main".to_string(),
             Some("Current branch".to_string()),
@@ -731,6 +748,36 @@ mod tests {
         let project_id = ProjectId::from_string("project-1".to_string());
         let conversation_id =
             create_workspace(&state, project_id.clone(), "Edit workspace", None).await;
+
+        state
+            .external_events_repo
+            .insert_event(
+                "ideation:verified",
+                project_id.as_str(),
+                &json!({ "session_id": "session-1" }).to_string(),
+            )
+            .await
+            .unwrap();
+
+        let wakeup = prepare_agent_workspace_bridge_wakeup(&state, &conversation_id)
+            .await
+            .unwrap();
+
+        assert!(wakeup.is_none());
+    }
+
+    #[tokio::test]
+    async fn does_not_prepare_wakeup_for_linked_non_ideation_workspace() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::from_string("project-1".to_string());
+        let conversation_id = create_workspace_with_mode(
+            &state,
+            project_id.clone(),
+            "Linked edit workspace",
+            Some("session-1"),
+            AgentConversationWorkspaceMode::Edit,
+        )
+        .await;
 
         state
             .external_events_repo

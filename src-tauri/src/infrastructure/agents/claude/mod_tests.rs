@@ -696,12 +696,12 @@ description: Generates concise ideation session titles from user or plan context
 #[test]
 fn build_spawnable_command_injects_internal_skill_context_for_claude_prompt() {
     let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
-    let agent_root = root.join("agents/ralphx-general-worker");
+    let agent_root = root.join("agents/ralphx-chat-project");
     std::fs::create_dir_all(agent_root.join("shared")).expect("create shared prompt dir");
     std::fs::write(
         agent_root.join("agent.yaml"),
-        r#"name: ralphx-general-worker
-role: general_worker
+        r#"name: ralphx-chat-project
+role: project_chat
 capabilities:
   internal_skills:
     allowed:
@@ -709,7 +709,7 @@ capabilities:
 "#,
     )
     .expect("write shared definition");
-    std::fs::write(agent_root.join("shared/prompt.md"), "General worker prompt")
+    std::fs::write(agent_root.join("shared/prompt.md"), "Project chat prompt")
         .expect("write shared prompt");
     std::fs::create_dir_all(root.join("plugins/app/skills/workspace-swe"))
         .expect("create skill dir");
@@ -731,7 +731,7 @@ Report only unless workspace intervention is explicit.
         Path::new("/fake/claude"),
         &plugin_dir,
         "Use /workspace-swe skill for this bridge wake-up.",
-        Some("ralphx:ralphx-general-worker"),
+        Some("ralphx:ralphx-chat-project"),
         None,
         Path::new("/tmp"),
         None,

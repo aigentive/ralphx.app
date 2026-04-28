@@ -117,12 +117,12 @@ fn compose_codex_prompt_injects_directed_internal_skill_context() {
     let root = temp_dir.path();
     let plugin_dir = create_plugin_dir(root);
 
-    std::fs::create_dir_all(root.join("agents/ralphx-general-worker/shared"))
+    std::fs::create_dir_all(root.join("agents/ralphx-chat-project/shared"))
         .expect("create shared prompt dir");
     std::fs::write(
-        root.join("agents/ralphx-general-worker/agent.yaml"),
-        r#"name: ralphx-general-worker
-role: general_worker
+        root.join("agents/ralphx-chat-project/agent.yaml"),
+        r#"name: ralphx-chat-project
+role: project_chat
 capabilities:
   internal_skills:
     allowed:
@@ -131,8 +131,8 @@ capabilities:
     )
     .expect("write shared definition");
     std::fs::write(
-        root.join("agents/ralphx-general-worker/shared/prompt.md"),
-        "General worker prompt",
+        root.join("agents/ralphx-chat-project/shared/prompt.md"),
+        "Project chat prompt",
     )
     .expect("write shared prompt");
     std::fs::create_dir_all(root.join("plugins/app/skills/workspace-swe"))
@@ -154,10 +154,10 @@ Report only unless workspace intervention is explicit.
     let composed = compose_codex_prompt(
         "<!-- ralphx_internal_skill=workspace-swe -->\nBridge payload",
         Some(&plugin_dir),
-        Some("ralphx-general-worker"),
+        Some("ralphx-chat-project"),
     );
 
-    assert!(composed.contains("General worker prompt"));
+    assert!(composed.contains("Project chat prompt"));
     assert!(
         composed.contains("<ralphx_internal_skills>"),
         "expected internal skill context to be injected"

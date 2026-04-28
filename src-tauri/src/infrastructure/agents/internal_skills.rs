@@ -609,13 +609,28 @@ description: Workspace bridge instructions
     #[test]
     fn live_agent_internal_skill_configs_are_valid() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-        for agent_name in [
-            "ralphx-general-worker",
-            "ralphx-general-explorer",
-            "ralphx-chat-project",
-        ] {
+        for agent_name in ["ralphx-chat-project"] {
             validate_agent_internal_skills(&root, agent_name)
                 .unwrap_or_else(|error| panic!("{agent_name} internal skills invalid: {error}"));
+        }
+    }
+
+    #[test]
+    fn live_general_workspace_agents_do_not_load_workspace_bridge_skill() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        for agent_name in ["ralphx-general-worker", "ralphx-general-explorer"] {
+            let injected = inject_internal_skills_into_system_prompt(
+                &root,
+                agent_name,
+                "Base prompt",
+                "<!-- ralphx_internal_skill=ralphx-agent-workspace-swe -->",
+            )
+            .unwrap_or_else(|error| panic!("{agent_name} injection failed: {error}"));
+            assert!(
+                injected.injected_skill_names.is_empty(),
+                "{agent_name} must not load agent workspace bridge skills"
+            );
+            assert_eq!(injected.system_prompt, "Base prompt");
         }
     }
 }
