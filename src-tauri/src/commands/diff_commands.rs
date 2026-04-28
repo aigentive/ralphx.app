@@ -181,10 +181,17 @@ pub async fn get_file_diff_for_state(
     diff_service.get_file_diff(&file_path, &working_path_str, base_branch)
 }
 
+struct AgentWorkspaceContext {
+    working_path: PathBuf,
+    base_ref: String,
+    /// For plan-branch workspaces, the diff target is the plan branch (not HEAD).
+    diff_target: Option<String>,
+}
+
 async fn get_agent_workspace_context(
     app_state: &AppState,
     conversation_id: &ChatConversationId,
-) -> AppResult<(PathBuf, String)> {
+) -> AppResult<AgentWorkspaceContext> {
     let workspace = app_state
         .agent_conversation_workspace_repo
         .get_by_conversation_id(conversation_id)
@@ -200,6 +207,26 @@ async fn get_agent_workspace_context(
         .get_by_id(&workspace.project_id)
         .await?
         .ok_or_else(|| AppError::ProjectNotFound(workspace.project_id.as_str().to_string()))?;
+
+    // For ideation workspaces linked to a plan branch, the commits live on the
+    // plan branch, not the workspace's own branch. Use the project root (which
+    // has all branches) and compare base_ref..plan_branch_name.
+    if let Some(plan_branch_id) = &workspace.linked_plan_branch_id {
+        if let Some(plan_branch) = app_state
+            .plan_branch_repo
+            .get_by_id(plan_branch_id)
+            .await?
+        {
+            let base_ref = plan_branch_review_base_ref(&plan_branch, &project);
+            let project_path = PathBuf::from(&project.working_directory);
+            return Ok(AgentWorkspaceContext {
+                working_path: project_path,
+                base_ref,
+                diff_target: Some(plan_branch.branch_name.clone()),
+            });
+        }
+    }
+
     let worktree_path =
         resolve_valid_agent_conversation_workspace_path(&project, &workspace).await?;
     let base_commit = workspace.base_commit.clone().ok_or_else(|| {
@@ -208,15 +235,20 @@ async fn get_agent_workspace_context(
             conversation_id
         ))
     })?;
-    Ok((worktree_path, base_commit))
+    Ok(AgentWorkspaceContext {
+        working_path: worktree_path,
+        base_ref: base_commit,
+        diff_target: None,
+    })
 }
 
 async fn ensure_agent_workspace_commit_in_range(
     worktree_path: &Path,
     base_ref: &str,
+    head_ref: &str,
     commit_sha: &str,
 ) -> AppResult<()> {
-    let commits = GitService::get_commits_between(worktree_path, base_ref, "HEAD").await?;
+    let commits = GitService::get_commits_between(worktree_path, base_ref, head_ref).await?;
     if commits
         .iter()
         .any(|commit| commit.sha == commit_sha || commit.short_sha == commit_sha)
@@ -236,10 +268,14 @@ pub async fn get_agent_conversation_workspace_file_changes(
     conversation_id: String,
 ) -> AppResult<Vec<FileChange>> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
-    let (worktree_path, base_ref) =
-        get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
-    let worktree_path = worktree_path.to_string_lossy().to_string();
-    DiffService::new().get_worktree_file_changes_from_ref(&worktree_path, &base_ref)
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let working_path = ctx.working_path.to_string_lossy().to_string();
+    let diff_service = DiffService::new();
+    if let Some(target) = &ctx.diff_target {
+        diff_service.get_file_changes_between_refs(&working_path, &ctx.base_ref, target)
+    } else {
+        diff_service.get_worktree_file_changes_from_ref(&working_path, &ctx.base_ref)
+    }
 }
 
 #[tauri::command]
@@ -249,10 +285,14 @@ pub async fn get_agent_conversation_workspace_file_diff(
     file_path: String,
 ) -> AppResult<FileDiff> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
-    let (worktree_path, base_ref) =
-        get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
-    let worktree_path = worktree_path.to_string_lossy().to_string();
-    DiffService::new().get_file_diff(&file_path, &worktree_path, &base_ref)
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let working_path = ctx.working_path.to_string_lossy().to_string();
+    let diff_service = DiffService::new();
+    if let Some(target) = &ctx.diff_target {
+        diff_service.get_file_diff_between_refs(&file_path, &working_path, &ctx.base_ref, target)
+    } else {
+        diff_service.get_file_diff(&file_path, &working_path, &ctx.base_ref)
+    }
 }
 
 #[tauri::command]
@@ -261,9 +301,9 @@ pub async fn get_agent_conversation_workspace_commits(
     conversation_id: String,
 ) -> AppResult<TaskCommitsResponse> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
-    let (worktree_path, base_ref) =
-        get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
-    let commits = GitService::get_commits_between(&worktree_path, &base_ref, "HEAD").await?;
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let head_ref = ctx.diff_target.as_deref().unwrap_or("HEAD");
+    let commits = GitService::get_commits_between(&ctx.working_path, &ctx.base_ref, head_ref).await?;
     Ok(TaskCommitsResponse {
         commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
     })
@@ -276,15 +316,15 @@ pub async fn get_agent_conversation_workspace_commit_file_changes(
     commit_sha: String,
 ) -> AppResult<Vec<FileChange>> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
-    let (worktree_path, base_ref) =
-        get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
-    ensure_agent_workspace_commit_in_range(&worktree_path, &base_ref, &commit_sha).await?;
-    let worktree_path = worktree_path.to_string_lossy().to_string();
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let head_ref = ctx.diff_target.as_deref().unwrap_or("HEAD");
+    ensure_agent_workspace_commit_in_range(&ctx.working_path, &ctx.base_ref, head_ref, &commit_sha).await?;
+    let working_path = ctx.working_path.to_string_lossy().to_string();
     let diff_service = DiffService::new();
-    if diff_service.is_merge_commit(&worktree_path, &commit_sha) {
-        return diff_service.get_file_changes_between_refs(&worktree_path, &base_ref, &commit_sha);
+    if diff_service.is_merge_commit(&working_path, &commit_sha) {
+        return diff_service.get_file_changes_between_refs(&working_path, &ctx.base_ref, &commit_sha);
     }
-    diff_service.get_commit_file_changes(&commit_sha, &worktree_path)
+    diff_service.get_commit_file_changes(&commit_sha, &working_path)
 }
 
 #[tauri::command]
@@ -295,20 +335,20 @@ pub async fn get_agent_conversation_workspace_commit_file_diff(
     file_path: String,
 ) -> AppResult<FileDiff> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
-    let (worktree_path, base_ref) =
-        get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
-    ensure_agent_workspace_commit_in_range(&worktree_path, &base_ref, &commit_sha).await?;
-    let worktree_path = worktree_path.to_string_lossy().to_string();
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let head_ref = ctx.diff_target.as_deref().unwrap_or("HEAD");
+    ensure_agent_workspace_commit_in_range(&ctx.working_path, &ctx.base_ref, head_ref, &commit_sha).await?;
+    let working_path = ctx.working_path.to_string_lossy().to_string();
     let diff_service = DiffService::new();
-    if diff_service.is_merge_commit(&worktree_path, &commit_sha) {
+    if diff_service.is_merge_commit(&working_path, &commit_sha) {
         return diff_service.get_file_diff_between_refs(
             &file_path,
-            &worktree_path,
-            &base_ref,
+            &working_path,
+            &ctx.base_ref,
             &commit_sha,
         );
     }
-    diff_service.get_commit_file_diff(&commit_sha, &file_path, &worktree_path)
+    diff_service.get_commit_file_diff(&commit_sha, &file_path, &working_path)
 }
 
 /// Get files changed in a specific commit
