@@ -103,11 +103,13 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
   options,
   onSelectFocus,
   workspace = null,
+  surfaceBackground = false,
 }: {
   activeType: AgentsChatFocusType;
   options: readonly AgentsChatFocusSwitchOption[];
   onSelectFocus: (type: AgentsChatFocusType) => void;
   workspace?: AgentConversationWorkspace | null;
+  surfaceBackground?: boolean;
 }) {
   const showFocusSwitcher = options.length > 1;
 
@@ -115,6 +117,11 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
     <div
       className="flex h-9 shrink-0 items-center gap-3 overflow-hidden px-3"
       data-testid="agents-chat-focus-bar"
+      style={
+        surfaceBackground
+          ? { backgroundColor: "var(--bg-base)" }
+          : undefined
+      }
     >
       {showFocusSwitcher ? (
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">

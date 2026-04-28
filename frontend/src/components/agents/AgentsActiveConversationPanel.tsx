@@ -27,6 +27,7 @@ import { AgentsChatHeaderController } from "./AgentsChatHeaderController";
 import {
   AGENT_CONVERSATION_MODE_OPTIONS,
 } from "./agentConversationMode";
+import { useResolvedAgentArtifactState } from "./agentArtifactState";
 import {
   AGENT_MODEL_OPTIONS,
   AGENT_PROVIDER_OPTIONS,
@@ -121,6 +122,10 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
   const isFocusedChildChat = chatFocus.type !== "workspace";
   const showWorkspaceStatus =
     Boolean(activeWorkspace) && !isFocusedChildChat;
+  const { artifactPaneOpen } = useResolvedAgentArtifactState(
+    selectedConversationId,
+    hasAutoOpenArtifacts,
+  );
   const panelStoreKeyOverride = useMemo(() => {
     if (focusedChatSessionId) {
       return buildStoreKey("ideation", focusedChatSessionId);
@@ -277,6 +282,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                     activeType={chatFocus.type}
                     options={chatFocusOptions}
                     workspace={showWorkspaceStatus ? activeWorkspace : null}
+                    surfaceBackground={artifactPaneOpen}
                     onSelectFocus={onSelectChatFocus}
                   />
                 ),

@@ -282,6 +282,33 @@ describe("AgentsChatHeader", () => {
     expect(onSelectFocus).toHaveBeenCalledWith("ideation");
   });
 
+  it("adds an opaque chat background to the focus switcher in split surfaces", () => {
+    renderWithProviders(
+      <AgentsChatFocusBar
+        activeType="workspace"
+        options={[
+          {
+            type: "workspace",
+            label: "Workspace",
+            description: "Show the workspace agent chat",
+          },
+          {
+            type: "ideation",
+            label: "Ideation",
+            description: "Show the attached ideation chat",
+            tone: "accent",
+          },
+        ]}
+        surfaceBackground
+        onSelectFocus={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("agents-chat-focus-bar")).toHaveStyle({
+      backgroundColor: "var(--bg-base)",
+    });
+  });
+
   it("marks conversation stats as pending while the active Agents turn has no usage yet", async () => {
     vi.spyOn(chatApi, "getConversationStats").mockResolvedValue(conversationStats());
     useChatStore
