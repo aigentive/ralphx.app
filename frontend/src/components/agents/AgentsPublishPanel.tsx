@@ -186,6 +186,7 @@ export function AgentPublishPanel({
       );
     },
   });
+  const changesError = changesQuery.error;
   const changes = changesQuery.data ?? [];
   const commits = commitsQuery.data ?? [];
   const publicationEvents = publicationEventsQuery.data ?? [];
@@ -524,6 +525,11 @@ export function AgentPublishPanel({
               <LazyDiffViewer
                 changes={changes}
                 commits={commits}
+                defaultTab={changes.length === 0 && !changesError ? "history" : "changes"}
+                {...(changesError ? {
+                  changesEmptyTitle: "Could not load workspace changes",
+                  changesEmptySubtitle: changesError instanceof Error ? changesError.message : String(changesError),
+                } : {})}
                 commitFiles={commitFiles}
                 onFetchDiff={async (filePath, commitSha) => {
                   if (!conversationId) {
