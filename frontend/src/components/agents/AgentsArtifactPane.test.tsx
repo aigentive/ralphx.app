@@ -868,6 +868,22 @@ describe("AgentsArtifactPane", () => {
     expect(await screen.findByTestId("agents-base-stale")).toHaveTextContent(
       "feature/agent-screen"
     );
+    expect(screen.getByTestId("agents-publish-status-pill")).toHaveAttribute(
+      "style",
+      expect.stringContaining("border-color: var(--overlay-weak)"),
+    );
+    expect(screen.getByTestId("agents-publish-status-pill")).toHaveAttribute(
+      "style",
+      expect.stringContaining("color: var(--text-secondary)"),
+    );
+    expect(screen.getByTestId("agents-base-stale")).toHaveAttribute(
+      "style",
+      expect.stringContaining("border-color: var(--border-subtle)"),
+    );
+    expect(screen.getByTestId("agents-base-stale-icon")).toHaveAttribute(
+      "style",
+      expect.stringContaining("color: var(--status-warning)"),
+    );
     expect(screen.getByTestId("agents-base-stale")).not.toHaveTextContent(
       "Update this workspace before publishing"
     );

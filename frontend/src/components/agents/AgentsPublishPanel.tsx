@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   CheckCircle2,
   Code,
   FileText,
@@ -287,9 +288,10 @@ export function AgentPublishPanel({
             </div>
             <span
               className="rounded-full border px-2.5 py-1 text-xs capitalize"
+              data-testid="agents-publish-status-pill"
               style={{
-                borderColor: isBranchUpdateNeeded ? "var(--status-warning-border)" : "var(--overlay-weak)",
-                color: isBranchUpdateNeeded ? "var(--status-warning)" : "var(--text-secondary)",
+                borderColor: "var(--overlay-weak)",
+                color: "var(--text-secondary)",
               }}
             >
               {terminalPublicationLabel ??
@@ -360,15 +362,23 @@ export function AgentPublishPanel({
         >
           {isBranchUpdateNeeded && (
             <div
-              className="mb-3 rounded-md border px-3 py-2 text-xs leading-relaxed"
+              className="mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs leading-relaxed"
               style={{
                 background: "var(--bg-subtle)",
-                borderColor: "var(--status-warning)",
+                borderColor: "var(--border-subtle)",
                 color: "var(--text-secondary)",
               }}
               data-testid="agents-base-stale"
             >
-              Base branch {freshness?.baseRef ?? baseActionLabel} has new commits.
+              <AlertTriangle
+                aria-hidden="true"
+                className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                data-testid="agents-base-stale-icon"
+                style={{ color: "var(--status-warning)" }}
+              />
+              <span>
+                Base branch {freshness?.baseRef ?? baseActionLabel} has new commits.
+              </span>
             </div>
           )}
           <div className="flex flex-wrap items-center justify-between gap-3">
