@@ -38,7 +38,7 @@ use crate::domain::entities::{
     AgentConversationWorkspace, AgentConversationWorkspaceMode,
     AgentConversationWorkspacePublicationEvent, AgentRunId, AgentRunStatus, ChatContextType,
     ChatConversation, ChatConversationId, DelegatedSessionId, IdeationAnalysisBaseRefKind,
-    IdeationSessionId, ProjectId, TaskId,
+    IdeationSessionId, PlanBranch, PlanBranchStatus, ProjectId, TaskId,
 };
 use crate::domain::services::{AgentWorkspacePrPublisher, QueuedMessage, RunningAgentKey};
 use crate::infrastructure::agents::claude::agent_names::AGENT_WORKSPACE_REPAIR;
@@ -165,6 +165,53 @@ impl From<AgentConversationWorkspace> for AgentConversationWorkspaceResponse {
             updated_at: workspace.updated_at.to_rfc3339(),
         }
     }
+}
+
+fn project_plan_branch_publication_into_workspace_response(
+    response: &mut AgentConversationWorkspaceResponse,
+    plan_branch: &PlanBranch,
+) {
+    if response.publication_pr_number.is_none() {
+        response.publication_pr_number = plan_branch.pr_number;
+    }
+    if response.publication_pr_url.is_none() {
+        response.publication_pr_url = plan_branch.pr_url.clone();
+    }
+    if response.publication_pr_status.is_none() {
+        response.publication_pr_status = if plan_branch.status == PlanBranchStatus::Merged {
+            Some("merged".to_string())
+        } else {
+            plan_branch
+                .pr_status
+                .as_ref()
+                .map(|status| status.to_db_string().to_ascii_lowercase())
+        };
+    }
+    if response.publication_push_status.is_none() {
+        response.publication_push_status =
+            Some(plan_branch.pr_push_status.to_db_string().to_string());
+    }
+}
+
+async fn agent_workspace_response_for_state(
+    state: &AppState,
+    workspace: AgentConversationWorkspace,
+) -> Result<AgentConversationWorkspaceResponse, String> {
+    let linked_plan_branch_id = workspace.linked_plan_branch_id.clone();
+    let mut response = AgentConversationWorkspaceResponse::from(workspace);
+
+    if let Some(plan_branch_id) = linked_plan_branch_id {
+        if let Some(plan_branch) = state
+            .plan_branch_repo
+            .get_by_id(&plan_branch_id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            project_plan_branch_publication_into_workspace_response(&mut response, &plan_branch);
+        }
+    }
+
+    Ok(response)
 }
 
 /// Response from start_agent_conversation command.
@@ -1139,9 +1186,16 @@ pub async fn start_agent_conversation(
         .map(SendAgentMessageResponse::from)
         .map_err(|error| error.to_string())?;
 
+    let workspace_response = match workspace {
+        Some(workspace) => {
+            Some(agent_workspace_response_for_state(state.inner(), workspace).await?)
+        }
+        None => None,
+    };
+
     Ok(StartAgentConversationResponse {
         conversation: AgentConversationResponse::from(conversation),
-        workspace: workspace.map(AgentConversationWorkspaceResponse::from),
+        workspace: workspace_response,
         send_result,
     })
 }
@@ -1270,9 +1324,16 @@ pub async fn switch_agent_conversation_mode(
         .map_err(|error| error.to_string())?
         .unwrap_or(conversation);
 
+    let workspace_response = match workspace {
+        Some(workspace) => {
+            Some(agent_workspace_response_for_state(state.inner(), workspace).await?)
+        }
+        None => None,
+    };
+
     Ok(SwitchAgentConversationModeResponse {
         conversation: AgentConversationResponse::from(conversation),
-        workspace: workspace.map(AgentConversationWorkspaceResponse::from),
+        workspace: workspace_response,
     })
 }
 
@@ -1630,12 +1691,18 @@ pub async fn get_agent_conversation_workspace(
     state: State<'_, AppState>,
 ) -> Result<Option<AgentConversationWorkspaceResponse>, String> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
-    state
+    let workspace = state
         .agent_conversation_workspace_repo
         .get_by_conversation_id(&conversation_id)
         .await
-        .map_err(|e| e.to_string())
-        .map(|workspace| workspace.map(AgentConversationWorkspaceResponse::from))
+        .map_err(|e| e.to_string())?;
+
+    match workspace {
+        Some(workspace) => Ok(Some(
+            agent_workspace_response_for_state(state.inner(), workspace).await?,
+        )),
+        None => Ok(None),
+    }
 }
 
 /// List workspace metadata for project-backed agent conversations.
@@ -1645,17 +1712,16 @@ pub async fn list_agent_conversation_workspaces_by_project(
     state: State<'_, AppState>,
 ) -> Result<Vec<AgentConversationWorkspaceResponse>, String> {
     let project_id = ProjectId::from_string(project_id);
-    state
+    let workspaces = state
         .agent_conversation_workspace_repo
         .get_by_project_id(&project_id)
         .await
-        .map_err(|e| e.to_string())
-        .map(|workspaces| {
-            workspaces
-                .into_iter()
-                .map(AgentConversationWorkspaceResponse::from)
-                .collect()
-        })
+        .map_err(|e| e.to_string())?;
+    let mut responses = Vec::with_capacity(workspaces.len());
+    for workspace in workspaces {
+        responses.push(agent_workspace_response_for_state(state.inner(), workspace).await?);
+    }
+    Ok(responses)
 }
 
 /// List durable publish events for a project-backed agent conversation workspace.
@@ -2963,11 +3029,68 @@ pub async fn update_agent_conversation_title(
 mod tests {
     use super::{
         merge_delegated_snapshot_into_result, parse_wrapped_mcp_result_object,
-        AgentConversationResponse, DelegatedToolRuntimeSnapshot,
+        project_plan_branch_publication_into_workspace_response, AgentConversationResponse,
+        AgentConversationWorkspaceResponse, DelegatedToolRuntimeSnapshot,
     };
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
-    use crate::domain::entities::{ChatConversation, ProjectId};
+    use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus};
+    use crate::domain::entities::{
+        AgentConversationWorkspaceMode, ArtifactId, ChatConversation, IdeationSessionId,
+        PlanBranch, PlanBranchStatus, ProjectId,
+    };
     use serde_json::json;
+
+    #[test]
+    fn linked_plan_branch_publication_is_projected_into_workspace_response() {
+        let mut response = AgentConversationWorkspaceResponse {
+            conversation_id: "conversation-1".to_string(),
+            project_id: "project-1".to_string(),
+            mode: AgentConversationWorkspaceMode::Ideation.to_string(),
+            base_ref_kind: "project_default".to_string(),
+            base_ref: "main".to_string(),
+            base_display_name: Some("Project default (main)".to_string()),
+            base_commit: None,
+            branch_name: "agent-d619a9fd".to_string(),
+            worktree_path: "/tmp/workspace".to_string(),
+            linked_ideation_session_id: Some("session-1".to_string()),
+            linked_plan_branch_id: Some("plan-branch-1".to_string()),
+            publication_pr_number: None,
+            publication_pr_url: None,
+            publication_pr_status: None,
+            publication_push_status: None,
+            status: "active".to_string(),
+            created_at: "2026-04-28T12:00:00+00:00".to_string(),
+            updated_at: "2026-04-28T12:00:00+00:00".to_string(),
+        };
+        let mut plan_branch = PlanBranch::new(
+            ArtifactId::from_string("artifact-1"),
+            IdeationSessionId::from_string("session-1"),
+            ProjectId::from_string("project-1".to_string()),
+            "agent-d619a9fd".to_string(),
+            "feature/agent-screen".to_string(),
+        );
+        plan_branch.status = PlanBranchStatus::Active;
+        plan_branch.pr_number = Some(90);
+        plan_branch.pr_url = Some("https://github.com/mock/project/pull/90".to_string());
+        plan_branch.pr_status = Some(PrStatus::Open);
+        plan_branch.pr_push_status = PrPushStatus::Pushed;
+
+        project_plan_branch_publication_into_workspace_response(&mut response, &plan_branch);
+
+        assert_eq!(response.publication_pr_number, Some(90));
+        assert_eq!(
+            response.publication_pr_url.as_deref(),
+            Some("https://github.com/mock/project/pull/90")
+        );
+        assert_eq!(response.publication_pr_status.as_deref(), Some("open"));
+        assert_eq!(response.publication_push_status.as_deref(), Some("pushed"));
+
+        response.publication_pr_status = None;
+        plan_branch.status = PlanBranchStatus::Merged;
+        project_plan_branch_publication_into_workspace_response(&mut response, &plan_branch);
+
+        assert_eq!(response.publication_pr_status.as_deref(), Some("merged"));
+    }
 
     #[test]
     fn agent_conversation_response_derives_provider_metadata_from_legacy_claude_session() {

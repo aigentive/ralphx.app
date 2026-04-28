@@ -321,6 +321,50 @@ describe("AgentsArtifactPane", () => {
     expect(screen.queryByTestId("agents-artifact-tab-tasks")).not.toBeInTheDocument();
   });
 
+  it("renders the publish tab for ideation workspaces linked to execution branches", () => {
+    renderPane(
+      "publish",
+      workspace({
+        mode: "ideation",
+        linkedIdeationSessionId: "session-1",
+        linkedPlanBranchId: "plan-branch-1",
+        publicationPrNumber: 90,
+        publicationPrUrl: "https://github.com/mock/project/pull/90",
+        publicationPrStatus: "Open",
+        publicationPushStatus: "pushed",
+      }),
+    );
+
+    expect(screen.getByTestId("agents-artifact-tab-publish")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-publish-pane")).toBeInTheDocument();
+    expect(screen.getByText("PR #90")).toBeInTheDocument();
+  });
+
+  it("does not directly publish pipeline-owned ideation workspaces", () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    renderPane(
+      "publish",
+      workspace({
+        mode: "ideation",
+        linkedIdeationSessionId: "session-1",
+        linkedPlanBranchId: "plan-branch-1",
+        publicationPrNumber: 90,
+        publicationPrUrl: "https://github.com/mock/project/pull/90",
+        publicationPrStatus: "Open",
+        publicationPushStatus: "pushed",
+      }),
+      publish,
+    );
+
+    const publishButton = screen.getByTestId("agents-publish-confirm");
+    expect(publishButton).toHaveTextContent("Managed by Tasks");
+    expect(publishButton).toBeDisabled();
+
+    fireEvent.click(publishButton);
+
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("renders the publish pane shell before hydrating git-backed publish facts", async () => {
     renderPane("publish", workspace({ mode: "edit" }));
 

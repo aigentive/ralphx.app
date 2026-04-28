@@ -49,6 +49,7 @@ import { getLatestIdeationChildId } from "./agentIdeationChildren";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 import { EmptyArtifactState } from "./AgentsArtifactEmptyState";
 import { AgentPublishPanel } from "./AgentsPublishPanel";
+import { shouldShowAgentWorkspacePublishSurface } from "./agentWorkspacePublishState";
 
 const EMPTY_PROPOSAL_HIGHLIGHTS = new Set<string>();
 
@@ -138,8 +139,7 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
       workspace?.linkedIdeationSessionId ||
       workspace?.linkedPlanBranchId,
   );
-  const showPublishTab =
-    workspace?.mode === "edit" && !workspace.linkedIdeationSessionId && !workspace.linkedPlanBranchId;
+  const showPublishTab = shouldShowAgentWorkspacePublishSurface(workspace);
   const shouldLoadIdeationData = canHydrateIdeationArtifacts;
   const conversationQuery = useConversationHistoryWindow(conversation?.id ?? null, {
     enabled: shouldLoadIdeationData && !focusedIdeationSessionId && !!conversation?.id,

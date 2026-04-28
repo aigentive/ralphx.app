@@ -42,6 +42,7 @@ import {
 } from "./agentChatFocus";
 import type { IdeationArtifactTab } from "./agentArtifactTabs";
 import { resolveConversationAgentMode } from "./agentConversationMode";
+import { shouldShowAgentWorkspacePublishSurface } from "./agentWorkspacePublishState";
 
 const HEADER_ARTIFACT_TABS: Array<{
   id: IdeationArtifactTab;
@@ -226,8 +227,7 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   const publishPaneOpen = artifactOpen && activeArtifactTab === "publish";
   const showPublishShortcut = Boolean(
     conversation &&
-      workspace?.mode === "edit" &&
-      !workspace.linkedPlanBranchId &&
+      shouldShowAgentWorkspacePublishSurface(workspace) &&
       !publishPaneOpen,
   );
   const [isEditing, setIsEditing] = useState(false);

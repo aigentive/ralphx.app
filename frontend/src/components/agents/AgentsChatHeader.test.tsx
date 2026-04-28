@@ -410,6 +410,38 @@ describe("AgentsChatHeader", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it("shows the commit and publish shortcut for ideation workspaces linked to execution branches", () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    const openPublishPane = vi.fn();
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({
+          id: "conversation-1",
+          agentMode: "ideation",
+        })}
+        workspace={conversationWorkspace({
+          conversationId: "conversation-1",
+          mode: "ideation",
+          linkedIdeationSessionId: "session-1",
+          linkedPlanBranchId: "plan-branch-1",
+        })}
+        artifactOpen={false}
+        activeArtifactTab="tasks"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onPublishWorkspace={publish}
+        onOpenPublishPane={openPublishPane}
+        onToggleTerminal={vi.fn()}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("agents-publish-workspace"));
+
+    expect(openPublishPane).toHaveBeenCalledTimes(1);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("uses the publish action as a pane shortcut instead of immediately publishing", () => {
     const openPublishPane = vi.fn();
     const publish = vi.fn().mockResolvedValue(undefined);

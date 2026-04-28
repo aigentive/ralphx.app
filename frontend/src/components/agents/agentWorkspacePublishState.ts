@@ -40,6 +40,30 @@ export function getAgentWorkspaceTerminalPublicationLabel(
   return null;
 }
 
+export function isPipelineOwnedAgentWorkspace(
+  workspace: AgentConversationWorkspace | null | undefined
+): boolean {
+  return Boolean(workspace?.linkedPlanBranchId);
+}
+
+export function shouldShowAgentWorkspacePublishSurface(
+  workspace: AgentConversationWorkspace | null | undefined
+): boolean {
+  if (!workspace) {
+    return false;
+  }
+
+  if (workspace.mode === "edit") {
+    return !workspace.linkedIdeationSessionId && !workspace.linkedPlanBranchId;
+  }
+
+  if (workspace.mode === "ideation") {
+    return isPipelineOwnedAgentWorkspace(workspace);
+  }
+
+  return false;
+}
+
 export function isAgentWorkspacePublishCurrent(
   workspace: AgentConversationWorkspace | null,
   freshness: AgentConversationWorkspaceFreshness | undefined

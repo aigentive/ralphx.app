@@ -31,6 +31,7 @@ import { formatPullRequestUrlLabel } from "./agentPublishFormatting";
 import {
   getAgentWorkspaceTerminalPublicationLabel,
   getAgentWorkspaceTerminalPublicationStatus,
+  isPipelineOwnedAgentWorkspace,
   isAgentWorkspacePublishCurrent,
 } from "./agentWorkspacePublishState";
 
@@ -89,6 +90,7 @@ export function AgentPublishPanel({
     getAgentWorkspaceTerminalPublicationStatus(workspace);
   const terminalPublicationLabel =
     getAgentWorkspaceTerminalPublicationLabel(workspace);
+  const isPipelineOwnedWorkspace = isPipelineOwnedAgentWorkspace(workspace);
   const freshnessQuery = useQuery({
     queryKey: ["agents", "conversation-workspace-freshness", conversationId],
     queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(conversationId!),
@@ -193,6 +195,7 @@ export function AgentPublishPanel({
   const baseActionLabel = workspace.baseRef || base;
   const publishDisabled =
     !onPublishWorkspace ||
+    isPipelineOwnedWorkspace ||
     effectivePublishing ||
     isRepairPending ||
     isPublishCurrent ||
@@ -200,9 +203,13 @@ export function AgentPublishPanel({
     workspace.status === "missing";
   const publishButtonLabel =
     terminalPublicationLabel ??
-    (isPublishCurrent ? "Published" : "Commit & Publish");
+    (isPipelineOwnedWorkspace
+      ? "Managed by Tasks"
+      : isPublishCurrent
+        ? "Published"
+        : "Commit & Publish");
   const terminalPrLabel =
-    workspace.publicationPrNumber !== null
+    workspace.publicationPrNumber != null
       ? `PR #${workspace.publicationPrNumber}`
       : "This pull request";
   const publishSummary =
@@ -210,6 +217,10 @@ export function AgentPublishPanel({
       ? `${terminalPrLabel} has been merged. By continuing this conversation, a new workspace branch will be created automatically.`
       : terminalPublicationStatus === "closed"
         ? `${terminalPrLabel} is closed. By continuing this conversation, a new workspace branch will be created automatically.`
+        : isPipelineOwnedWorkspace
+          ? workspace.publicationPrNumber || workspace.publicationPrUrl
+            ? `${terminalPrLabel} is managed by this ideation plan's task pipeline.`
+            : "Publishing is managed by this ideation plan's task pipeline."
         : isChangesLoading
           ? "Loading changed files..."
           : isPublishCurrent
@@ -236,7 +247,9 @@ export function AgentPublishPanel({
                 Review Changes
               </div>
               <div className="mt-1 text-xs text-[var(--text-muted)]">
-                Review this agent workspace before publishing its draft PR.
+                {isPipelineOwnedWorkspace
+                  ? "Review this ideation workspace's execution branch and pull request."
+                  : "Review this agent workspace before publishing its draft PR."}
               </div>
             </div>
             <span
@@ -286,7 +299,13 @@ export function AgentPublishPanel({
             <PublishFact
               icon={CheckCircle2}
               label="Mode"
-              value={workspace.mode === "edit" ? "Edit agent" : workspace.mode}
+              value={
+                workspace.mode === "edit"
+                  ? "Edit agent"
+                  : isPipelineOwnedWorkspace
+                    ? "Ideation plan"
+                    : workspace.mode
+              }
             />
           </div>
           {effectivePublishing && (
