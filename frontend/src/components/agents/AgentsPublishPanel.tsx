@@ -438,7 +438,7 @@ export function AgentPublishPanel({
                 variant="ghost"
                 className="h-9 gap-2 px-3 text-xs"
                 onClick={() => setReviewOpen(true)}
-                disabled={isChangesLoading || changes.length === 0}
+                disabled={isChangesLoading && !hasPublishedPr}
                 data-testid="agents-review-changes"
               >
                 <Code className="h-3.5 w-3.5" />
