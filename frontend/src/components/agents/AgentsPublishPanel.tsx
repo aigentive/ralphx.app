@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ChevronDown,
   CheckCircle2,
   Code,
   FileText,
@@ -24,6 +25,13 @@ import type {
 } from "@/components/diff";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
 import { EmptyArtifactState } from "./AgentsArtifactEmptyState";
 import { PublishEventLog } from "./AgentsPublishEventLog";
@@ -54,6 +62,7 @@ export function AgentPublishPanel({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [commitFiles, setCommitFiles] = useState<DiffViewerFileChange[]>([]);
   const [isLoadingCommitFiles, setIsLoadingCommitFiles] = useState(false);
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
   const conversationId = workspace?.conversationId ?? null;
   const canHydratePublishFacts = useDeferredAgentHydration(conversationId);
   const changesQuery = useQuery({
@@ -264,6 +273,46 @@ export function AgentPublishPanel({
             : changes.length > 0
               ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} ready for review.`
               : "No changed files detected yet.";
+  const confirmUpdateFromBase = async () => {
+    const confirmed = await confirm({
+      title: "Update from base branch?",
+      description: `This will update ${branch} with the latest changes from ${baseActionLabel}. If conflicts are found, RalphX will route this workspace through repair before publishing can continue.`,
+      confirmText: "Update branch",
+    });
+    if (!confirmed) {
+      return;
+    }
+    updateFromBaseMutation.mutate();
+  };
+  const confirmClosePr = async () => {
+    const confirmed = await confirm({
+      title: "Close pull request?",
+      description: `This will close ${terminalPrLabel} for ${branch}. The workspace files and conversation history will remain available.`,
+      confirmText: "Close PR",
+      variant: "destructive",
+    });
+    if (!confirmed) {
+      return;
+    }
+    closePrMutation.mutate();
+  };
+  const confirmPublishWorkspace = async () => {
+    if (!onPublishWorkspace) {
+      return;
+    }
+    const confirmed = await confirm({
+      title: "Commit and publish workspace?",
+      description: `This will commit workspace changes on ${branch} and push them to a pull request against ${base}.`,
+      confirmText: "Commit & Publish",
+    });
+    if (!confirmed) {
+      return;
+    }
+    await onPublishWorkspace(workspace.conversationId);
+  };
+  const primaryActionClassName = `h-9 gap-2 px-3 text-xs ${
+    canClosePr ? "rounded-r-none" : ""
+  }`;
 
   return (
     <div className="min-h-full p-4" data-testid="agents-publish-pane">
@@ -404,61 +453,76 @@ export function AgentPublishPanel({
                 <Code className="h-3.5 w-3.5" />
                 Review Changes
               </Button>
-              {canClosePr && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-9 gap-2 px-3 text-xs"
-                  style={{ color: "var(--status-error)" }}
-                  onClick={() => closePrMutation.mutate()}
-                  disabled={isClosingPr || effectivePublishing}
-                  data-testid="agents-close-pr"
-                >
-                  {isClosingPr ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <XCircle className="h-3.5 w-3.5" />
-                  )}
-                  Close PR
-                </Button>
-              )}
-              {isBranchUpdateNeeded ? (
-                <Button
-                  type="button"
-                  className="h-9 gap-2 px-3 text-xs"
-                  onClick={() => updateFromBaseMutation.mutate()}
-                  disabled={
-                    effectivePublishing ||
-                    isRepairPending ||
-                    workspace.status === "missing"
-                  }
-                  data-testid="agents-update-from-base"
-                >
-                  {isUpdatingFromBase ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <GitBranch className="h-3.5 w-3.5" />
-                  )}
-                  Update from {baseActionLabel}
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  className="h-9 gap-2 px-3 text-xs"
-                  onClick={() => void onPublishWorkspace?.(workspace.conversationId)}
-                  disabled={publishDisabled}
-                  data-testid="agents-publish-confirm"
-                >
-                  {isPublishingWorkspace ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : isPublishCurrent || terminalPublicationStatus ? (
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                  ) : (
-                    <GitPullRequestArrow className="h-3.5 w-3.5" />
-                  )}
-                  {publishButtonLabel}
-                </Button>
-              )}
+              <div className="inline-flex items-center">
+                {isBranchUpdateNeeded ? (
+                  <Button
+                    type="button"
+                    className={primaryActionClassName}
+                    onClick={() => void confirmUpdateFromBase()}
+                    disabled={
+                      effectivePublishing ||
+                      isRepairPending ||
+                      workspace.status === "missing"
+                    }
+                    data-testid="agents-update-from-base"
+                  >
+                    {isUpdatingFromBase ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <GitBranch className="h-3.5 w-3.5" />
+                    )}
+                    Update from {baseActionLabel}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    className={primaryActionClassName}
+                    onClick={() => void confirmPublishWorkspace()}
+                    disabled={publishDisabled}
+                    data-testid="agents-publish-confirm"
+                  >
+                    {isPublishingWorkspace ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : isPublishCurrent || terminalPublicationStatus ? (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <GitPullRequestArrow className="h-3.5 w-3.5" />
+                    )}
+                    {publishButtonLabel}
+                  </Button>
+                )}
+                {canClosePr && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        className="h-9 w-9 rounded-l-none border-l px-0 text-xs"
+                        style={{ borderLeftColor: "var(--overlay-weak)" }}
+                        aria-label="More publish actions"
+                        disabled={isClosingPr || effectivePublishing}
+                        data-testid="agents-publish-actions-menu"
+                      >
+                        {isClosingPr ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        data-testid="agents-close-pr"
+                        onSelect={() => void confirmClosePr()}
+                        disabled={isClosingPr || effectivePublishing}
+                        style={{ color: "var(--status-error)" }}
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                        Close PR
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -535,6 +599,7 @@ export function AgentPublishPanel({
           )}
         </DialogContent>
       </Dialog>
+      <ConfirmationDialog {...confirmationDialogProps} />
     </div>
   );
 }

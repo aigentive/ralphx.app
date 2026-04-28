@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -352,7 +352,7 @@ describe("AgentsArtifactPane", () => {
     expect(screen.getByText("PR #90")).toBeInTheDocument();
   });
 
-  it("does not directly publish pipeline-owned ideation workspaces", () => {
+  it("does not directly publish pipeline-owned ideation workspaces", async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     renderPane(
       "publish",
@@ -375,6 +375,11 @@ describe("AgentsArtifactPane", () => {
     fireEvent.click(publishButton);
 
     expect(publish).not.toHaveBeenCalled();
+    expect(screen.getByTestId("agents-publish-actions-menu")).toBeEnabled();
+
+    await userEvent.click(screen.getByTestId("agents-publish-actions-menu"));
+
+    expect(await screen.findByTestId("agents-close-pr")).toHaveTextContent("Close PR");
   });
 
   it("allows PR maintenance actions for pipeline-owned ideation workspaces", async () => {
@@ -428,16 +433,30 @@ describe("AgentsArtifactPane", () => {
     expect(await screen.findByTestId("agents-base-stale")).toHaveTextContent(
       "feature/agent-screen"
     );
-    expect(screen.getByTestId("agents-close-pr")).toBeEnabled();
+    expect(screen.queryByTestId("agents-close-pr")).not.toBeInTheDocument();
+    expect(screen.getByTestId("agents-publish-actions-menu")).toBeEnabled();
     expect(screen.getByTestId("agents-update-from-base")).toBeEnabled();
     expect(screen.queryByTestId("agents-publish-confirm")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("agents-update-from-base"));
+    expect(updateWorkspaceFromBaseMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Update branch",
+      })
+    );
     await waitFor(() =>
       expect(updateWorkspaceFromBaseMock).toHaveBeenCalledWith("conversation-1")
     );
 
-    fireEvent.click(screen.getByTestId("agents-close-pr"));
+    await userEvent.click(screen.getByTestId("agents-publish-actions-menu"));
+    await userEvent.click(await screen.findByTestId("agents-close-pr"));
+    expect(closeWorkspacePrMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Close PR",
+      })
+    );
     await waitFor(() =>
       expect(closeWorkspacePrMock).toHaveBeenCalledWith("conversation-1")
     );
@@ -792,13 +811,20 @@ describe("AgentsArtifactPane", () => {
     expect(screen.queryByTestId("agents-artifact-tab-tasks")).not.toBeInTheDocument();
   });
 
-  it("confirms publish from the publish pane", () => {
+  it("confirms publish from the publish pane", async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     renderPane("publish", workspace({ mode: "edit" }), publish);
 
     fireEvent.click(screen.getByTestId("agents-publish-confirm"));
 
-    expect(publish).toHaveBeenCalledWith("conversation-1");
+    expect(publish).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Commit & Publish",
+      })
+    );
+
+    await waitFor(() => expect(publish).toHaveBeenCalledWith("conversation-1"));
   });
 
   it("disables publish once the workspace branch is pushed and current", async () => {
@@ -868,8 +894,14 @@ describe("AgentsArtifactPane", () => {
     expect(publishButton).toBeEnabled();
 
     fireEvent.click(publishButton);
+    expect(publish).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Commit & Publish",
+      })
+    );
 
-    expect(publish).toHaveBeenCalledWith("conversation-1");
+    await waitFor(() => expect(publish).toHaveBeenCalledWith("conversation-1"));
   });
 
   it("opens the published PR from the publish pane", async () => {
@@ -967,6 +999,12 @@ describe("AgentsArtifactPane", () => {
       "Update this workspace before publishing"
     );
     fireEvent.click(screen.getByTestId("agents-update-from-base"));
+    expect(updateWorkspaceFromBaseMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Update branch",
+      })
+    );
 
     await waitFor(() =>
       expect(updateWorkspaceFromBaseMock).toHaveBeenCalledWith("conversation-1")
