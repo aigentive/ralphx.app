@@ -9,8 +9,7 @@ use crate::application::chat_service::{ChatService, SendCallerContext, SendMessa
 use crate::application::AppState;
 use crate::domain::entities::{
     AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentConversationWorkspaceStatus,
-    ChatContextType,
-    ChatConversationId, ChatMessage, TaskId,
+    ChatContextType, ChatConversationId, ChatMessage, MessageRole, ProjectId, TaskId,
 };
 use crate::domain::repositories::{
     external_events_repository::ExternalEventRecord, AgentConversationWorkspaceRepository,
@@ -22,6 +21,8 @@ use crate::error::{AppError, AppResult};
 
 const LEGACY_BRIDGE_SOURCE: &str = "project_agent_ideation_bridge";
 const WAKEUP_SOURCE: &str = "project_agent_workspace_bridge_wakeup";
+const WAKEUP_MARKER_KIND: &str = "agent_workspace_bridge_delivery_marker";
+const WAKEUP_MARKER_CONTENT: &str = "RalphX workflow bridge events were delivered.";
 const MAX_BRIDGE_EVENT_REPLAY: i64 = 10_000;
 
 #[derive(Clone)]
@@ -185,6 +186,17 @@ pub async fn wake_agent_workspace_for_bridge_events_with_deps<S: ChatService + ?
         .await
         .map_err(|error| AppError::Agent(error.to_string()))?;
 
+    if !result.was_queued {
+        persist_hidden_wakeup_marker(
+            deps,
+            &wake_up.conversation_id,
+            &wake_up.project_id,
+            &wake_up.source_session_id,
+            &wake_up.event_keys,
+        )
+        .await?;
+    }
+
     Ok(Some(AgentWorkspaceBridgeWakeUpResult {
         conversation_id: result.conversation_id,
         agent_run_id: result.agent_run_id,
@@ -288,6 +300,7 @@ async fn reconcile_legacy_bridge_messages(
         .as_ref()
         .map(|id| id.as_str().to_string());
     let mut delivered_event_keys = HashSet::new();
+    let mut visible_wakeup_event_keys = HashSet::new();
     let mut removed = 0;
 
     for message in messages {
@@ -296,7 +309,22 @@ async fn reconcile_legacy_bridge_messages(
         };
 
         if metadata_source(&metadata) == Some(WAKEUP_SOURCE) {
-            collect_wakeup_event_keys(&metadata, &mut delivered_event_keys);
+            let source_session_id = metadata
+                .get("source_session_id")
+                .or_else(|| metadata.get("sourceSessionId"))
+                .and_then(JsonValue::as_str);
+            if expected_session_id.as_deref() != source_session_id {
+                deps.chat_message_repo.delete(&message.id).await?;
+                removed += 1;
+                continue;
+            }
+            let keys = wakeup_event_keys(&metadata);
+            delivered_event_keys.extend(keys.iter().cloned());
+            if !is_hidden_wakeup_marker(&message, &metadata) {
+                visible_wakeup_event_keys.extend(keys);
+                deps.chat_message_repo.delete(&message.id).await?;
+                removed += 1;
+            }
             continue;
         }
 
@@ -321,6 +349,21 @@ async fn reconcile_legacy_bridge_messages(
             .and_then(JsonValue::as_str)
         {
             delivered_event_keys.insert(event_key.to_string());
+        }
+    }
+
+    if !visible_wakeup_event_keys.is_empty() {
+        let mut event_keys: Vec<String> = visible_wakeup_event_keys.into_iter().collect();
+        event_keys.sort();
+        if let Some(source_session_id) = expected_session_id.as_deref() {
+            persist_hidden_wakeup_marker(
+                deps,
+                conversation_id,
+                workspace.project_id.as_str(),
+                source_session_id,
+                &event_keys,
+            )
+            .await?;
         }
     }
 
@@ -361,18 +404,69 @@ fn collect_wakeup_event_keys(
     metadata: &JsonMap<String, JsonValue>,
     delivered_event_keys: &mut HashSet<String>,
 ) {
+    delivered_event_keys.extend(wakeup_event_keys(metadata));
+}
+
+fn wakeup_event_keys(metadata: &JsonMap<String, JsonValue>) -> Vec<String> {
     let Some(keys) = metadata
         .get("bridge_event_keys")
         .or_else(|| metadata.get("bridgeEventKeys"))
         .and_then(JsonValue::as_array)
     else {
-        return;
+        return Vec::new();
     };
-    delivered_event_keys.extend(
-        keys.iter()
-            .filter_map(JsonValue::as_str)
-            .map(str::to_string),
-    );
+    keys.iter()
+        .filter_map(JsonValue::as_str)
+        .map(str::to_string)
+        .collect()
+}
+
+fn is_hidden_wakeup_marker(message: &ChatMessage, metadata: &JsonMap<String, JsonValue>) -> bool {
+    message.role == MessageRole::System
+        && metadata
+            .get("kind")
+            .and_then(JsonValue::as_str)
+            .is_some_and(|kind| kind == WAKEUP_MARKER_KIND)
+        && metadata
+            .get("hidden_from_ui")
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false)
+}
+
+async fn persist_hidden_wakeup_marker(
+    deps: &AgentWorkspaceBridgeDeps,
+    conversation_id: &ChatConversationId,
+    project_id: &str,
+    source_session_id: &str,
+    event_keys: &[String],
+) -> AppResult<()> {
+    if event_keys.is_empty() {
+        return Ok(());
+    }
+
+    let metadata = hidden_wakeup_marker_metadata(source_session_id, event_keys);
+    let mut marker = ChatMessage::user_in_project(
+        ProjectId::from_string(project_id.to_string()),
+        WAKEUP_MARKER_CONTENT,
+    )
+    .with_metadata(metadata);
+    marker.role = MessageRole::System;
+    marker.conversation_id = Some(*conversation_id);
+    deps.chat_message_repo.create(marker).await?;
+    Ok(())
+}
+
+fn hidden_wakeup_marker_metadata(source_session_id: &str, event_keys: &[String]) -> String {
+    json!({
+        "source": WAKEUP_SOURCE,
+        "kind": WAKEUP_MARKER_KIND,
+        "source_session_id": source_session_id,
+        "bridge_event_keys": event_keys,
+        "event_count": event_keys.len(),
+        "hidden_from_ui": true,
+        "recovery_context": true,
+    })
+    .to_string()
 }
 
 async fn refresh_conversation_stats(
@@ -554,6 +648,10 @@ fn build_wakeup(
         "source_session_id": source_session_id,
         "bridge_event_keys": event_keys,
         "event_count": events.len(),
+        "resume_in_place": true,
+        "persist_hidden_marker": true,
+        "hidden_from_ui": true,
+        "recovery_context": true,
     })
     .to_string();
 
@@ -607,8 +705,8 @@ mod tests {
     use crate::application::chat_service::create_assistant_message;
     use crate::application::AppState;
     use crate::domain::entities::{
-        AgentConversationWorkspaceMode, ChatConversation, IdeationAnalysisBaseRefKind,
-        IdeationSessionId, Project, ProjectId, Task,
+        AgentConversationWorkspaceMode, ChatConversation, ChatMessage, IdeationAnalysisBaseRefKind,
+        IdeationSessionId, MessageRole, Project, ProjectId, Task,
     };
 
     fn event(id: i64, event_type: &str, payload: JsonValue) -> ExternalEventRecord {
@@ -820,6 +918,7 @@ mod tests {
         wakeup_message.metadata = Some(
             json!({
                 "source": WAKEUP_SOURCE,
+                "source_session_id": "session-1",
                 "bridge_event_keys": ["ideation:session-1:verified"]
             })
             .to_string(),
@@ -965,6 +1064,105 @@ mod tests {
             options[0].conversation_id_override,
             Some(conversation_id),
             "dispatcher must send to the explicit linked workspace conversation"
+        );
+        let metadata: JsonValue = serde_json::from_str(
+            options[0]
+                .metadata
+                .as_deref()
+                .expect("bridge wake-up metadata"),
+        )
+        .unwrap();
+        assert_eq!(metadata["resume_in_place"], true);
+        assert_eq!(metadata["source"], WAKEUP_SOURCE);
+
+        let messages = state
+            .chat_message_repo
+            .get_by_conversation(&conversation_id)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 1, "bridge dispatch records one hidden marker");
+        assert_eq!(messages[0].role, MessageRole::System);
+        assert!(
+            !messages[0].content.contains("gap_score"),
+            "hidden marker must not persist the wake-up payload"
+        );
+        let marker_metadata: JsonValue =
+            serde_json::from_str(messages[0].metadata.as_deref().unwrap()).unwrap();
+        assert_eq!(marker_metadata["source"], WAKEUP_SOURCE);
+        assert_eq!(marker_metadata["hidden_from_ui"], true);
+        assert_eq!(marker_metadata["recovery_context"], true);
+        assert_eq!(
+            marker_metadata["bridge_event_keys"],
+            json!(["ideation:session-1:verified"])
+        );
+    }
+
+    #[tokio::test]
+    async fn reconciles_visible_workspace_wakeup_messages_into_hidden_markers() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::from_string("project-1".to_string());
+        create_project(&state, &project_id).await;
+        let conversation_id = create_workspace(
+            &state,
+            project_id.clone(),
+            "Linked workspace",
+            Some("session-1"),
+        )
+        .await;
+
+        let mut visible_wakeup = ChatMessage::user_in_project(
+            project_id.clone(),
+            "RalphX workflow event arrived.\n\n```json\n{\"gap_score\":1}\n```",
+        );
+        visible_wakeup.conversation_id = Some(conversation_id);
+        visible_wakeup.metadata = Some(
+            json!({
+                "source": WAKEUP_SOURCE,
+                "source_session_id": "session-1",
+                "bridge_event_keys": ["ideation:session-1:verified"],
+                "event_count": 1
+            })
+            .to_string(),
+        );
+        state
+            .chat_message_repo
+            .create(visible_wakeup)
+            .await
+            .unwrap();
+        state
+            .external_events_repo
+            .insert_event(
+                "ideation:verified",
+                project_id.as_str(),
+                &json!({ "session_id": "session-1", "gap_score": 1 }).to_string(),
+            )
+            .await
+            .unwrap();
+
+        let wakeup = prepare_agent_workspace_bridge_wakeup(&state, &conversation_id)
+            .await
+            .unwrap();
+        let messages = state
+            .chat_message_repo
+            .get_by_conversation(&conversation_id)
+            .await
+            .unwrap();
+
+        assert!(wakeup.is_none(), "reconciled event remains delivered");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, MessageRole::System);
+        assert!(
+            !messages[0].content.contains("gap_score"),
+            "reconciled marker must not keep the visible wake-up payload"
+        );
+        let metadata: JsonValue =
+            serde_json::from_str(messages[0].metadata.as_deref().unwrap()).unwrap();
+        assert_eq!(metadata["source"], WAKEUP_SOURCE);
+        assert_eq!(metadata["hidden_from_ui"], true);
+        assert_eq!(metadata["recovery_context"], true);
+        assert_eq!(
+            metadata["bridge_event_keys"],
+            json!(["ideation:session-1:verified"])
         );
     }
 
