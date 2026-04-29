@@ -16,11 +16,11 @@ import {
   DetailCard,
   StatusBanner,
   StatusPill,
+  TwoColumnLayout,
   TaskMetricsCard,
   ChangeReviewSection,
   PlanMergeContextSection,
 } from "./shared";
-import { TaskDescriptionSection } from "./shared/TaskDescriptionSection";
 import { useTaskDetailContextModel } from "./shared/TaskDetailContext";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskStateHistory } from "@/hooks/useReviews";
@@ -180,7 +180,10 @@ export function MergedTaskDetail({
     ) : null;
 
   return (
-    <div data-testid="merged-task-detail" className="space-y-6 min-w-0">
+    <TwoColumnLayout
+      description={task.description}
+      testId="merged-task-detail"
+    >
       {/* Status Banner */}
       <StatusBanner
         icon={CheckCircle2}
@@ -197,10 +200,6 @@ export function MergedTaskDetail({
         }
         {...(bannerAction !== null && { action: bannerAction })}
       />
-
-      {/* Description right under the banner so the body opens with what the
-          task is, before metrics and merge plumbing. */}
-      <TaskDescriptionSection description={task.description} />
 
       {/* Duration (static) */}
       {task.startedAt && task.completedAt && (
@@ -223,7 +222,7 @@ export function MergedTaskDetail({
         </section>
       )}
 
-      {/* Merge Info */}
+      {/* Merge Info — skipped when the rail surfaces the merge card. */}
       {hasMergeInfo && !detailContext && (
         <section data-testid="merge-info-section">
           <SectionTitle muted>Merge Details</SectionTitle>
@@ -247,6 +246,6 @@ export function MergedTaskDetail({
         stateTransitions={stateTransitions}
         context={isPlanMerge ? "plan_merge" : "task"}
       />
-    </div>
+    </TwoColumnLayout>
   );
 }
