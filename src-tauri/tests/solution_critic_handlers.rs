@@ -229,3 +229,38 @@ async fn solution_critic_routes_enforce_project_scope() {
         .unwrap();
     assert!(contexts.is_empty());
 }
+
+#[tokio::test]
+async fn solution_critic_route_requires_existing_context_artifact() {
+    let (state, session_id, plan_artifact_id) = setup_state().await;
+    let app = solution_critic_app(state.clone());
+
+    let critique_body = serde_json::to_vec(&CritiqueArtifactRequest {
+        target_artifact_id: plan_artifact_id.as_str().to_string(),
+        compiled_context_artifact_id: "missing-context-artifact".to_string(),
+    })
+    .unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/solution-critique",
+                    session_id.as_str()
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(critique_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let findings = state
+        .app_state
+        .artifact_repo
+        .get_by_type(ArtifactType::Findings)
+        .await
+        .unwrap();
+    assert!(findings.is_empty());
+}

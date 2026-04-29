@@ -259,6 +259,66 @@ async fn unknown_model_evidence_source_is_rejected_before_persistence() {
 }
 
 #[tokio::test]
+async fn unknown_critique_evidence_source_is_rejected_before_findings_persistence() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id,
+    } = setup_fixture().await;
+    let unknown_critique_source_json = r#"{
+        "verdict": "investigate",
+        "confidence": "medium",
+        "claims": [{
+            "id": "claim-review-unknown-source",
+            "claim": "The plan needs missing evidence.",
+            "status": "unclear",
+            "confidence": "medium",
+            "evidence": [{"id": "artifact:not-collected"}]
+        }],
+        "recommendations": [],
+        "risks": [],
+        "verification_plan": [],
+        "safe_next_action": "Inspect evidence."
+    }"#;
+    let service = SolutionCritiqueService::from_app_state_with_generator(
+        &state,
+        generator(
+            compile_json(&plan_artifact_id),
+            unknown_critique_source_json.to_string(),
+        ),
+    );
+    let context = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest {
+                target_artifact_id: plan_artifact_id.as_str().to_string(),
+                source_limits: SourceLimits::default(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = service
+        .critique_artifact(
+            session_id.as_str(),
+            CritiqueArtifactRequest {
+                target_artifact_id: plan_artifact_id.as_str().to_string(),
+                compiled_context_artifact_id: context.artifact_id,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("unknown source id"));
+    let findings = state
+        .artifact_repo
+        .get_by_type(ArtifactType::Findings)
+        .await
+        .unwrap();
+    assert!(findings.is_empty());
+}
+
+#[tokio::test]
 async fn compile_and_critique_do_not_mutate_session_verification_state() {
     let Fixture {
         state,
