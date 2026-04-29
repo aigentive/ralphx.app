@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   GitMerge,
   GitCommit,
-  GitPullRequest,
   ExternalLink,
   Loader2,
 } from "lucide-react";
@@ -22,6 +21,7 @@ import {
   ChangeReviewSection,
   PlanMergeContextSection,
 } from "./shared";
+import { TaskDescriptionSection } from "./shared/TaskDescriptionSection";
 import { useTaskDetailContextModel } from "./shared/TaskDetailContext";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskStateHistory } from "@/hooks/useReviews";
@@ -30,6 +30,7 @@ import type { Task } from "@/types/task";
 import { BranchBadge } from "@/components/shared/BranchBadge";
 import { DurationDisplay } from "./shared/DurationDisplay";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
+import { statusTint } from "@/lib/theme-colors";
 
 interface MergedTaskDetailProps {
   task: Task;
@@ -157,12 +158,47 @@ export function MergedTaskDetail({
     );
   }
 
-  return (
-    <>
+  const handleOpenPrInGithub = async () => {
+    if (!planBranch?.prUrl) return;
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(planBranch.prUrl);
+  };
+
+  const bannerAction =
+    hasPrContext && planBranch?.prUrl ? (
+      <button
+        type="button"
+        onClick={handleOpenPrInGithub}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer shrink-0"
+        style={{
+          backgroundColor: statusTint("success", 14),
+          color: "var(--status-success)",
+        }}
+      >
+        <ExternalLink className="w-3.5 h-3.5" />
+        View PR #{planBranch.prNumber}
+      </button>
+    ) : null;
+
+  // Plan-merge tasks fold into a single column (the rail's content is already
+  // surfaced in the body). Regular tasks keep the rail for now since some
+  // metadata (proposal, plan link) still lives there.
+  const renderBody = (children: React.ReactNode) =>
+    isPlanMerge ? (
+      <div data-testid="merged-task-detail" className="space-y-6 min-w-0">
+        {children}
+      </div>
+    ) : (
       <TwoColumnLayout
         description={task.description}
         testId="merged-task-detail"
       >
+        {children}
+      </TwoColumnLayout>
+    );
+
+  return renderBody(
+    <>
       {/* Status Banner */}
       <StatusBanner
         icon={CheckCircle2}
@@ -177,6 +213,7 @@ export function MergedTaskDetail({
             size="md"
           />
         }
+        {...(bannerAction !== null && { action: bannerAction })}
       />
 
       {/* Duration (static) */}
@@ -192,41 +229,13 @@ export function MergedTaskDetail({
 
       {isPlanMerge && !detailContext && <PlanMergeContextSection taskId={task.id} />}
 
-      {/* Merged via PR */}
-      {hasPrContext && !detailContext && (
-        <section data-testid="merged-via-pr-section">
-          <SectionTitle>Pull Request</SectionTitle>
-          <DetailCard variant="success">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <GitPullRequest className="w-4 h-4" style={{ color: "var(--status-success)" }} />
-                <span className="text-[13px] text-text-primary/80">
-                  Merged via PR #{planBranch.prNumber}
-                </span>
-              </div>
-              {planBranch.prUrl && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const { openUrl } = await import("@tauri-apps/plugin-opener");
-                    await openUrl(planBranch.prUrl!);
-                  }}
-                  className="flex items-center gap-1 text-[12px] cursor-pointer"
-                  style={{ color: "var(--status-success)" }}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  View PR
-                </button>
-              )}
-            </div>
-          </DetailCard>
-        </section>
-      )}
+      {/* Plan-merge surfaces description above commits in single-column mode. */}
+      {isPlanMerge && <TaskDescriptionSection description={task.description} />}
 
       {/* Task Metrics */}
       {!isPlanMerge && (
         <section data-testid="task-metrics-section">
-          <SectionTitle>Metrics</SectionTitle>
+          <SectionTitle muted>Metrics</SectionTitle>
           <TaskMetricsCard taskId={task.id} />
         </section>
       )}
@@ -234,7 +243,7 @@ export function MergedTaskDetail({
       {/* Merge Info */}
       {hasMergeInfo && !detailContext && (
         <section data-testid="merge-info-section">
-          <SectionTitle>Merge Details</SectionTitle>
+          <SectionTitle muted>Merge Details</SectionTitle>
           <MergeInfoCard
             mergeCommitSha={effectiveMergeCommitSha}
             branchName={task.taskBranch}
@@ -255,7 +264,6 @@ export function MergedTaskDetail({
         stateTransitions={stateTransitions}
         context={isPlanMerge ? "plan_merge" : "task"}
       />
-      </TwoColumnLayout>
-    </>
+    </>,
   );
 }
