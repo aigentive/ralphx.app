@@ -61,8 +61,20 @@ describe("SolutionCritiqueSummary", () => {
             evidence: [],
           },
         ],
-        openQuestions: [],
-        staleAssumptions: [],
+        openQuestions: [
+          {
+            id: "question-1",
+            question: "Which migration file owns the change?",
+            evidence: [],
+          },
+        ],
+        staleAssumptions: [
+          {
+            id: "assumption-1",
+            text: "The previous schema is still current.",
+            evidence: [],
+          },
+        ],
         generatedAt: "2026-04-29T12:00:00Z",
       },
     });
@@ -74,10 +86,43 @@ describe("SolutionCritiqueSummary", () => {
         contextArtifactId: "context-1",
         verdict: "investigate",
         confidence: "medium",
-        claims: [],
-        recommendations: [],
-        risks: [],
-        verificationPlan: [],
+        claims: [
+          {
+            id: "claim-review-1",
+            claim: "The migration exists.",
+            status: "unsupported",
+            confidence: "medium",
+            evidence: [],
+            notes: "No migration source was collected.",
+          },
+        ],
+        recommendations: [
+          {
+            id: "recommendation-1",
+            recommendation: "Add a migration reference.",
+            status: "revise",
+            evidence: [],
+            rationale: "The plan needs a concrete implementation point.",
+          },
+        ],
+        risks: [
+          {
+            id: "risk-1",
+            risk: "Runtime may miss persisted context.",
+            severity: "medium",
+            evidence: [],
+            mitigation: "Verify startup hydration.",
+          },
+        ],
+        verificationPlan: [
+          {
+            id: "verification-1",
+            requirement: "Run the migration test.",
+            priority: "medium",
+            evidence: [],
+            suggestedTest: "cargo test migration",
+          },
+        ],
         safeNextAction: "Inspect projected gaps.",
         generatedAt: "2026-04-29T12:30:00Z",
       },
@@ -103,8 +148,13 @@ describe("SolutionCritiqueSummary", () => {
     expect(screen.getByText("1 claim")).toBeInTheDocument();
     expect(screen.getAllByText("2 gaps")).toHaveLength(2);
     expect(screen.getByText("Inspect projected gaps.")).toBeInTheDocument();
+    expect(screen.getByText("Which migration file owns the change?")).toBeInTheDocument();
+    expect(screen.getByText("The previous schema is still current.")).toBeInTheDocument();
+    expect(screen.getByText("The migration exists.")).toBeInTheDocument();
+    expect(screen.getByText("Run the migration test.")).toBeInTheDocument();
     expect(
       screen.getByText("Required verification: prove the migration exists.")
     ).toBeInTheDocument();
+    expect(screen.queryByText(/solution_critique/i)).not.toBeInTheDocument();
   });
 });
