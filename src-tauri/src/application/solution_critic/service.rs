@@ -73,9 +73,10 @@ impl SolutionCritiqueService {
         source_limits: &SourceLimits,
     ) -> AppResult<RawContextBundle> {
         let session = self.load_session(session_id).await?;
-        ensure_plan_target(&session, target_artifact_id)?;
+        let target_artifact_id = self.resolve_latest_artifact_id(target_artifact_id).await?;
+        ensure_plan_target(&session, target_artifact_id.as_str())?;
         let project = self.load_project(&session).await?;
-        let target_artifact = self.load_artifact(target_artifact_id).await?;
+        let target_artifact = self.load_artifact(target_artifact_id.as_str()).await?;
         let target_content = inline_artifact_content(&target_artifact)?;
         let limits = source_limits.effective();
         let mut sources = Vec::new();
@@ -132,7 +133,7 @@ impl SolutionCritiqueService {
         compiled_context.id = artifact.id.as_str().to_string();
         artifact.content = ArtifactContent::inline(to_pretty_json(&compiled_context)?);
         let artifact = self.artifact_repo.create(artifact).await?;
-        let target_id = ArtifactId::from_string(request.target_artifact_id);
+        let target_id = ArtifactId::from_string(&compiled_context.target.id);
         self.artifact_repo
             .add_relation(ArtifactRelation::related_to(artifact.id.clone(), target_id))
             .await?;
@@ -169,8 +170,11 @@ impl SolutionCritiqueService {
         request: CritiqueArtifactRequest,
     ) -> AppResult<CritiqueArtifactResult> {
         let session = self.load_session(session_id).await?;
-        ensure_plan_target(&session, &request.target_artifact_id)?;
-        let target_artifact = self.load_artifact(&request.target_artifact_id).await?;
+        let target_artifact_id = self
+            .resolve_latest_artifact_id(&request.target_artifact_id)
+            .await?;
+        ensure_plan_target(&session, target_artifact_id.as_str())?;
+        let target_artifact = self.load_artifact(target_artifact_id.as_str()).await?;
         let target_content = inline_artifact_content(&target_artifact)?;
         let context_artifact = self
             .load_artifact(&request.compiled_context_artifact_id)
@@ -182,7 +186,7 @@ impl SolutionCritiqueService {
             )));
         }
         let compiled_context: CompiledContext = parse_inline_artifact(&context_artifact)?;
-        if compiled_context.target.id != request.target_artifact_id {
+        if compiled_context.target.id != target_artifact_id.as_str() {
             return Err(AppError::Validation(
                 "Compiled context target does not match critique target artifact".to_string(),
             ));
@@ -202,13 +206,13 @@ impl SolutionCritiqueService {
         let candidate: SolutionCritiqueCandidate = parse_candidate(&candidate_json)?;
         let mut critique = build_solution_critique(
             candidate,
-            &request.target_artifact_id,
+            target_artifact_id.as_str(),
             &request.compiled_context_artifact_id,
             &compiled_context,
         )?;
 
         let context_id = ArtifactId::from_string(request.compiled_context_artifact_id);
-        let target_id = ArtifactId::from_string(request.target_artifact_id);
+        let target_id = target_artifact_id;
         let mut artifact = Artifact::new_inline(
             "Solution Critique",
             ArtifactType::Findings,
@@ -274,6 +278,12 @@ impl SolutionCritiqueService {
             .get_by_id(&id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Artifact {artifact_id} not found")))
+    }
+
+    async fn resolve_latest_artifact_id(&self, artifact_id: &str) -> AppResult<ArtifactId> {
+        self.artifact_repo
+            .resolve_latest_artifact_id(&ArtifactId::from_string(artifact_id))
+            .await
     }
 
     async fn collect_chat_sources(
