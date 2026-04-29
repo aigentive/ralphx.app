@@ -36,6 +36,7 @@ import {
   TwoColumnLayout,
   ChangeReviewSection,
   PlanMergeContextSection,
+  TaskDescriptionSection,
 } from "./shared";
 import { useTaskDetailContextModel } from "./shared/TaskDetailContext";
 import { useMergeValidationEvents } from "@/hooks/useMergeValidationEvents";
@@ -834,12 +835,15 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       )}
 
       {showPrReviewContext && (
-        <ChangeReviewSection
-          taskId={task.id}
-          history={reviewHistory}
-          stateTransitions={stateTransitions}
-          context="plan_merge"
-        />
+        <>
+          <TaskDescriptionSection description={task.description} />
+          <ChangeReviewSection
+            taskId={task.id}
+            history={reviewHistory}
+            stateTransitions={stateTransitions}
+            context="plan_merge"
+          />
+        </>
       )}
 
       {/* Merge Progress — high-level steps for historical, agent, and validation recovery (fixing) modes */}

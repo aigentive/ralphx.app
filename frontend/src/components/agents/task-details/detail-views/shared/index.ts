@@ -17,6 +17,7 @@ export { TaskMetricsCard } from "./TaskMetricsCard";
 export { ChangeReviewSection, CommitSummaryCard } from "./ChangeReviewSection";
 export { PlanMergeContextCard, PlanMergeContextSection } from "./PlanMergeContextSection";
 export { TaskContextRail } from "./TaskDetailContextRail";
+export { TaskDescriptionSection } from "./TaskDescriptionSection";
 export { TaskDetailContextProvider } from "./TaskDetailContextProvider";
 export {
   useTaskDetailContextModel,

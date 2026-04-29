@@ -188,9 +188,13 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
     status: VerificationStatus;
     inProgress: boolean;
   } | null>(null);
+  const [taskArtifactSelectedId, setTaskArtifactSelectedId] = useState<string | null>(null);
   useEffect(() => {
     setDisplayedVerificationStatus(null);
   }, [attachedSessionId]);
+  useEffect(() => {
+    setTaskArtifactSelectedId(null);
+  }, [attachedSessionId, taskMode]);
   const sessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedSessionId ?? ""),
     queryFn: () => ideationApi.sessions.getWithData(attachedSessionId!),
@@ -354,7 +358,17 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
               <button
                 key={id}
                 type="button"
-                onClick={() => onTabChange(id)}
+                onClick={() => {
+                  if (
+                    id === "tasks" &&
+                    effectiveActiveTab === "tasks" &&
+                    taskArtifactSelectedId
+                  ) {
+                    setTaskArtifactSelectedId(null);
+                    return;
+                  }
+                  onTabChange(id);
+                }}
                 className={cn(
                   "relative flex h-full self-stretch items-center gap-1.5 bg-transparent px-3 text-[12px] font-medium transition-colors duration-150 rounded-none shadow-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 appearance-none",
                   id === "tasks" ? "hidden xl:flex" : ""
@@ -494,6 +508,8 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
           isPublishingWorkspace={isPublishingWorkspace}
           onFocusVerificationSession={onFocusVerificationSession}
           onDisplayedVerificationStatusChange={setDisplayedVerificationStatus}
+          taskArtifactSelectedId={taskArtifactSelectedId}
+          onTaskArtifactSelectedIdChange={setTaskArtifactSelectedId}
         />
       </div>
     </aside>
@@ -521,6 +537,8 @@ type ArtifactContentProps = {
     status: VerificationStatus;
     inProgress: boolean;
   } | null) => void;
+  taskArtifactSelectedId: string | null;
+  onTaskArtifactSelectedIdChange: (id: string | null) => void;
 };
 
 function ArtifactContent({
@@ -541,6 +559,8 @@ function ArtifactContent({
   isPublishingWorkspace,
   onFocusVerificationSession,
   onDisplayedVerificationStatusChange,
+  taskArtifactSelectedId,
+  onTaskArtifactSelectedIdChange,
 }: ArtifactContentProps) {
   const criticalPathSet = useMemo(
     () => new Set(dependencyGraph?.criticalPath ?? []),
@@ -676,6 +696,8 @@ function ArtifactContent({
       projectId={projectId}
       sessionId={attachedSessionId}
       mode={taskMode}
+      selectedTaskId={taskArtifactSelectedId}
+      onSelectedTaskIdChange={onTaskArtifactSelectedIdChange}
     />
   );
 }
@@ -785,33 +807,38 @@ function TaskArtifactSurface({
   projectId,
   sessionId,
   mode,
+  selectedTaskId,
+  onSelectedTaskIdChange,
 }: {
   projectId: string | null;
   sessionId: string;
   mode: AgentTaskArtifactMode;
+  selectedTaskId: string | null;
+  onSelectedTaskIdChange: (id: string | null) => void;
 }) {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const handleTaskSelect = useCallback((taskId: string) => {
-    setSelectedTaskId(taskId);
-  }, []);
+  const handleTaskSelect = useCallback(
+    (taskId: string) => {
+      onSelectedTaskIdChange(taskId);
+    },
+    [onSelectedTaskIdChange],
+  );
   const handleCloseTaskDetail = useCallback(() => {
-    setSelectedTaskId(null);
-  }, []);
-
-  useEffect(() => {
-    setSelectedTaskId(null);
-  }, [projectId, sessionId, mode]);
+    onSelectedTaskIdChange(null);
+  }, [onSelectedTaskIdChange]);
 
   if (!projectId) {
     return <EmptyArtifactState title="No project selected" />;
   }
 
+  const backLabel = mode === "kanban" ? "Back to Kanban" : "Back to Graph";
   const detailOverlay = selectedTaskId ? (
     <Suspense fallback={null}>
       <LazyAgentsTaskDetailOverlay
         projectId={projectId}
         selectedTaskIdOverride={selectedTaskId}
         onCloseOverride={handleCloseTaskDetail}
+        backLabel={backLabel}
+        onBack={handleCloseTaskDetail}
         constrainContent
       />
     </Suspense>
