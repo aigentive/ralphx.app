@@ -1299,6 +1299,13 @@ pub async fn switch_agent_conversation_mode(
     input: SwitchAgentConversationModeInput,
     state: State<'_, AppState>,
 ) -> Result<SwitchAgentConversationModeResponse, String> {
+    switch_agent_conversation_mode_for_state(input, state.inner()).await
+}
+
+async fn switch_agent_conversation_mode_for_state(
+    input: SwitchAgentConversationModeInput,
+    state: &AppState,
+) -> Result<SwitchAgentConversationModeResponse, String> {
     let conversation_id = ChatConversationId::from_string(input.conversation_id.clone());
     let target_mode = parse_agent_workspace_mode(Some(input.mode.as_str()))?;
     let base_ref_kind = parse_agent_workspace_base_kind(input.base_ref_kind.as_deref())?;
@@ -1401,14 +1408,6 @@ pub async fn switch_agent_conversation_mode(
         .await
         .map_err(|error| error.to_string())?;
     conversation.set_agent_mode(Some(target_mode));
-    if current_mode != target_mode {
-        state
-            .chat_conversation_repo
-            .clear_provider_session_ref(&conversation.id)
-            .await
-            .map_err(|error| error.to_string())?;
-        conversation.clear_provider_session_ref();
-    }
 
     let conversation = state
         .chat_conversation_repo
@@ -1418,9 +1417,7 @@ pub async fn switch_agent_conversation_mode(
         .unwrap_or(conversation);
 
     let workspace_response = match workspace {
-        Some(workspace) => {
-            Some(agent_workspace_response_for_state(state.inner(), workspace).await?)
-        }
+        Some(workspace) => Some(agent_workspace_response_for_state(state, workspace).await?),
         None => None,
     };
 
@@ -3369,8 +3366,9 @@ mod tests {
         send_agent_workspace_publish_repair_message_for_target, AgentConversationResponse,
         AgentConversationWorkspaceRepairTarget, AgentConversationWorkspaceResponse,
         AgentWorkspaceRepairRuntimeOverrides, DelegatedToolRuntimeSnapshot,
+        SwitchAgentConversationModeInput, switch_agent_conversation_mode_for_state,
     };
-    use crate::application::chat_service::MockChatService;
+    use crate::application::{AppState, chat_service::MockChatService};
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
     use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus};
     use crate::domain::entities::{
@@ -3608,6 +3606,76 @@ mod tests {
             Some("claude-session-456".to_string())
         );
         assert_eq!(response.provider_harness, Some("claude".to_string()));
+    }
+
+    #[tokio::test]
+    async fn switching_agent_mode_preserves_provider_session_for_native_resume() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::from_string("project-mode-switch".to_string());
+        let conversation_id =
+            ChatConversationId::from_string("11111111-1111-4111-8111-111111111111");
+        let mut conversation = ChatConversation::new_project(project_id.clone());
+        conversation.id = conversation_id;
+        conversation.set_agent_mode(Some(AgentConversationWorkspaceMode::Edit));
+        conversation.set_provider_session_ref(ProviderSessionRef {
+            harness: AgentHarnessKind::Codex,
+            provider_session_id: "codex-thread-existing".to_string(),
+        });
+        state
+            .chat_conversation_repo
+            .create(conversation)
+            .await
+            .expect("conversation persisted");
+
+        let workspace = AgentConversationWorkspace::new(
+            conversation_id,
+            project_id,
+            AgentConversationWorkspaceMode::Edit,
+            IdeationAnalysisBaseRefKind::CurrentBranch,
+            "feature/agent-screen".to_string(),
+            Some("Current branch (feature/agent-screen)".to_string()),
+            Some("base-sha".to_string()),
+            "ralphx/project/agent-11111111".to_string(),
+            "/tmp/ralphx-agent-11111111".to_string(),
+        );
+        state
+            .agent_conversation_workspace_repo
+            .create_or_update(workspace)
+            .await
+            .expect("workspace persisted");
+
+        let response = switch_agent_conversation_mode_for_state(
+            SwitchAgentConversationModeInput {
+                conversation_id: conversation_id.as_str(),
+                mode: "ideation".to_string(),
+                base_ref_kind: None,
+                base_ref: None,
+                base_display_name: None,
+            },
+            &state,
+        )
+        .await
+        .expect("mode switch succeeds");
+
+        assert_eq!(response.conversation.agent_mode.as_deref(), Some("ideation"));
+        assert_eq!(
+            response.conversation.provider_session_id.as_deref(),
+            Some("codex-thread-existing")
+        );
+        assert_eq!(response.conversation.provider_harness.as_deref(), Some("codex"));
+
+        let stored = state
+            .chat_conversation_repo
+            .get_by_id(&conversation_id)
+            .await
+            .expect("conversation load succeeds")
+            .expect("conversation exists");
+        assert_eq!(
+            stored
+                .provider_session_ref()
+                .map(|session_ref| session_ref.provider_session_id),
+            Some("codex-thread-existing".to_string())
+        );
     }
 
     #[test]
