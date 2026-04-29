@@ -967,6 +967,28 @@ export function IntegratedChatPanel({
     });
   }, [storeContextKey, agentRunModelId, agentRunModelLabel]);
 
+  // Final fallback: read effectiveModelId from the latest assistant message.
+  // Covers child chats (ideation/verification opened from Agents) where the
+  // ideation store hasn't loaded the session and there's no agent run query.
+  const latestAssistantModelId = useMemo(() => {
+    for (let i = messagesData.length - 1; i >= 0; i -= 1) {
+      const msg = messagesData[i];
+      if (!msg) continue;
+      if (msg.role === "assistant" && msg.effectiveModelId) {
+        return msg.effectiveModelId;
+      }
+    }
+    return null;
+  }, [messagesData]);
+  useEffect(() => {
+    if (!latestAssistantModelId) return;
+    if (useChatStore.getState().effectiveModel[storeContextKey]) return;
+    useChatStore.getState().setEffectiveModel(storeContextKey, {
+      id: latestAssistantModelId,
+      label: getModelLabel(latestAssistantModelId),
+    });
+  }, [storeContextKey, latestAssistantModelId]);
+
   // Handle Escape key to close panel
   useEffect(() => {
     if (!onClose) return;
