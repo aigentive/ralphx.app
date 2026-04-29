@@ -474,7 +474,232 @@ export function PlanDisplay({
 
   if (chromeless) {
     return (
-      <div data-testid="plan-display-chromeless">
+      <div data-testid="plan-display-chromeless" className="group">
+        {/* Slim action row — keeps every control the wrapper card had
+            (approve, create proposals, version history, overflow menu)
+            without the file-icon header chrome that duplicated the
+            in-content H1 title. */}
+        <div className="flex items-center justify-end gap-1 mb-3">
+          {showApprove && !isApproved && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onApprove}
+              className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
+              style={{
+                color: "var(--accent-primary)",
+                background: withAlpha("var(--accent-primary)", 10),
+                border: "1px solid var(--accent-border)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = withAlpha("var(--accent-primary)", 15);
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = withAlpha("var(--accent-primary)", 10);
+              }}
+            >
+              <Sparkles className="w-3 h-3" />
+              Approve
+            </Button>
+          )}
+
+          {isApproved && (
+            <span
+              className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg"
+              style={{
+                background: "var(--status-success-muted)",
+                border: "1px solid var(--status-success-border)",
+                color: "var(--status-success)",
+              }}
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              Approved
+            </span>
+          )}
+
+          {showCreateProposals && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCreateProposals}
+              className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
+              style={{
+                color: "var(--accent-primary)",
+                background: withAlpha("var(--accent-primary)", 10),
+                border: "1px solid var(--accent-border)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = withAlpha("var(--accent-primary)", 15);
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = withAlpha("var(--accent-primary)", 10);
+              }}
+            >
+              <ListPlus className="w-3 h-3" />
+              Create Proposals
+            </Button>
+          )}
+
+          {showOverflowActions && plan.metadata.version > 1 && (
+            <DropdownMenu open={isVersionDropdownOpen} onOpenChange={setIsVersionDropdownOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-[11px] gap-1 rounded-lg transition-colors duration-150"
+                  style={{ color: "var(--text-muted)" }}
+                  title="View version history"
+                >
+                  <History className="w-3 h-3" />
+                  v{selectedVersion}
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-72"
+                style={{
+                  background: "var(--bg-elevated)",
+                  backdropFilter: "blur(20px)",
+                  border: "1px solid var(--overlay-weak)",
+                  boxShadow: "var(--shadow-lg)",
+                }}
+              >
+                {Array.from({ length: plan.metadata.version }, (_, i) => plan.metadata.version - i).map((version) => {
+                  const isSelected = version === selectedVersion;
+                  const isLatest = version === plan.metadata.version;
+                  const versionSummary = versionHistory?.find((v) => v.version === version);
+                  const timestamp = versionSummary ? formatDateTime(versionSummary.created_at) : null;
+                  return (
+                    <DropdownMenuItem
+                      key={version}
+                      onClick={() => handleVersionSelect(version)}
+                      className="text-[12px] cursor-pointer px-3 py-2"
+                      style={{
+                        background: isSelected ? withAlpha("var(--accent-primary)", 10) : "transparent",
+                        borderLeft: isSelected ? "2px solid var(--accent-primary)" : "2px solid transparent",
+                      }}
+                    >
+                      <span className="flex items-center gap-2 w-full">
+                        {isSelected && (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ background: "var(--accent-primary)" }}
+                          />
+                        )}
+                        <span>
+                          v{version}
+                          {timestamp && (
+                            <span style={{ color: "var(--text-muted)" }}> — {timestamp}</span>
+                          )}
+                        </span>
+                        {isLatest && (
+                          <span className="ml-auto" style={{ color: "var(--text-muted)" }}>
+                            (latest)
+                          </span>
+                        )}
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {showOverflowActions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
+                  style={{ color: "var(--text-muted)" }}
+                  aria-label="Plan actions"
+                >
+                  <MoreHorizontal className="w-3.5 h-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-44"
+                style={{
+                  background: "var(--bg-elevated)",
+                  backdropFilter: "blur(20px)",
+                  border: "1px solid var(--overlay-weak)",
+                  boxShadow: "var(--shadow-lg)",
+                }}
+              >
+                <DropdownMenuItem
+                  onClick={() => {
+                    const content = plan.content.type === "inline" ? plan.content.text : "";
+                    navigator.clipboard.writeText(content).then(() => {
+                      toast.success("Copied to clipboard");
+                    }).catch(() => {
+                      toast.error("Failed to copy");
+                    });
+                  }}
+                  disabled={plan.content.type !== "inline" || !plan.content.text}
+                  className="text-[12px] cursor-pointer gap-2 px-3 py-2"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy Markdown
+                </DropdownMenuItem>
+                {onEdit && (
+                  <DropdownMenuItem
+                    onClick={onEdit}
+                    className="text-[12px] cursor-pointer gap-2 px-3 py-2"
+                  >
+                    <FileEdit className="w-3.5 h-3.5" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={handleExport}
+                  className="text-[12px] cursor-pointer gap-2 px-3 py-2"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export...
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+
+        {/* Debate summary — shown for debate-mode plans */}
+        {teamMetadata?.teamIdeated && teamMetadata.teamMode === "debate" && teamMetadata.debateSummary && (
+          <div className="mb-4">
+            <DebateSummary data={teamMetadata.debateSummary} />
+          </div>
+        )}
+
+        {/* Version banner when viewing historical */}
+        {isViewingHistorical && (
+          <div
+            className="flex items-center justify-between mb-4 px-3 py-2.5 rounded-lg"
+            style={{
+              background: "var(--status-warning-muted)",
+              border: "1px solid var(--status-warning-border)",
+            }}
+          >
+            <span className="text-[12px] font-medium" style={{ color: "var(--status-warning)" }}>
+              Viewing version {selectedVersion} of {plan.metadata.version}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBackToLatest}
+              className="h-6 px-2.5 text-[11px] font-medium gap-1.5 rounded-md transition-colors duration-150"
+              style={{
+                background: "var(--status-warning-muted)",
+                color: "var(--status-warning)",
+              }}
+            >
+              <ArrowLeft className="w-3 h-3" />
+              Back to latest
+            </Button>
+          </div>
+        )}
+
         {isLoadingVersion ? (
           <div className="flex items-center justify-center py-12">
             <Loader2
