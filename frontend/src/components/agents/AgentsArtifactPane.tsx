@@ -62,9 +62,9 @@ const LazyTaskGraphView = lazy(() =>
 const LazyTaskBoard = lazy(() =>
   import("@/components/tasks/TaskBoard").then((module) => ({ default: module.TaskBoard })),
 );
-const LazyTaskDetailOverlay = lazy(() =>
-  import("@/components/tasks/TaskDetailOverlay").then((module) => ({
-    default: module.TaskDetailOverlay,
+const LazyAgentsTaskDetailOverlay = lazy(() =>
+  import("@/components/agents/task-details/AgentsTaskDetailOverlay").then((module) => ({
+    default: module.AgentsTaskDetailOverlay,
   })),
 );
 const LazyExportPlanDialog = lazy(() =>
@@ -808,7 +808,7 @@ function TaskArtifactSurface({
 
   const detailOverlay = selectedTaskId ? (
     <Suspense fallback={null}>
-      <LazyTaskDetailOverlay
+      <LazyAgentsTaskDetailOverlay
         projectId={projectId}
         selectedTaskIdOverride={selectedTaskId}
         onCloseOverride={handleCloseTaskDetail}

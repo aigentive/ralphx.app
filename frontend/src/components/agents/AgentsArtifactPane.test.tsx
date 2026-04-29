@@ -112,8 +112,8 @@ vi.mock("@/components/tasks/TaskBoard", () => ({
   ),
 }));
 
-vi.mock("@/components/tasks/TaskDetailOverlay", () => ({
-  TaskDetailOverlay: ({
+vi.mock("@/components/agents/task-details/AgentsTaskDetailOverlay", () => ({
+  AgentsTaskDetailOverlay: ({
     selectedTaskIdOverride,
     onCloseOverride,
   }: {
