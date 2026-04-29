@@ -266,15 +266,23 @@ interface TaskDetailOverlayProps {
   footer?: React.ReactNode;
   /** Center task details in a readable column when no adjacent chat is present. */
   constrainContent?: boolean;
+  /** Optional host-owned selected task id for embedded task surfaces. */
+  selectedTaskIdOverride?: string | null;
+  /** Optional host-owned close handler for embedded task surfaces. */
+  onCloseOverride?: () => void;
 }
 
 export function TaskDetailOverlay({
   projectId,
   footer,
   constrainContent = false,
+  selectedTaskIdOverride,
+  onCloseOverride,
 }: TaskDetailOverlayProps) {
-  const selectedTaskId = useUiStore((s) => s.selectedTaskId);
-  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const globalSelectedTaskId = useUiStore((s) => s.selectedTaskId);
+  const setGlobalSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const selectedTaskId =
+    selectedTaskIdOverride === undefined ? globalSelectedTaskId : selectedTaskIdOverride;
   const setCurrentView = useUiStore((s) => s.setCurrentView);
   // History state from store - shared with IntegratedChatPanel
   const historyState = useUiStore((s) => s.taskHistoryState);
@@ -311,6 +319,19 @@ export function TaskDetailOverlay({
   const [isEditing, setIsEditing] = useState(false);
   const [showAuditTrail, setShowAuditTrail] = useState(false);
 
+  const closeSelectedTask = useCallback(() => {
+    if (onCloseOverride) {
+      onCloseOverride();
+      return;
+    }
+    setGlobalSelectedTaskId(null);
+  }, [onCloseOverride, setGlobalSelectedTaskId]);
+
+  const handleClose = useCallback(() => {
+    closeSelectedTask();
+    setIsEditing(false);
+  }, [closeSelectedTask]);
+
   // Derived values for history mode (historyState from store)
   const isHistoryMode = historyState !== null;
   const viewStatus = (historyState?.status as InternalStatus | undefined) ?? task?.internalStatus;
@@ -337,14 +358,14 @@ export function TaskDetailOverlay({
           setIsEditing(false);
         } else {
           // If viewing, close the overlay
-          setSelectedTaskId(null);
+          closeSelectedTask();
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setSelectedTaskId, isEditing]);
+  }, [closeSelectedTask, isEditing]);
 
   // Reset editing and history state when task changes
   useEffect(() => {
@@ -357,18 +378,11 @@ export function TaskDetailOverlay({
     (event: React.MouseEvent<HTMLDivElement>) => {
       // Only close if clicking the backdrop itself, not its children
       if (event.target === event.currentTarget) {
-        setSelectedTaskId(null);
-        setIsEditing(false);
+        handleClose();
       }
     },
-    [setSelectedTaskId]
+    [handleClose]
   );
-
-  // Handle close
-  const handleClose = useCallback(() => {
-    setSelectedTaskId(null);
-    setIsEditing(false);
-  }, [setSelectedTaskId]);
 
   // Handle edit save
   const handleSave = (updateData: Parameters<typeof updateMutation.mutate>[0]['input']) => {

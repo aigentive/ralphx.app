@@ -62,6 +62,8 @@ export interface TaskBoardProps {
   projectId: string;
   /** Optional ideation session ID to filter tasks by plan */
   ideationSessionId?: string | null;
+  /** Optional host-owned task selection handler for embedded task surfaces. */
+  onTaskSelect?: (taskId: string) => void;
   /** Opens the global plan quick switcher with source attribution */
   onOpenPlanQuickSwitcher?: (source: SelectionSource) => void;
 }
@@ -69,6 +71,7 @@ export interface TaskBoardProps {
 export function TaskBoard({
   projectId,
   ideationSessionId: ideationSessionIdProp,
+  onTaskSelect,
   onOpenPlanQuickSwitcher,
 }: TaskBoardProps) {
   const queryClient = useQueryClient();
@@ -626,6 +629,7 @@ export function TaskBoard({
                     executionPlanId={effectiveExecutionPlanId}
                     isCollapsed={columnCollapsed}
                     onToggleCollapse={() => toggleCollapse(column.id)}
+                    {...(onTaskSelect !== undefined && { onTaskSelect })}
                   />
                 );
               })}

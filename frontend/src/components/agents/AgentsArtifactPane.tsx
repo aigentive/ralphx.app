@@ -62,6 +62,11 @@ const LazyTaskGraphView = lazy(() =>
 const LazyTaskBoard = lazy(() =>
   import("@/components/tasks/TaskBoard").then((module) => ({ default: module.TaskBoard })),
 );
+const LazyTaskDetailOverlay = lazy(() =>
+  import("@/components/tasks/TaskDetailOverlay").then((module) => ({
+    default: module.TaskDetailOverlay,
+  })),
+);
 const LazyExportPlanDialog = lazy(() =>
   import("@/components/Ideation/ExportPlanDialog").then((module) => ({
     default: module.ExportPlanDialog,
@@ -785,29 +790,59 @@ function TaskArtifactSurface({
   sessionId: string;
   mode: AgentTaskArtifactMode;
 }) {
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const handleTaskSelect = useCallback((taskId: string) => {
+    setSelectedTaskId(taskId);
+  }, []);
+  const handleCloseTaskDetail = useCallback(() => {
+    setSelectedTaskId(null);
+  }, []);
+
+  useEffect(() => {
+    setSelectedTaskId(null);
+  }, [projectId, sessionId, mode]);
+
   if (!projectId) {
     return <EmptyArtifactState title="No project selected" />;
   }
 
+  const detailOverlay = selectedTaskId ? (
+    <Suspense fallback={null}>
+      <LazyTaskDetailOverlay
+        projectId={projectId}
+        selectedTaskIdOverride={selectedTaskId}
+        onCloseOverride={handleCloseTaskDetail}
+        constrainContent
+      />
+    </Suspense>
+  ) : null;
+
   if (mode === "kanban") {
     return (
-      <div className="h-full min-h-[520px] overflow-hidden bg-[var(--bg-base)]">
+      <div className="relative h-full min-h-[520px] overflow-hidden bg-[var(--bg-base)]">
         <Suspense fallback={<EmptyArtifactState title="Loading task board..." />}>
-          <LazyTaskBoard projectId={projectId} ideationSessionId={sessionId} />
+          <LazyTaskBoard
+            projectId={projectId}
+            ideationSessionId={sessionId}
+            onTaskSelect={handleTaskSelect}
+          />
         </Suspense>
+        {detailOverlay}
       </div>
     );
   }
 
   return (
-    <div className="h-full min-h-[520px] overflow-hidden bg-[var(--bg-base)]">
+    <div className="relative h-full min-h-[520px] overflow-hidden bg-[var(--bg-base)]">
       <Suspense fallback={<EmptyArtifactState title="Loading task graph..." />}>
         <LazyTaskGraphView
           projectId={projectId}
           ideationSessionId={sessionId}
           hideCanvasControls
+          onTaskSelect={handleTaskSelect}
         />
       </Suspense>
+      {detailOverlay}
     </div>
   );
 }

@@ -59,6 +59,8 @@ interface TaskCardProps {
   revisionCount?: number;
   /** Group context for showing group actions in task context menu */
   groupInfo?: GroupInfo;
+  /** Optional host-owned task selection handler for embedded task surfaces. */
+  onSelect?: (taskId: string) => void;
 }
 
 function CheckpointIndicator() {
@@ -89,6 +91,7 @@ export function TaskCard({
   hasCheckpoint,
   revisionCount,
   groupInfo,
+  onSelect,
 }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: task.id });
 
@@ -171,15 +174,15 @@ export function TaskCard({
   );
 
   // Context menu handlers - use selectedTaskId for split layout overlay
-  const handleViewDetails = () => {
-    // Set selectedTaskId to show TaskDetailOverlay in the split layout
+  const handleViewDetails = useCallback(() => {
+    if (onSelect) {
+      onSelect(task.id);
+      return;
+    }
     setSelectedTaskId(task.id);
-  };
+  }, [onSelect, setSelectedTaskId, task.id]);
 
-  const handleEdit = () => {
-    // Open task detail (edit mode can be triggered from overlay)
-    setSelectedTaskId(task.id);
-  };
+  const handleEdit = handleViewDetails;
 
   const handleArchive = () => {
     archiveMutation.mutate(task.id);

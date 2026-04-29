@@ -100,6 +100,38 @@ vi.mock("@/components/Ideation/VerificationPanel", () => ({
   ),
 }));
 
+vi.mock("@/components/tasks/TaskBoard", () => ({
+  TaskBoard: ({ onTaskSelect }: { onTaskSelect?: (taskId: string) => void }) => (
+    <button
+      type="button"
+      data-testid="mock-agent-task-card"
+      onClick={() => onTaskSelect?.("task-1")}
+    >
+      Open task
+    </button>
+  ),
+}));
+
+vi.mock("@/components/tasks/TaskDetailOverlay", () => ({
+  TaskDetailOverlay: ({
+    selectedTaskIdOverride,
+    onCloseOverride,
+  }: {
+    selectedTaskIdOverride?: string | null;
+    onCloseOverride?: () => void;
+  }) =>
+    selectedTaskIdOverride ? (
+      <div
+        data-testid="mock-agent-task-detail"
+        data-task-id={selectedTaskIdOverride}
+      >
+        <button type="button" onClick={onCloseOverride}>
+          Close task
+        </button>
+      </div>
+    ) : null,
+}));
+
 vi.mock("@/api/artifact", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/artifact")>();
   return {
@@ -320,6 +352,55 @@ describe("AgentsArtifactPane", () => {
     expect(activeTab.className).not.toContain("border-b-2");
     expect(activeTab.querySelector("span[style='background: var(--accent-primary);']")).not.toBeNull();
     expect(inactiveTab.querySelector("span[style='background: var(--accent-primary);']")).toBeNull();
+  });
+
+  it("opens task details inside the Agents tasks artifact surface", async () => {
+    getIdeationSessionMock.mockResolvedValue({
+      session: {
+        id: "session-1",
+        projectId: "project-1",
+        title: "Agent Plan",
+        titleSource: "auto",
+        status: "active",
+        planArtifactId: "artifact-1",
+        seedTaskId: null,
+        parentSessionId: null,
+        teamMode: null,
+        teamConfig: null,
+        createdAt: "2026-04-23T09:00:00Z",
+        updatedAt: "2026-04-23T09:00:00Z",
+        archivedAt: null,
+        convertedAt: "2026-04-23T10:00:00Z",
+        verificationStatus: "unverified",
+        verificationInProgress: false,
+        gapScore: null,
+        inheritedPlanArtifactId: null,
+        sessionPurpose: "general",
+        acceptanceStatus: "accepted",
+      },
+      proposals: [],
+      messages: [],
+    });
+
+    renderPane(
+      "tasks",
+      workspace({
+        mode: "ideation",
+        linkedIdeationSessionId: "session-1",
+        linkedPlanBranchId: "plan-branch-1",
+      }),
+      vi.fn(),
+      false,
+      conversation(),
+      { taskMode: "kanban" },
+    );
+
+    fireEvent.click(await screen.findByTestId("mock-agent-task-card"));
+
+    expect(await screen.findByTestId("mock-agent-task-detail")).toHaveAttribute(
+      "data-task-id",
+      "task-1",
+    );
   });
 
   it("renders only the publish tab for edit workspaces", () => {

@@ -84,6 +84,8 @@ export interface TaskGraphViewProps {
   hideCanvasControls?: boolean;
   /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
   footer?: React.ReactNode;
+  /** Optional host-owned task selection handler for embedded task surfaces. */
+  onTaskSelect?: (taskId: string) => void;
   /** Opens the global plan quick switcher with source attribution */
   onOpenPlanQuickSwitcher?: (source: SelectionSource) => void;
 }
@@ -274,6 +276,8 @@ interface TaskGraphViewInnerProps {
   hideCanvasControls?: boolean;
   /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
   footer?: React.ReactNode;
+  /** Optional host-owned task selection handler for embedded task surfaces. */
+  onTaskSelect?: (taskId: string) => void;
   /** Opens the global plan quick switcher with source attribution */
   onOpenPlanQuickSwitcher?: (source: SelectionSource) => void;
 }
@@ -283,6 +287,7 @@ function TaskGraphViewInner({
   ideationSessionId,
   hideCanvasControls = false,
   footer,
+  onTaskSelect,
   onOpenPlanQuickSwitcher,
 }: TaskGraphViewInnerProps) {
   // GraphControls state (declared early so showArchived is available for useTaskGraph)
@@ -941,8 +946,12 @@ function TaskGraphViewInner({
 
   // Handler for viewing task details (opens TaskDetailOverlay)
   const handleViewDetails = useCallback((taskId: string) => {
+    if (onTaskSelect) {
+      onTaskSelect(taskId);
+      return;
+    }
     setSelectedTaskId(taskId);
-  }, [setSelectedTaskId]);
+  }, [onTaskSelect, setSelectedTaskId]);
 
   // Handler for starting task execution (move to executing via state machine)
   const handleStartExecution = useCallback(async (taskId: string) => {
@@ -1228,6 +1237,7 @@ function TaskGraphViewInner({
     onToggleCollapse: handleToggleCollapse,
     onToggleTierCollapse: handleToggleTierCollapse,
     onToggleAllTiers: handleToggleAllTiers,
+    onTaskSelect: handleViewDetails,
     centerOnPlanGroup,
     centerOnNode,
     centerOnNodeObject,
@@ -1741,6 +1751,7 @@ export function TaskGraphView({
   ideationSessionId,
   hideCanvasControls = false,
   footer,
+  onTaskSelect,
   onOpenPlanQuickSwitcher,
 }: TaskGraphViewProps) {
   return (
@@ -1750,6 +1761,7 @@ export function TaskGraphView({
         ideationSessionId={ideationSessionId ?? null}
         hideCanvasControls={hideCanvasControls}
         footer={footer}
+        {...(onTaskSelect ? { onTaskSelect } : {})}
         {...(onOpenPlanQuickSwitcher
           ? { onOpenPlanQuickSwitcher }
           : {})}
