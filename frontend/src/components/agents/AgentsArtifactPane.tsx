@@ -820,6 +820,7 @@ function AgentPlanPanel({
               onExport={() => setExportDialogOpen(true)}
               isExpanded={isPlanExpanded}
               onExpandedChange={setIsPlanExpanded}
+              chromeless
               {...(teamMetadata !== undefined && { teamMetadata })}
               {...(session !== null && { onCreateProposals: handleCreateProposals })}
             />

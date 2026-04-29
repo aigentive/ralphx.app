@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
-import { FileEdit, Download, CheckCircle2, ChevronDown, ChevronRight, FileText, Sparkles, History, Loader2, ArrowLeft, ListPlus, MoreHorizontal, Copy } from "lucide-react";
+import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ListPlus, MoreHorizontal, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,13 @@ export interface PlanDisplayProps {
   onCreateProposals?: () => void;
   /** Show the overflow action cluster (version picker / copy / export / edit) */
   showOverflowActions?: boolean;
+  /**
+   * When true, drop the wrapper card (file-icon header + collapsible chrome)
+   * and render the markdown body directly. The leading H1 in the plan content
+   * already serves as the title in the body, so the wrapper card is
+   * redundant in hosts that always show one plan per session.
+   */
+  chromeless?: boolean;
 }
 
 // ============================================================================
@@ -198,38 +205,27 @@ const markdownComponents = {
       {children}
     </h1>
   ),
-  // H2 — major section. Accent bar on the left makes sections scannable.
+  // H2 — major section.
   h2: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
     <h2
-      className="text-[15px] font-semibold tracking-[-0.015em] mt-7 mb-3 first:mt-0 flex items-center gap-2.5"
+      className="text-[15px] font-semibold tracking-[-0.015em] mt-7 mb-3 first:mt-0"
       style={{ color: "var(--text-primary)" }}
       {...props}
     >
-      <span
-        aria-hidden="true"
-        className="inline-block w-[3px] h-[15px] rounded-full flex-shrink-0"
-        style={{ background: "var(--accent-primary)" }}
-      />
-      <span>{children}</span>
+      {children}
     </h2>
   ),
-  // H3 — subsection. Compact uppercase eyebrow in accent color with a
-  // leading chevron icon so it reads as a labelled child of the parent H2.
+  // H3 — subsection. Compact uppercase eyebrow in muted text color.
   h3: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
     <h3
-      className="text-[11px] font-semibold uppercase mt-5 mb-2 flex items-center gap-1.5"
+      className="text-[11px] font-semibold uppercase mt-5 mb-2"
       style={{
-        color: "var(--accent-primary)",
+        color: "var(--text-muted)",
         letterSpacing: "0.08em",
       }}
       {...props}
     >
-      <ChevronRight
-        aria-hidden="true"
-        className="w-[13px] h-[13px] flex-shrink-0"
-        style={{ color: "var(--accent-primary)" }}
-      />
-      <span>{children}</span>
+      {children}
     </h3>
   ),
   h4: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
@@ -243,9 +239,8 @@ const markdownComponents = {
   ),
   blockquote: ({ children, ...props }: React.HTMLAttributes<HTMLQuoteElement>) => (
     <blockquote
-      className="my-4 pl-4 pr-3 py-2 rounded-r-md"
+      className="my-4 px-3 py-2 rounded-md"
       style={{
-        borderLeft: "3px solid var(--accent-primary)",
         background: "var(--overlay-faint)",
         color: "var(--text-secondary)",
       }}
@@ -358,6 +353,7 @@ export function PlanDisplay({
   onVersionViewed,
   onCreateProposals,
   showOverflowActions = true,
+  chromeless = false,
 }: PlanDisplayProps) {
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
@@ -475,6 +471,37 @@ export function PlanDisplay({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, [planContent, plan.name, onExport]);
+
+  if (chromeless) {
+    return (
+      <div data-testid="plan-display-chromeless">
+        {isLoadingVersion ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2
+              className="w-6 h-6 animate-spin"
+              style={{ color: "var(--accent-primary)" }}
+            />
+          </div>
+        ) : displayContent ? (
+          <div className="text-[13px] leading-relaxed">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+            >
+              {displayContent}
+            </ReactMarkdown>
+          </div>
+        ) : (
+          <p
+            className="text-[13px] italic py-8 text-center"
+            style={{ color: "var(--text-muted)" }}
+          >
+            No content available
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
