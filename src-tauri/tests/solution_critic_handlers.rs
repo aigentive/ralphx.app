@@ -176,6 +176,11 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
         critique_json["solution_critique"]["artifact_id"].as_str(),
         Some(plan_artifact_id.as_str())
     );
+    let projected_gaps = critique_json["projected_gaps"].as_array().unwrap();
+    assert_eq!(projected_gaps.len(), 3);
+    assert!(projected_gaps
+        .iter()
+        .all(|gap| gap["source"].as_str().is_none()));
 
     let critique_read_response = app
         .oneshot(
@@ -192,6 +197,14 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
         .await
         .unwrap();
     assert_eq!(critique_read_response.status(), StatusCode::OK);
+    let critique_read_json = response_json(critique_read_response).await;
+    assert_eq!(
+        critique_read_json["projected_gaps"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
 }
 
 #[tokio::test]

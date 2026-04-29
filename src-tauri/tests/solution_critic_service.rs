@@ -128,10 +128,8 @@ async fn collector_respects_limits_and_truncates_sources() {
     let now = Utc::now();
 
     for index in 0..3 {
-        let mut message = ChatMessage::user_in_session(
-            session_id.clone(),
-            format!("message-{index}"),
-        );
+        let mut message =
+            ChatMessage::user_in_session(session_id.clone(), format!("message-{index}"));
         message.id = ChatMessageId::from_string(format!("message-{index}"));
         message.created_at = now + Duration::seconds(index);
         state.chat_message_repo.create(message).await.unwrap();
@@ -170,7 +168,10 @@ async fn collector_respects_limits_and_truncates_sources() {
     assert_eq!(chat_sources.len(), 2);
     assert_eq!(chat_sources[0].id, "chat_message:message-1");
     assert_eq!(chat_sources[1].id, "chat_message:message-2");
-    assert_eq!(bundle.sources[0].source_type, ContextSourceType::PlanArtifact);
+    assert_eq!(
+        bundle.sources[0].source_type,
+        ContextSourceType::PlanArtifact
+    );
     assert!(bundle
         .sources
         .iter()
@@ -271,7 +272,13 @@ async fn critique_artifact_persists_findings_artifact_and_relations() {
     assert_eq!(artifact.bucket_id.unwrap().as_str(), "research-outputs");
     assert_eq!(artifact.metadata.created_by, "solution_critic");
     assert_eq!(artifact.derived_from[0].as_str(), context.artifact_id);
-    assert_eq!(result.solution_critique.context_artifact_id, context.artifact_id);
+    assert_eq!(
+        result.solution_critique.context_artifact_id,
+        context.artifact_id
+    );
+    assert_eq!(result.projected_gaps.len(), 1);
+    assert_eq!(result.projected_gaps[0].severity, "medium");
+    assert_eq!(result.projected_gaps[0].category, "solution_critique_claim");
 
     let relations = state
         .artifact_repo
@@ -286,6 +293,13 @@ async fn critique_artifact_persists_findings_artifact_and_relations() {
         relation.relation_type == ArtifactRelationType::RelatedTo
             && relation.to_artifact_id == plan_artifact_id
     }));
+
+    let read = service
+        .get_solution_critique(session_id.as_str(), &result.artifact_id)
+        .await
+        .unwrap();
+    assert_eq!(read.projected_gaps.len(), 1);
+    assert_eq!(read.projected_gaps[0].severity, "medium");
 }
 
 #[tokio::test]
@@ -344,7 +358,9 @@ async fn read_methods_reject_artifacts_from_another_session_plan() {
     let other_session_id = IdeationSessionId::from_string("session-solution-critic-other");
     let other_session = IdeationSession::builder()
         .id(other_session_id.clone())
-        .project_id(ProjectId::from_string("project-solution-critic".to_string()))
+        .project_id(ProjectId::from_string(
+            "project-solution-critic".to_string(),
+        ))
         .plan_artifact_id(other_plan_id)
         .verification_status(VerificationStatus::Unverified)
         .build();

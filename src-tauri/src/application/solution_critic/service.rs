@@ -10,6 +10,7 @@ use crate::domain::repositories::{
     AgentRunRepository, ArtifactRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, ProjectRepository, TaskProposalRepository,
 };
+use crate::domain::services::project_solution_critique_gaps;
 use crate::error::{AppError, AppResult};
 
 use super::generator::{DeterministicSolutionCritiqueGenerator, SolutionCritiqueGenerator};
@@ -21,9 +22,10 @@ use super::support::{
     SOURCE_EXCERPT_LIMIT,
 };
 use super::types::{
-    CompileContextRequest, CompileContextResult, CompiledContextCandidate, CompiledContextReadResult,
-    CritiqueArtifactRequest, CritiqueArtifactResult, EffectiveSourceLimits, RawContextBundle,
-    SolutionCritiqueCandidate, SolutionCritiqueReadResult, SourceLimits,
+    CompileContextRequest, CompileContextResult, CompiledContextCandidate,
+    CompiledContextReadResult, CritiqueArtifactRequest, CritiqueArtifactResult,
+    EffectiveSourceLimits, RawContextBundle, SolutionCritiqueCandidate, SolutionCritiqueReadResult,
+    SourceLimits,
 };
 
 const CONTEXT_COMPILER_CREATED_BY: &str = "context_compiler";
@@ -117,7 +119,11 @@ impl SolutionCritiqueService {
         request: CompileContextRequest,
     ) -> AppResult<CompileContextResult> {
         let bundle = self
-            .collect_raw_context(session_id, &request.target_artifact_id, &request.source_limits)
+            .collect_raw_context(
+                session_id,
+                &request.target_artifact_id,
+                &request.source_limits,
+            )
             .await?;
         let candidate_json = self.generator.compile_context_candidate(&bundle).await?;
         let candidate: CompiledContextCandidate = parse_candidate(&candidate_json)?;
@@ -225,7 +231,10 @@ impl SolutionCritiqueService {
         artifact.content = ArtifactContent::inline(to_pretty_json(&critique)?);
         let artifact = self.artifact_repo.create(artifact).await?;
         self.artifact_repo
-            .add_relation(ArtifactRelation::derived_from(artifact.id.clone(), context_id))
+            .add_relation(ArtifactRelation::derived_from(
+                artifact.id.clone(),
+                context_id,
+            ))
             .await?;
         self.artifact_repo
             .add_relation(ArtifactRelation::related_to(artifact.id.clone(), target_id))
@@ -233,6 +242,7 @@ impl SolutionCritiqueService {
 
         Ok(CritiqueArtifactResult {
             artifact_id: artifact.id.as_str().to_string(),
+            projected_gaps: project_solution_critique_gaps(&critique),
             solution_critique: critique,
         })
     }
@@ -253,6 +263,7 @@ impl SolutionCritiqueService {
         ensure_plan_target(&session, &solution_critique.artifact_id)?;
         Ok(SolutionCritiqueReadResult {
             artifact_id: artifact_id.to_string(),
+            projected_gaps: project_solution_critique_gaps(&solution_critique),
             solution_critique,
         })
     }

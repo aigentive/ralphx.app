@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::entities::{
     ClaimReviewStatus, ContextClaimKind, ContextSourceRef, ContextTargetRef, CritiqueConfidence,
-    CritiqueSeverity, RecommendationStatus, SolutionCritiqueVerdict,
+    CritiqueSeverity, RecommendationStatus, SolutionCritiqueVerdict, VerificationGap,
 };
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -69,12 +69,14 @@ pub struct CritiqueArtifactRequest {
 pub struct CritiqueArtifactResult {
     pub artifact_id: String,
     pub solution_critique: crate::domain::entities::SolutionCritique,
+    pub projected_gaps: Vec<VerificationGap>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SolutionCritiqueReadResult {
     pub artifact_id: String,
     pub solution_critique: crate::domain::entities::SolutionCritique,
+    pub projected_gaps: Vec<VerificationGap>,
 }
 
 #[derive(Debug, Clone, Serialize)]
