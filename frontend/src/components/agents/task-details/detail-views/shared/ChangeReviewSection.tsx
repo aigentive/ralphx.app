@@ -163,6 +163,7 @@ export function ChangeReviewSection({
           <ReviewTimeline
             history={effectiveHistory}
             stateTransitions={effectiveStateTransitions}
+            collapsed={isPlanMerge}
             emptyMessage={
               isPlanMerge
                 ? "No internal plan review records available"

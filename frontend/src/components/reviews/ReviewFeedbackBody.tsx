@@ -26,6 +26,12 @@ interface ReviewFeedbackBodyProps {
   fullButtonClassName?: string;
   previewClassName?: string;
   dialogBodyClassName?: string;
+  /**
+   * When true, hide the inline preview body and render only the summary line
+   * (if present) plus a "View full feedback" button. Notes still open in the
+   * dialog unchanged.
+   */
+  collapsed?: boolean;
 }
 
 function MarkdownBody({ content, className }: { content: string; className?: string }) {
@@ -49,6 +55,7 @@ export function ReviewFeedbackBody({
   fullButtonClassName,
   previewClassName,
   dialogBodyClassName,
+  collapsed = false,
 }: ReviewFeedbackBodyProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -74,7 +81,7 @@ export function ReviewFeedbackBody({
 
   const showSummary = !!sanitizedSummary;
   const showFullBody = !!sanitizedNotes;
-  const renderFullNotes = showFullBody && isNotesTruncated;
+  const renderFullNotes = showFullBody && (collapsed || isNotesTruncated);
   const notesIncludeSummary =
     showSummary &&
     showFullBody &&
@@ -83,7 +90,11 @@ export function ReviewFeedbackBody({
       .trim()
       .startsWith(sanitizedSummary.replace(/\s+/g, " ").trim());
 
-  const previewBody = showFullBody && !isNotesTruncated
+  const previewBody = collapsed
+    ? showSummary
+      ? sanitizedSummary
+      : null
+    : showFullBody && !isNotesTruncated
     ? showSummary && !notesIncludeSummary
       ? `${sanitizedSummary}\n\n${sanitizedNotes}`
       : sanitizedNotes
@@ -93,23 +104,25 @@ export function ReviewFeedbackBody({
     ? previewText
     : null;
 
-  if (!previewBody) {
+  if (!previewBody && !renderFullNotes) {
     return null;
   }
 
   return (
     <>
-      <div className={previewClassName}>
-        {mode === "markdown" && (showSummary || !isNotesTruncated) ? (
-          <MarkdownBody content={previewBody} />
-        ) : mode === "plain" ? (
-          <pre className="whitespace-pre-wrap break-words font-inherit">
-            {previewBody}
-          </pre>
-        ) : (
-          <div className="whitespace-pre-wrap break-words">{previewBody}</div>
-        )}
-      </div>
+      {previewBody && (
+        <div className={previewClassName}>
+          {mode === "markdown" && (showSummary || !isNotesTruncated) ? (
+            <MarkdownBody content={previewBody} />
+          ) : mode === "plain" ? (
+            <pre className="whitespace-pre-wrap break-words font-inherit">
+              {previewBody}
+            </pre>
+          ) : (
+            <div className="whitespace-pre-wrap break-words">{previewBody}</div>
+          )}
+        </div>
+      )}
 
       {renderFullNotes && (
         <>

@@ -113,6 +113,7 @@ interface TimelineItemProps {
   attemptNumber?: number;
   isStale?: boolean;
   resolutionTrail?: { label: string; timestamp: string }[];
+  collapsed?: boolean;
 }
 
 function TimelineItem({
@@ -122,6 +123,7 @@ function TimelineItem({
   attemptNumber,
   isStale = false,
   resolutionTrail = [],
+  collapsed = false,
 }: TimelineItemProps) {
   const isApproved = entry.outcome === "approved" || entry.outcome === "approved_no_changes";
   const isNoChanges = entry.outcome === "approved_no_changes";
@@ -261,6 +263,7 @@ function TimelineItem({
                 fullButtonLabel="View full feedback"
                 fullButtonClassName="text-[12px]"
                 previewClassName={previewClassName}
+                collapsed={collapsed}
               />
 
               {entry.followup_session_id && (
@@ -336,6 +339,8 @@ export interface ReviewTimelineProps {
   showAttemptNumbers?: boolean;
   /** State transitions used to detect stale "changes_requested" reviews */
   stateTransitions?: StateTransition[];
+  /** When true, collapse review bodies to summary-only with "View full feedback" CTA */
+  collapsed?: boolean;
 }
 
 export function ReviewTimeline({
@@ -345,6 +350,7 @@ export function ReviewTimeline({
   getEntryContext,
   showAttemptNumbers = false,
   stateTransitions = [],
+  collapsed = false,
 }: ReviewTimelineProps) {
   const displayedHistory = filter ? history.filter(filter) : history;
 
@@ -373,6 +379,7 @@ export function ReviewTimeline({
             entryContext={getEntryContext?.(entry) ?? null}
             isStale={stale}
             resolutionTrail={trail}
+            collapsed={collapsed}
             {...(showAttemptNumbers && {
               // Array is newest-first, so invert: oldest = #1, newest = #N
               attemptNumber: displayedHistory.length - index,

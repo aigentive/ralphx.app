@@ -616,12 +616,46 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     ? RefreshCw
     : AlertTriangle;
 
+  const handleOpenPrInGithub = async () => {
+    if (!planBranch?.prUrl) return;
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(planBranch.prUrl);
+  };
+
+  const bannerAction =
+    isPrWait && !isHistorical && planBranch?.prUrl ? (
+      <button
+        type="button"
+        onClick={handleOpenPrInGithub}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer shrink-0"
+        style={{
+          backgroundColor: statusTint("info", 14),
+          color: "var(--status-info)",
+        }}
+      >
+        <ExternalLink className="w-3.5 h-3.5" />
+        Open in GitHub
+      </button>
+    ) : null;
+
+  const renderBody = (children: React.ReactNode) =>
+    isPrWait && !isHistorical ? (
+      <div data-testid="merging-task-detail" className="space-y-6 min-w-0">
+        {children}
+      </div>
+    ) : (
+      <TwoColumnLayout
+        description={task.description}
+        testId="merging-task-detail"
+      >
+        {children}
+      </TwoColumnLayout>
+    );
+
   return (
     <>
-    <TwoColumnLayout
-      description={task.description}
-      testId="merging-task-detail"
-    >
+    {renderBody(
+      <>
       {/* Freshness Context Banner — shown when task entered Merging due to stale branch detection */}
       {freshnessOriginState !== null && FRESHNESS_BANNER_COPY[freshnessOriginState] !== undefined && (
         <div className="px-4 py-3 bg-status-info/10 border-b border-status-info/20 flex items-center gap-2">
@@ -778,16 +812,17 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             size="md"
           />
         }
+        {...(bannerAction !== null && { action: bannerAction })}
       />
 
       {isPlanMerge && !detailContext && <PlanMergeContextSection taskId={task.id} />}
 
-      {/* PR Mode: show PR status when polling */}
-      {isPrWait && planBranch && planBranch.prNumber != null && (
+      {/* Historical PR card — live PR state is folded into the banner CTA above. */}
+      {isHistorical && isPrWait && planBranch && planBranch.prNumber != null && (
         <section data-testid="pr-mode-section">
           <SectionTitle>Pull Request</SectionTitle>
           <PrModeCard
-            isHistorical={isHistorical ?? false}
+            isHistorical
             planBranch={{
               prNumber: planBranch.prNumber!,
               prUrl: planBranch.prUrl,
@@ -900,24 +935,27 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         </section>
       )}
 
-      {/* Branch Info */}
-      <section data-testid="branch-info-section">
-        <SectionTitle muted>Branch</SectionTitle>
-        {isPrWait && planBranch ? (
-          <BranchFlow source={planBranch.branchName} target={planBranch.sourceBranch} size="sm" />
-        ) : mergeConflictContext?.type === "pr_branch_update" ? (
-          <BranchFlow source={mergeConflictContext.base} target={mergeConflictContext.target} size="sm" />
-        ) : mergeConflictContext?.type === "plan_update" ? (
-          <BranchFlow source={mergeConflictContext.base} target={mergeConflictContext.target} size="sm" />
-        ) : mergeConflictContext?.type === "source_update" ? (
-          <BranchFlow source={mergeConflictContext.source} target={mergeConflictContext.target} size="sm" />
-        ) : resolvedTargetBranch ? (
-          <BranchFlow source={branchName} target={resolvedTargetBranch} size="sm" />
-        ) : (
-          <BranchBadge branch={branchName} variant="muted" size="sm" />
-        )}
-      </section>
-    </TwoColumnLayout>
+      {/* Branch Info — hidden for live waiting_on_pr (chat header already shows the flow) */}
+      {!(isPrWait && !isHistorical) && (
+        <section data-testid="branch-info-section">
+          <SectionTitle muted>Branch</SectionTitle>
+          {isPrWait && planBranch ? (
+            <BranchFlow source={planBranch.branchName} target={planBranch.sourceBranch} size="sm" />
+          ) : mergeConflictContext?.type === "pr_branch_update" ? (
+            <BranchFlow source={mergeConflictContext.base} target={mergeConflictContext.target} size="sm" />
+          ) : mergeConflictContext?.type === "plan_update" ? (
+            <BranchFlow source={mergeConflictContext.base} target={mergeConflictContext.target} size="sm" />
+          ) : mergeConflictContext?.type === "source_update" ? (
+            <BranchFlow source={mergeConflictContext.source} target={mergeConflictContext.target} size="sm" />
+          ) : resolvedTargetBranch ? (
+            <BranchFlow source={branchName} target={resolvedTargetBranch} size="sm" />
+          ) : (
+            <BranchBadge branch={branchName} variant="muted" size="sm" />
+          )}
+        </section>
+      )}
+      </>
+    )}
     {!isHistorical && isAgentPhase && !isPrWait && <ConfirmationDialog {...confirmationDialogProps} />}
     </>
   );

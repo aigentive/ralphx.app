@@ -18,6 +18,7 @@ interface StatusBannerProps {
   title: string;
   subtitle?: string;
   badge?: ReactNode;
+  action?: ReactNode;
   variant: BannerVariant;
   animated?: boolean;
 }
@@ -72,6 +73,7 @@ export function StatusBanner({
   title,
   subtitle,
   badge,
+  action,
   variant,
   animated = false,
 }: StatusBannerProps) {
@@ -117,6 +119,9 @@ export function StatusBanner({
 
       {/* Badge slot */}
       {badge}
+
+      {/* Action slot */}
+      {action}
     </div>
   );
 }
