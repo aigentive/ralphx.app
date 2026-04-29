@@ -36,7 +36,15 @@ interface ReviewFeedbackBodyProps {
 
 function MarkdownBody({ content, className }: { content: string; className?: string }) {
   return (
-    <div className={cn("prose prose-sm prose-invert max-w-none", className)}>
+    <div
+      className={cn(
+        "prose prose-sm prose-invert max-w-none",
+        // Tailwind Typography wraps inline code with backtick pseudo-elements;
+        // the markdown parser already strips delimiters, so disable both.
+        "prose-code:before:content-none prose-code:after:content-none",
+        className,
+      )}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {content}
       </ReactMarkdown>
