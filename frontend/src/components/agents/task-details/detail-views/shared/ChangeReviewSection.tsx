@@ -51,7 +51,7 @@ export function CommitSummaryCard({ taskId }: CommitSummaryCardProps) {
       {commits.map((commit, index) => (
         <div
           key={commit.sha}
-          className="flex items-start gap-3 px-3 py-3"
+          className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
           style={
             index < commits.length - 1
               ? { borderBottom: "1px solid var(--border-subtle)" }
@@ -133,13 +133,13 @@ export function ChangeReviewSection({
   return (
     <>
       <section data-testid="commits-section">
-        <SectionTitle>Commits</SectionTitle>
+        <SectionTitle muted>Commits</SectionTitle>
         <CommitSummaryCard taskId={taskId} />
       </section>
 
       <section data-testid="review-history-section">
         <div className="flex items-center justify-between mb-3">
-          <SectionTitle>{isPlanMerge ? "Code Review" : "Review History"}</SectionTitle>
+          <SectionTitle muted>{isPlanMerge ? "Code Review" : "Review History"}</SectionTitle>
           <Button
             data-testid="review-code-button"
             onClick={() => setShowReviewModal(true)}
