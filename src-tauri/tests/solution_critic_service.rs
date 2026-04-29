@@ -323,3 +323,78 @@ async fn invalid_model_json_persists_no_partial_artifacts() {
         .unwrap();
     assert!(contexts.is_empty());
 }
+
+#[tokio::test]
+async fn read_methods_reject_artifacts_from_another_session_plan() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id,
+    } = setup_fixture().await;
+    let other_plan_id = ArtifactId::from_string("plan-artifact-2");
+    let mut other_plan = Artifact::new_inline(
+        "Other Plan",
+        ArtifactType::Specification,
+        "Build a different backend change.",
+        "orchestrator",
+    );
+    other_plan.id = other_plan_id.clone();
+    state.artifact_repo.create(other_plan).await.unwrap();
+
+    let other_session_id = IdeationSessionId::from_string("session-solution-critic-other");
+    let other_session = IdeationSession::builder()
+        .id(other_session_id.clone())
+        .project_id(ProjectId::from_string("project-solution-critic".to_string()))
+        .plan_artifact_id(other_plan_id)
+        .verification_status(VerificationStatus::Unverified)
+        .build();
+    state
+        .ideation_session_repo
+        .create(other_session)
+        .await
+        .unwrap();
+
+    let service = SolutionCritiqueService::from_app_state_with_generator(
+        &state,
+        generator(
+            compile_json(&plan_artifact_id),
+            critique_json(&plan_artifact_id),
+        ),
+    );
+    let context = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest {
+                target_artifact_id: plan_artifact_id.as_str().to_string(),
+                source_limits: SourceLimits::default(),
+            },
+        )
+        .await
+        .unwrap();
+    let critique = service
+        .critique_artifact(
+            session_id.as_str(),
+            CritiqueArtifactRequest {
+                target_artifact_id: plan_artifact_id.as_str().to_string(),
+                compiled_context_artifact_id: context.artifact_id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let context_error = service
+        .get_compiled_context(other_session_id.as_str(), &context.artifact_id)
+        .await
+        .unwrap_err();
+    assert!(context_error
+        .to_string()
+        .contains("targets the session plan artifact only"));
+
+    let critique_error = service
+        .get_solution_critique(other_session_id.as_str(), &critique.artifact_id)
+        .await
+        .unwrap_err();
+    assert!(critique_error
+        .to_string()
+        .contains("targets the session plan artifact only"));
+}

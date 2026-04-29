@@ -4,7 +4,7 @@ use crate::application::AppState;
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation, ArtifactType,
     ChatContextType, CompiledContext, ContextSourceRef, ContextSourceType, ContextTargetRef,
-    ContextTargetType, IdeationSession, Project,
+    ContextTargetType, IdeationSession, Project, SolutionCritique,
 };
 use crate::domain::repositories::{
     AgentRunRepository, ArtifactRepository, ChatConversationRepository, ChatMessageRepository,
@@ -148,16 +148,18 @@ impl SolutionCritiqueService {
         session_id: &str,
         artifact_id: &str,
     ) -> AppResult<CompiledContextReadResult> {
-        self.load_session(session_id).await?;
+        let session = self.load_session(session_id).await?;
         let artifact = self.load_artifact(artifact_id).await?;
         if artifact.artifact_type != ArtifactType::Context {
             return Err(AppError::Validation(format!(
                 "Artifact {artifact_id} is not a compiled context"
             )));
         }
+        let compiled_context: CompiledContext = parse_inline_artifact(&artifact)?;
+        ensure_plan_target(&session, &compiled_context.target.id)?;
         Ok(CompiledContextReadResult {
             artifact_id: artifact_id.to_string(),
-            compiled_context: parse_inline_artifact(&artifact)?,
+            compiled_context,
         })
     }
 
@@ -173,6 +175,12 @@ impl SolutionCritiqueService {
         let context_artifact = self
             .load_artifact(&request.compiled_context_artifact_id)
             .await?;
+        if context_artifact.artifact_type != ArtifactType::Context {
+            return Err(AppError::Validation(format!(
+                "Artifact {} is not a compiled context",
+                request.compiled_context_artifact_id
+            )));
+        }
         let compiled_context: CompiledContext = parse_inline_artifact(&context_artifact)?;
         if compiled_context.target.id != request.target_artifact_id {
             return Err(AppError::Validation(
@@ -230,16 +238,18 @@ impl SolutionCritiqueService {
         session_id: &str,
         artifact_id: &str,
     ) -> AppResult<SolutionCritiqueReadResult> {
-        self.load_session(session_id).await?;
+        let session = self.load_session(session_id).await?;
         let artifact = self.load_artifact(artifact_id).await?;
         if artifact.artifact_type != ArtifactType::Findings {
             return Err(AppError::Validation(format!(
                 "Artifact {artifact_id} is not a solution critique"
             )));
         }
+        let solution_critique: SolutionCritique = parse_inline_artifact(&artifact)?;
+        ensure_plan_target(&session, &solution_critique.artifact_id)?;
         Ok(SolutionCritiqueReadResult {
             artifact_id: artifact_id.to_string(),
-            solution_critique: parse_inline_artifact(&artifact)?,
+            solution_critique,
         })
     }
 
