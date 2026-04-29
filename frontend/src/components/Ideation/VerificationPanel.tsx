@@ -28,6 +28,7 @@ import { withAlpha } from "@/lib/theme-colors";
 import { VerificationBadge } from "./VerificationBadge";
 import { VerificationGapList } from "./VerificationGapList";
 import { VerificationHistory } from "./VerificationHistory";
+import { SolutionCritiqueSummary } from "./SolutionCritiqueSummary";
 import { ideationApi, type SessionWithDataResponse } from "@/api/ideation";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { chatApi } from "@/api/chat";
@@ -826,6 +827,13 @@ export function VerificationPanel({
               </Button>
             )}
           </div>
+
+          <div className="w-full">
+            <SolutionCritiqueSummary
+              sessionId={session.id}
+              enabled={hasPlan && session.sessionPurpose !== "verification"}
+            />
+          </div>
         </div>
       </div>
     );
@@ -997,6 +1005,11 @@ export function VerificationPanel({
           </div>
         </div>
       )}
+
+      <SolutionCritiqueSummary
+        sessionId={session.id}
+        enabled={hasPlan && session.sessionPurpose !== "verification"}
+      />
 
       {showCurrentRunBootstrap && (
         <div
