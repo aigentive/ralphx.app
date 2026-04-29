@@ -224,6 +224,14 @@ async fn compile_context_persists_context_artifact_and_relation() {
         relation.relation_type == ArtifactRelationType::RelatedTo
             && relation.to_artifact_id == plan_artifact_id
     }));
+
+    let latest = service
+        .get_latest_compiled_context(session_id.as_str())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.artifact_id, result.artifact_id);
+    assert_eq!(latest.compiled_context.target.id, plan_artifact_id.as_str());
 }
 
 #[tokio::test]
@@ -300,6 +308,33 @@ async fn critique_artifact_persists_findings_artifact_and_relations() {
         .unwrap();
     assert_eq!(read.projected_gaps.len(), 1);
     assert_eq!(read.projected_gaps[0].severity, "medium");
+
+    let latest = service
+        .get_latest_solution_critique(session_id.as_str())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.artifact_id, result.artifact_id);
+    assert_eq!(latest.projected_gaps.len(), 1);
+}
+
+#[tokio::test]
+async fn latest_reads_return_none_before_context_or_critique_exists() {
+    let Fixture {
+        state, session_id, ..
+    } = setup_fixture().await;
+    let service = SolutionCritiqueService::from_app_state(&state);
+
+    assert!(service
+        .get_latest_compiled_context(session_id.as_str())
+        .await
+        .unwrap()
+        .is_none());
+    assert!(service
+        .get_latest_solution_critique(session_id.as_str())
+        .await
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test]

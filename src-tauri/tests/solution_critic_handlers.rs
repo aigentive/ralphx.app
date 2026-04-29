@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     body::Body,
     http::{Request, StatusCode},
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use http_body_util::BodyExt;
@@ -17,8 +17,8 @@ use ralphx_lib::domain::entities::{
     VerificationStatus,
 };
 use ralphx_lib::http_server::handlers::{
-    get_compiled_context_artifact, get_solution_critique_artifact, post_compiled_context,
-    post_solution_critique,
+    get_compiled_context_artifact, get_latest_compiled_context, get_latest_solution_critique,
+    get_solution_critique_artifact, post_compiled_context, post_solution_critique,
 };
 use ralphx_lib::http_server::types::HttpServerState;
 use serde_json::Value;
@@ -28,7 +28,7 @@ fn solution_critic_app(state: HttpServerState) -> Router {
     Router::new()
         .route(
             "/api/ideation/sessions/:id/compiled-context",
-            post(post_compiled_context),
+            get(get_latest_compiled_context).post(post_compiled_context),
         )
         .route(
             "/api/ideation/sessions/:id/compiled-context/:artifact_id",
@@ -36,7 +36,7 @@ fn solution_critic_app(state: HttpServerState) -> Router {
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique",
-            post(post_solution_critique),
+            get(get_latest_solution_critique).post(post_solution_critique),
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique/:artifact_id",
@@ -132,6 +132,27 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
         Some(plan_artifact_id.as_str())
     );
 
+    let latest_context_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/compiled-context",
+                    session_id.as_str()
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(latest_context_response.status(), StatusCode::OK);
+    let latest_context_json = response_json(latest_context_response).await;
+    assert_eq!(
+        latest_context_json["artifact_id"].as_str(),
+        Some(context_artifact_id.as_str())
+    );
+
     let context_read_response = app
         .clone()
         .oneshot(
@@ -181,6 +202,27 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
     assert!(projected_gaps
         .iter()
         .all(|gap| gap["source"].as_str().is_none()));
+
+    let latest_critique_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/solution-critique",
+                    session_id.as_str()
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(latest_critique_response.status(), StatusCode::OK);
+    let latest_critique_json = response_json(latest_critique_response).await;
+    assert_eq!(
+        latest_critique_json["artifact_id"].as_str(),
+        Some(critique_artifact_id)
+    );
 
     let critique_read_response = app
         .oneshot(

@@ -170,6 +170,48 @@ impl SolutionCritiqueService {
         })
     }
 
+    pub async fn get_latest_compiled_context(
+        &self,
+        session_id: &str,
+    ) -> AppResult<Option<CompiledContextReadResult>> {
+        let session = self.load_session(session_id).await?;
+        let Some(target_artifact_id) = self.current_plan_artifact_id(&session).await? else {
+            return Ok(None);
+        };
+        let artifacts = self
+            .artifact_repo
+            .get_by_type(ArtifactType::Context)
+            .await?;
+        let mut matches = Vec::new();
+        for artifact in artifacts {
+            if artifact.archived_at.is_some() {
+                continue;
+            }
+            let Ok(compiled_context) = parse_inline_artifact::<CompiledContext>(&artifact) else {
+                continue;
+            };
+            if compiled_context.target.id == target_artifact_id.as_str() {
+                matches.push((
+                    artifact.metadata.created_at,
+                    artifact.id.as_str().to_string(),
+                    compiled_context,
+                ));
+            }
+        }
+
+        matches.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
+
+        Ok(matches
+            .into_iter()
+            .next()
+            .map(
+                |(_, artifact_id, compiled_context)| CompiledContextReadResult {
+                    artifact_id,
+                    compiled_context,
+                },
+            ))
+    }
+
     pub async fn critique_artifact(
         &self,
         session_id: &str,
@@ -268,6 +310,49 @@ impl SolutionCritiqueService {
         })
     }
 
+    pub async fn get_latest_solution_critique(
+        &self,
+        session_id: &str,
+    ) -> AppResult<Option<SolutionCritiqueReadResult>> {
+        let session = self.load_session(session_id).await?;
+        let Some(target_artifact_id) = self.current_plan_artifact_id(&session).await? else {
+            return Ok(None);
+        };
+        let artifacts = self
+            .artifact_repo
+            .get_by_type(ArtifactType::Findings)
+            .await?;
+        let mut matches = Vec::new();
+        for artifact in artifacts {
+            if artifact.archived_at.is_some() {
+                continue;
+            }
+            let Ok(solution_critique) = parse_inline_artifact::<SolutionCritique>(&artifact) else {
+                continue;
+            };
+            if solution_critique.artifact_id == target_artifact_id.as_str() {
+                matches.push((
+                    artifact.metadata.created_at,
+                    artifact.id.as_str().to_string(),
+                    solution_critique,
+                ));
+            }
+        }
+
+        matches.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
+
+        Ok(matches
+            .into_iter()
+            .next()
+            .map(
+                |(_, artifact_id, solution_critique)| SolutionCritiqueReadResult {
+                    artifact_id,
+                    projected_gaps: project_solution_critique_gaps(&solution_critique),
+                    solution_critique,
+                },
+            ))
+    }
+
     async fn load_session(&self, session_id: &str) -> AppResult<IdeationSession> {
         let id = crate::domain::entities::IdeationSessionId::from_string(session_id);
         self.ideation_session_repo
@@ -295,6 +380,19 @@ impl SolutionCritiqueService {
         self.artifact_repo
             .resolve_latest_artifact_id(&ArtifactId::from_string(artifact_id))
             .await
+    }
+
+    async fn current_plan_artifact_id(
+        &self,
+        session: &IdeationSession,
+    ) -> AppResult<Option<ArtifactId>> {
+        match &session.plan_artifact_id {
+            Some(artifact_id) => Ok(Some(
+                self.resolve_latest_artifact_id(artifact_id.as_str())
+                    .await?,
+            )),
+            None => Ok(None),
+        }
     }
 
     async fn collect_chat_sources(

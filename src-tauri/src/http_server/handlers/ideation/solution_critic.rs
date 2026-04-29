@@ -48,6 +48,21 @@ pub async fn get_compiled_context_artifact(
         .map_err(map_solution_critic_error)
 }
 
+/// GET /api/ideation/sessions/:id/compiled-context
+pub async fn get_latest_compiled_context(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Path(session_id): Path<String>,
+) -> Result<Json<Option<CompiledContextReadResult>>, JsonError> {
+    assert_session_scope(&state, &scope, &session_id).await?;
+    let service = SolutionCritiqueService::from_app_state(&state.app_state);
+    service
+        .get_latest_compiled_context(&session_id)
+        .await
+        .map(Json)
+        .map_err(map_solution_critic_error)
+}
+
 /// POST /api/ideation/sessions/:id/solution-critique
 pub async fn post_solution_critique(
     State(state): State<HttpServerState>,
@@ -59,6 +74,21 @@ pub async fn post_solution_critique(
     let service = SolutionCritiqueService::from_app_state(&state.app_state);
     service
         .critique_artifact(&session_id, request)
+        .await
+        .map(Json)
+        .map_err(map_solution_critic_error)
+}
+
+/// GET /api/ideation/sessions/:id/solution-critique
+pub async fn get_latest_solution_critique(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Path(session_id): Path<String>,
+) -> Result<Json<Option<SolutionCritiqueReadResult>>, JsonError> {
+    assert_session_scope(&state, &scope, &session_id).await?;
+    let service = SolutionCritiqueService::from_app_state(&state.app_state);
+    service
+        .get_latest_solution_critique(&session_id)
         .await
         .map(Json)
         .map_err(map_solution_critic_error)

@@ -168,7 +168,7 @@ pub async fn start_http_server(
         // Solution critic context and findings artifacts
         .route(
             "/api/ideation/sessions/:id/compiled-context",
-            post(post_compiled_context),
+            get(get_latest_compiled_context).post(post_compiled_context),
         )
         .route(
             "/api/ideation/sessions/:id/compiled-context/:artifact_id",
@@ -176,7 +176,7 @@ pub async fn start_http_server(
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique",
-            post(post_solution_critique),
+            get(get_latest_solution_critique).post(post_solution_critique),
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique/:artifact_id",
