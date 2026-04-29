@@ -61,7 +61,7 @@ export function CommitSummaryCard({ taskId }: CommitSummaryCardProps) {
           <span className="text-[11px] font-mono text-text-primary/50 shrink-0 pt-0.5">
             {commit.shortSha}
           </span>
-          <span className="text-[13px] text-text-primary/70 line-clamp-2">
+          <span className="text-[13px] text-text-primary line-clamp-2">
             {commit.message}
           </span>
         </div>

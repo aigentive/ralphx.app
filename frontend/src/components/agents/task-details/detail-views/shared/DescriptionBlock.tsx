@@ -22,7 +22,7 @@ export function DescriptionBlock({ description, testId }: DescriptionBlockProps)
   return (
     <div
       data-testid={testId}
-      className="text-[13px] text-text-primary/65 leading-relaxed"
+      className="text-[13px] text-text-primary leading-relaxed"
       style={{ wordBreak: "break-word" }}
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
