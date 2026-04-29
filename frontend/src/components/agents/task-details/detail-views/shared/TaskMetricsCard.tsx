@@ -32,9 +32,9 @@ function ComplexityBadge({ tier }: { tier: ComplexityTier }) {
   );
 }
 
-// ── Stat row ─────────────────────────────────────────────────────────────────
+// ── Stat cell ────────────────────────────────────────────────────────────────
 
-function StatRow({
+function StatCell({
   icon: Icon,
   label,
   value,
@@ -44,18 +44,20 @@ function StatRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-3">
+    <div className="flex items-start gap-2 min-w-0">
       <div
         className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
         style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <Icon className="w-3.5 h-3.5 text-text-primary/40" />
       </div>
-      <div className="flex-1 min-w-0">
-        <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
+      <div className="min-w-0">
+        <span className="text-[10px] uppercase tracking-wider text-text-primary/40 block">
           {label}
         </span>
-        <span className="text-[13px] text-text-primary/70 font-medium">{value}</span>
+        <span className="text-[13px] text-text-primary font-medium truncate block">
+          {value}
+        </span>
       </div>
     </div>
   );
@@ -129,26 +131,28 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
 
   return (
     <div>
-      {/* Header: complexity tier */}
-      <div className="flex items-center justify-between px-3 py-3">
-        <span className="text-[11px] uppercase tracking-wider text-text-primary/40">
+      {/* Complexity sits inline with the section so the stats below can use
+          the full row width without competing for the badge slot. */}
+      <div
+        className="flex items-center justify-between pb-3"
+        style={{ borderBottom: "1px solid var(--border-subtle)" }}
+      >
+        <span className="text-[10px] uppercase tracking-wider text-text-primary/40">
           Complexity
         </span>
         <ComplexityBadge tier={tier} />
       </div>
 
-      {rows.map((row, index) => (
-        <div
-          key={row.label}
-          style={
-            index < rows.length - 1
-              ? { borderBottom: "1px solid var(--border-subtle)" }
-              : undefined
-          }
-        >
-          <StatRow icon={row.icon} label={row.label} value={row.value} />
-        </div>
-      ))}
+      <div className="grid grid-cols-1 gap-4 pt-3 sm:grid-cols-3">
+        {rows.map((row) => (
+          <StatCell
+            key={row.label}
+            icon={row.icon}
+            label={row.label}
+            value={row.value}
+          />
+        ))}
+      </div>
     </div>
   );
 }
