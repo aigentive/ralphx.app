@@ -20,11 +20,7 @@ impl<'a> TransitionHandler<'a> {
             return Ok(None);
         }
 
-        let repo_path = task
-            .worktree_path
-            .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(&project.working_directory));
+        let repo_path = PathBuf::from(&project.working_directory);
 
         let Some(source_branch) = task.task_branch.as_deref() else {
             return Ok(None);
