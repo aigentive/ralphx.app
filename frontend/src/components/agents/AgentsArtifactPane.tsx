@@ -116,6 +116,40 @@ const PUBLISH_TAB = {
   icon: GitPullRequestArrow,
 };
 
+const SELECTED_TASK_STORAGE_PREFIX = "agents:artifact:selected-task:";
+
+function readSelectedTaskForConversation(
+  conversationId: string | null,
+): string | null {
+  if (!conversationId) return null;
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(
+      `${SELECTED_TASK_STORAGE_PREFIX}${conversationId}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+function writeSelectedTaskForConversation(
+  conversationId: string | null,
+  taskId: string | null,
+): void {
+  if (!conversationId) return;
+  if (typeof window === "undefined") return;
+  try {
+    const key = `${SELECTED_TASK_STORAGE_PREFIX}${conversationId}`;
+    if (taskId) {
+      window.localStorage.setItem(key, taskId);
+    } else {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore quota / private-mode write failures.
+  }
+}
+
 interface AgentsArtifactPaneProps {
   conversation: AgentConversation | null;
   workspace?: AgentConversationWorkspace | null;
@@ -188,13 +222,22 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
     status: VerificationStatus;
     inProgress: boolean;
   } | null>(null);
-  const [taskArtifactSelectedId, setTaskArtifactSelectedId] = useState<string | null>(null);
+  const conversationId = conversation?.id ?? null;
+  const [taskArtifactSelectedId, setTaskArtifactSelectedIdState] =
+    useState<string | null>(() => readSelectedTaskForConversation(conversationId));
   useEffect(() => {
     setDisplayedVerificationStatus(null);
   }, [attachedSessionId]);
   useEffect(() => {
-    setTaskArtifactSelectedId(null);
-  }, [attachedSessionId, taskMode]);
+    setTaskArtifactSelectedIdState(readSelectedTaskForConversation(conversationId));
+  }, [conversationId]);
+  const setTaskArtifactSelectedId = useCallback(
+    (id: string | null) => {
+      setTaskArtifactSelectedIdState(id);
+      writeSelectedTaskForConversation(conversationId, id);
+    },
+    [conversationId],
+  );
   const sessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedSessionId ?? ""),
     queryFn: () => ideationApi.sessions.getWithData(attachedSessionId!),
