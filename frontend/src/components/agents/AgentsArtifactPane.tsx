@@ -798,7 +798,7 @@ function AgentPlanPanel({
   }
 
   return (
-    <div className="min-h-full p-4">
+    <div className="min-h-full px-4 pb-4 pt-4">
       {planArtifact ? (
         isEditing ? (
           <Suspense fallback={<EmptyArtifactState title="Loading plan editor..." />}>

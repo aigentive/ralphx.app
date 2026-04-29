@@ -208,7 +208,7 @@ const markdownComponents = {
   // H2 — major section.
   h2: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
     <h2
-      className="text-[15px] font-semibold tracking-[-0.015em] mt-7 mb-3 first:mt-0"
+      className="text-[15px] font-semibold tracking-[-0.015em] mt-5 mb-2 first:mt-0"
       style={{ color: "var(--text-primary)" }}
       {...props}
     >
@@ -473,13 +473,34 @@ export function PlanDisplay({
   }, [planContent, plan.name, onExport]);
 
   if (chromeless) {
+    // Extract the leading H1 from the plan body so we can render it on
+    // the same row as the action cluster instead of having the title
+    // and actions stack in awkwardly disconnected rows.
+    const headingMatch = displayContent
+      ? displayContent.match(/^[ \t]*#\s+(.+?)\s*\n/)
+      : null;
+    const headingTitle = headingMatch?.[1] ?? null;
+    const bodyAfterHeading = headingMatch
+      ? (displayContent ?? "").slice(headingMatch[0].length)
+      : displayContent;
+
     return (
       <div data-testid="plan-display-chromeless" className="group">
-        {/* Slim action row — keeps every control the wrapper card had
-            (approve, create proposals, version history, overflow menu)
-            without the file-icon header chrome that duplicated the
-            in-content H1 title. */}
-        <div className="flex items-center justify-end gap-1 mb-3">
+        <div
+          className="flex items-center justify-between gap-3 pb-2 mb-3"
+          style={{ borderBottom: "1px solid var(--border-subtle)" }}
+        >
+          <h1
+            className="text-[18px] font-semibold tracking-[-0.02em] flex-1 min-w-0 leading-tight"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {headingTitle ?? plan.name}
+          </h1>
+          {/* Slim action row — keeps every control the wrapper card had
+              (approve, create proposals, version history, overflow menu)
+              without the file-icon header chrome that duplicated the
+              in-content H1 title. */}
+          <div className="flex items-center gap-1 shrink-0">
           {showApprove && !isApproved && (
             <Button
               variant="ghost"
@@ -663,6 +684,7 @@ export function PlanDisplay({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          </div>
         </div>
 
         {/* Debate summary — shown for debate-mode plans */}
@@ -713,7 +735,7 @@ export function PlanDisplay({
               remarkPlugins={[remarkGfm]}
               components={markdownComponents}
             >
-              {displayContent}
+              {bodyAfterHeading ?? ""}
             </ReactMarkdown>
           </div>
         ) : (
