@@ -967,30 +967,34 @@ export function IntegratedChatPanel({
     });
   }, [storeContextKey, agentRunModelId, agentRunModelLabel]);
 
-  // Final fallback: read effectiveModelId from the latest non-user message.
+  // Final fallback: derive runtime context from the latest non-user message.
   // Covers child chats (ideation/verification opened from Agents) where the
   // ideation store hasn't loaded the session and there's no agent run query.
   // Roles vary ("assistant", "orchestrator", "agent", etc.), so anything
   // non-user that carries the field is fair game.
-  const latestModelIdFromMessages = useMemo(() => {
+  const latestRuntimeFromMessages = useMemo(() => {
+    let modelId: string | null = null;
+    let providerHarness: string | null = null;
     for (let i = messagesData.length - 1; i >= 0; i -= 1) {
       const msg = messagesData[i];
       if (!msg) continue;
       if (msg.role === "user") continue;
-      if (msg.effectiveModelId) {
-        return msg.effectiveModelId;
-      }
+      if (!modelId && msg.effectiveModelId) modelId = msg.effectiveModelId;
+      if (!providerHarness && msg.providerHarness) providerHarness = msg.providerHarness;
+      if (modelId && providerHarness) break;
     }
-    return null;
+    return { modelId, providerHarness };
   }, [messagesData]);
   useEffect(() => {
-    if (!latestModelIdFromMessages) return;
+    const { modelId } = latestRuntimeFromMessages;
+    if (!modelId) return;
     if (useChatStore.getState().effectiveModel[storeContextKey]) return;
     useChatStore.getState().setEffectiveModel(storeContextKey, {
-      id: latestModelIdFromMessages,
-      label: getModelLabel(latestModelIdFromMessages),
+      id: modelId,
+      label: getModelLabel(modelId),
     });
-  }, [storeContextKey, latestModelIdFromMessages]);
+  }, [storeContextKey, latestRuntimeFromMessages]);
+  const fallbackProviderHarness = latestRuntimeFromMessages.providerHarness;
 
   // Handle Escape key to close panel
   useEffect(() => {
@@ -1415,7 +1419,10 @@ export function IntegratedChatPanel({
                     onRemoveAttachment: removeAttachment,
                     attachmentsUploading: uploading,
                     effectiveModel,
-                    providerHarness: activeConversationMeta?.providerHarness ?? null,
+                    providerHarness:
+                      activeConversationMeta?.providerHarness ??
+                      fallbackProviderHarness ??
+                      null,
                     ...(activeQuestion
                       ? {
                           value: questionInputValue,
