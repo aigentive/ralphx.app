@@ -283,26 +283,54 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                     placeholder: "Current project",
                     disabled: true,
                   }}
-                  provider={{
-                    value: isFocusedChildChat
-                      ? (composerProps.providerHarness as AgentProvider | undefined) ??
-                        normalizedActiveRuntime.provider
-                      : normalizedActiveRuntime.provider,
-                    onValueChange: () => undefined,
-                    options: AGENT_PROVIDER_OPTIONS,
-                    disabled: true,
-                  }}
-                  model={{
-                    value: isFocusedChildChat
-                      ? composerProps.effectiveModel?.id ??
-                        normalizedActiveRuntime.modelId
-                      : normalizedActiveRuntime.modelId,
-                    onValueChange: isFocusedChildChat
-                      ? () => undefined
-                      : onActiveModelChange,
-                    options: AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
-                    disabled: isFocusedChildChat,
-                  }}
+                  {...(() => {
+                    if (!isFocusedChildChat) {
+                      return {
+                        provider: {
+                          value: normalizedActiveRuntime.provider,
+                          onValueChange: () => undefined,
+                          options: AGENT_PROVIDER_OPTIONS,
+                          disabled: true,
+                        },
+                        model: {
+                          value: normalizedActiveRuntime.modelId,
+                          onValueChange: onActiveModelChange,
+                          options:
+                            AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
+                        },
+                      };
+                    }
+                    // Child chat: use the focused session's actual runtime
+                    // straight from the chat panel. We never fall back to the
+                    // workspace runtime here — that produced misleading
+                    // mismatched displays (e.g., "claude · gpt-5.4").
+                    const childProvider =
+                      (composerProps.providerHarness as AgentProvider | undefined) ??
+                      undefined;
+                    const childModelId = composerProps.effectiveModel?.id;
+                    // Fallback provider value satisfies the typed union
+                    // when harness is missing; the pill self-hides when
+                    // both labels resolve empty (see ComposerRuntimePill).
+                    const fallbackProvider: AgentProvider = "codex";
+                    return {
+                      provider: {
+                        value: childProvider ?? fallbackProvider,
+                        onValueChange: () => undefined,
+                        options: childProvider
+                          ? AGENT_PROVIDER_OPTIONS
+                          : [],
+                        disabled: true,
+                      },
+                      model: {
+                        value: childModelId ?? "",
+                        onValueChange: () => undefined,
+                        options: childProvider
+                          ? AGENT_MODEL_OPTIONS[childProvider]
+                          : [],
+                        disabled: true,
+                      },
+                    };
+                  })()}
                 />
                 <div className="mt-2 flex w-full flex-wrap items-center justify-between gap-2 px-2">
                   <AgentComposerProjectLine

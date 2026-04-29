@@ -834,6 +834,13 @@ function ComposerRuntimePill({
   const modelLabel =
     model.options.find((o) => o.id === model.value)?.label ?? model.value;
 
+  // Skip the pill entirely when we have nothing to show (e.g., child chat
+  // session whose effective runtime hasn't loaded yet). Avoids an empty
+  // "·" placeholder.
+  if (!providerLabel && !modelLabel) {
+    return null;
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
