@@ -20,6 +20,7 @@ pub mod research_service;
 pub mod rule_ingestion_service;
 pub mod rule_parser;
 pub mod running_agent_registry;
+pub mod solution_critique_projection;
 pub mod text_similarity;
 pub mod verification_events;
 pub mod verification_gate;
@@ -35,6 +36,7 @@ pub use github_service::{
     GithubServiceTrait, PrMergeStateStatus, PrMergeableState, PrStatus, PrSyncState,
 };
 pub use index_rewriter::{IndexRewriter, RewriteResult};
+pub use solution_critique_projection::project_solution_critique_gaps;
 pub use verification_events::{
     build_verification_payload, build_verification_started_snapshot,
     emit_verification_pending_confirmation, emit_verification_started,
