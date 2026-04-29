@@ -36,8 +36,8 @@ import {
   TwoColumnLayout,
   ChangeReviewSection,
   PlanMergeContextSection,
-  TaskDescriptionSection,
 } from "./shared";
+import { TaskDescriptionSection } from "./shared/TaskDescriptionSection";
 import { useTaskDetailContextModel } from "./shared/TaskDetailContext";
 import { useMergeValidationEvents } from "@/hooks/useMergeValidationEvents";
 import { useMergeProgressEvents } from "@/hooks/useMergeProgressEvents";
