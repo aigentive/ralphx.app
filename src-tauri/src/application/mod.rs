@@ -51,6 +51,7 @@ pub mod session_namer_prompt;
 pub mod session_reopen_service;
 pub mod setup_settings;
 pub mod shutdown;
+pub mod solution_critic;
 pub mod startup_jobs;
 pub mod startup_background;
 pub mod startup_bootstrap;
@@ -126,6 +127,7 @@ pub use session_export_service::{
     SessionData, SessionExport, SessionExportService, SourceInstance,
 };
 pub use session_reopen_service::SessionReopenService;
+pub use solution_critic::SolutionCritiqueService;
 pub use startup_jobs::StartupJobRunner;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use task_cleanup_service::{
