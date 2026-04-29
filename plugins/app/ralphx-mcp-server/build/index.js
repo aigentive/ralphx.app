@@ -136,7 +136,7 @@ function buildArtifactMutationTransportHeaders() {
         "X-RalphX-Caller-Session-Id": RALPHX_CONTEXT_ID,
     };
 }
-const { getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, resolveVerificationFindingSessionId, resolveContextSessionId, } = createVerificationRuntime({
+const { getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, resolveVerificationFindingSessionId, resolveVerifierParentSessionId, } = createVerificationRuntime({
     callTauri,
     callTauriGet,
     agentType: AGENT_TYPE,
@@ -483,6 +483,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         else if (name === "complete_plan_verification") {
             result = await completePlanVerificationForTool(args);
+        }
+        else if (name === "compile_context") {
+            const { session_id, target_artifact_id, source_limits, } = args;
+            const resolvedSessionId = await resolveVerifierParentSessionId(session_id, "compile_context");
+            result = await callTauri(`ideation/sessions/${resolvedSessionId}/compiled-context`, {
+                target_artifact_id,
+                source_limits: source_limits ?? {},
+            });
+        }
+        else if (name === "get_compiled_context") {
+            const { session_id, artifact_id } = args;
+            const resolvedSessionId = await resolveVerifierParentSessionId(session_id, "get_compiled_context");
+            result = await callTauriGet(`ideation/sessions/${resolvedSessionId}/compiled-context/${artifact_id}`);
+        }
+        else if (name === "critique_artifact") {
+            const { session_id, target_artifact_id, compiled_context_artifact_id, } = args;
+            const resolvedSessionId = await resolveVerifierParentSessionId(session_id, "critique_artifact");
+            result = await callTauri(`ideation/sessions/${resolvedSessionId}/solution-critique`, {
+                target_artifact_id,
+                compiled_context_artifact_id,
+            });
+        }
+        else if (name === "get_solution_critique") {
+            const { session_id, artifact_id } = args;
+            const resolvedSessionId = await resolveVerifierParentSessionId(session_id, "get_solution_critique");
+            result = await callTauriGet(`ideation/sessions/${resolvedSessionId}/solution-critique/${artifact_id}`);
         }
         else if (name === "revert_and_skip") {
             // POST /api/ideation/sessions/:id/revert-and-skip

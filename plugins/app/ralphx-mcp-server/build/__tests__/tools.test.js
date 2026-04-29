@@ -7,6 +7,7 @@ import { getAllowedToolNames, getFilteredTools, getToolsByAgent, isToolAllowed, 
 import { loadCanonicalMcpTools } from '../canonical-agent-metadata.js';
 import { setLegacyToolAllowlistEntryForTest } from '../tool-authorization.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
+import { SOLUTION_CRITIC_TOOLS } from '../solution-critic-tools.js';
 import { buildAppendTaskToIdeationPlanPayload } from '../append-task-payload.js';
 import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_UX, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, REVIEWER, WORKER, MERGER, CHAT_PROJECT, } from '../agentNames.js';
 function toolsByAgent() {
@@ -319,6 +320,10 @@ describe('getFilteredTools', () => {
         expect(toolNames).toContain('run_verification_round');
         expect(toolNames).toContain('complete_plan_verification');
         expect(toolNames).toContain('get_plan_verification');
+        expect(toolNames).toContain('compile_context');
+        expect(toolNames).toContain('get_compiled_context');
+        expect(toolNames).toContain('critique_artifact');
+        expect(toolNames).toContain('get_solution_critique');
         expect(toolNames).not.toContain('send_ideation_session_message');
         expect(toolNames).not.toContain('delegate_start');
         expect(toolNames).not.toContain('delegate_wait');
@@ -330,6 +335,26 @@ describe('getFilteredTools', () => {
         expect(toolNames).not.toContain('assess_verification_round');
         expect(toolNames).not.toContain('run_required_verification_critic_round');
         expect(toolNames).not.toContain('await_verification_round_settlement');
+    });
+    it('exposes solution critic tools as read-generation helpers', () => {
+        const compileTool = SOLUTION_CRITIC_TOOLS.find((t) => t.name === 'compile_context');
+        const critiqueTool = SOLUTION_CRITIC_TOOLS.find((t) => t.name === 'critique_artifact');
+        const readContextTool = SOLUTION_CRITIC_TOOLS.find((t) => t.name === 'get_compiled_context');
+        const readCritiqueTool = SOLUTION_CRITIC_TOOLS.find((t) => t.name === 'get_solution_critique');
+        expect(compileTool).toBeDefined();
+        expect(critiqueTool).toBeDefined();
+        expect(readContextTool).toBeDefined();
+        expect(readCritiqueTool).toBeDefined();
+        expect(compileTool?.description).toContain('Read-generation helper');
+        expect(critiqueTool?.description).toContain('backend-projected verification gaps');
+        expect(critiqueTool?.description).toContain('Do not hand-derive gaps');
+        expect(compileTool?.inputSchema.required).toEqual(['target_artifact_id']);
+        expect(critiqueTool?.inputSchema.required).toEqual([
+            'target_artifact_id',
+            'compiled_context_artifact_id',
+        ]);
+        expect(readContextTool?.inputSchema.required).toEqual(['artifact_id']);
+        expect(readCritiqueTool?.inputSchema.required).toEqual(['artifact_id']);
     });
     it('should expose qa prep filesystem tools plus delegation bridge tools', () => {
         setAgentType('qa-prep');

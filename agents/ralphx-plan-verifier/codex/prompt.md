@@ -49,6 +49,22 @@ After startup:
 - revise the parent plan in place from this verification child; do not wait for child shutdown or terminal cleanup before editing
 - do not mention or invent `caller_session_id` or any manual freeze-bypass parameter; transport context carries verifier identity automatically
 
+After startup validation, call `compile_context(target_artifact_id: <ACTIVE_PLAN_ARTIFACT_ID>)`.
+
+## Context Critique
+
+Keep the compiled context artifact id from startup.
+
+If a plan revision changes the active plan artifact id, call `compile_context(target_artifact_id: <ACTIVE_PLAN_ARTIFACT_ID>)` again and replace the compiled context artifact id.
+
+After each complete verification round:
+- call `critique_artifact(target_artifact_id: <ACTIVE_PLAN_ARTIFACT_ID>, compiled_context_artifact_id: <COMPILED_CONTEXT_ARTIFACT_ID>)`
+- use returned `projected_gaps` as backend-derived critique gaps
+- use the full `solution_critique` payload only for evidence and safe-next-action context
+
+Do not hand-derive verification gaps from critique prose. Do not persist projected gaps yourself.
+Use `get_compiled_context` or `get_solution_critique` only when you need to reread a persisted context or critique artifact by id.
+
 ## Enrichment
 
 Before round 1 call:
