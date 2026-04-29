@@ -180,11 +180,10 @@ describe("AgentsView", () => {
     renderAgentsView();
     selectSidebarConversationRow();
 
-    expect(await screen.findByTestId("agents-chat-focus-bar")).toBeInTheDocument();
-    // Trigger shows the active focus (Workspace)
-    expect(screen.getByTestId("agents-chat-focus-trigger")).toHaveTextContent(
-      "Workspace",
-    );
+    // Workspace chat hosts the focus switcher inline in the composer.
+    expect(
+      await screen.findByTestId("agents-composer-chat-focus-pill"),
+    ).toHaveTextContent("Workspace");
     await waitFor(() => {
       expect(getLatestChildSessionIdMock).toHaveBeenCalledWith(
         "session-1",
@@ -194,8 +193,10 @@ describe("AgentsView", () => {
     });
 
     // Open dropdown and select Verification
-    fireEvent.click(screen.getByTestId("agents-chat-focus-trigger"));
-    fireEvent.click(screen.getByTestId("agents-chat-focus-option-verification"));
+    fireEvent.click(screen.getByTestId("agents-composer-chat-focus-pill"));
+    fireEvent.click(
+      screen.getByTestId("agents-composer-chat-focus-option-verification"),
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(

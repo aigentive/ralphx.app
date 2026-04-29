@@ -1,4 +1,5 @@
 import { memo, useMemo } from "react";
+import { Lightbulb, MessageSquare, ShieldCheck } from "lucide-react";
 
 import type {
   AgentConversationWorkspace,
@@ -18,7 +19,11 @@ import {
   getAgentConversationStoreKey,
   type AgentConversation,
 } from "./agentConversations";
-import { AgentComposerProjectLine, AgentComposerSurface } from "./AgentComposerSurface";
+import {
+  AgentComposerProjectLine,
+  AgentComposerSurface,
+  type ChatFocusFieldConfig,
+} from "./AgentComposerSurface";
 import { AgentConversationBaseLine } from "./AgentConversationBaseLine";
 import {
   AgentsChatFocusBar,
@@ -128,7 +133,59 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
     return getAgentConversationStoreKey(activeConversation);
   }, [activeConversation, focusedChatSessionId]);
 
-  const showFocusBar = chatFocusOptions.length > 1 || showWorkspaceStatus;
+  // Workspace chats render a custom composer that hosts the chat focus pill.
+  // Child chats don't, so the header bar must keep the focus picker for them.
+  const composerHostsChatFocus = !isFocusedChildChat && chatFocusOptions.length > 1;
+  const showFocusBar =
+    chatFocusOptions.length > 1 || showWorkspaceStatus;
+  const focusBarOptions = composerHostsChatFocus ? [] : chatFocusOptions;
+  const composerChatFocus = useMemo<ChatFocusFieldConfig | undefined>(() => {
+    if (chatFocusOptions.length <= 1) return undefined;
+    const focusToneStyles: Record<
+      "accent" | "warning",
+      { color: string; background: string; border: string }
+    > = {
+      accent: {
+        color: "var(--accent-primary)",
+        background: "var(--accent-muted)",
+        border: "var(--accent-border)",
+      },
+      warning: {
+        color: "var(--status-warning)",
+        background: "var(--status-warning-muted)",
+        border: "var(--status-warning-border)",
+      },
+    };
+    return {
+      value: chatFocus.type,
+      onValueChange: (id) => onSelectChatFocus(id as AgentsChatFocusType),
+      options: chatFocusOptions.map((option) => {
+        const tone = option.tone ? focusToneStyles[option.tone] : null;
+        const icon =
+          option.type === "workspace"
+            ? MessageSquare
+            : option.tone === "accent"
+            ? Lightbulb
+            : option.tone === "warning"
+            ? ShieldCheck
+            : undefined;
+        return {
+          id: option.type,
+          label: option.label,
+          ...(option.description !== undefined ? { description: option.description } : {}),
+          ...(icon ? { icon } : {}),
+          ...(tone
+            ? {
+                toneColor: tone.color,
+                toneBackground: tone.background,
+                toneBorder: tone.border,
+              }
+            : {}),
+        };
+      }),
+      testId: "agents-composer-chat-focus",
+    };
+  }, [chatFocus.type, chatFocusOptions, onSelectChatFocus]);
 
   return (
     <div className="flex-1 min-w-0 h-full flex flex-col">
@@ -212,6 +269,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                             },
                           }
                         : {})}
+                      {...(composerChatFocus ? { chatFocus: composerChatFocus } : {})}
                       project={{
                         value: activeProjectId,
                         onValueChange: () => undefined,
@@ -277,7 +335,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                 headerSubContent: (
                   <AgentsChatFocusBar
                     activeType={chatFocus.type}
-                    options={chatFocusOptions}
+                    options={focusBarOptions}
                     workspace={showWorkspaceStatus ? activeWorkspace : null}
                     onSelectFocus={onSelectChatFocus}
                   />

@@ -47,8 +47,7 @@ describe("AgentsView start conversation", () => {
     expect(screen.getByTestId("agents-start-heading-word")).toHaveTextContent("agent");
     expect(screen.getByTestId("agents-start-project")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-base")).toBeInTheDocument();
-    expect(screen.getByTestId("agents-start-provider")).toBeInTheDocument();
-    expect(screen.getByTestId("agents-start-model")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-composer-runtime-pill")).toBeInTheDocument();
     expect(screen.queryByTestId("agents-start-new-project")).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId("agent-composer-actions-menu"));
     expect(screen.getByTestId("agents-start-mode-edit")).toBeInTheDocument();

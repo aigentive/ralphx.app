@@ -30,13 +30,6 @@ import {
   type ChatAttachment as ComposerAttachment,
 } from "@/components/Chat/ChatAttachmentGallery";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -110,6 +103,24 @@ interface ModeFieldConfig {
   testId?: string;
 }
 
+export interface ChatFocusOption {
+  id: string;
+  label: string;
+  description?: string;
+  icon?: ComponentType<{ className?: string }>;
+  toneColor?: string;
+  toneBackground?: string;
+  toneBorder?: string;
+}
+
+export interface ChatFocusFieldConfig {
+  value: string;
+  onValueChange: (id: string) => void;
+  options: ChatFocusOption[];
+  disabled?: boolean;
+  testId?: string;
+}
+
 export interface AgentComposerQuestionMode {
   optionCount: number;
   multiSelect: boolean;
@@ -139,6 +150,7 @@ export interface AgentComposerSurfaceProps {
   onRemoveAttachment?: ((id: string) => void | Promise<unknown>) | undefined;
   attachmentsUploading?: boolean;
   mode?: ModeFieldConfig;
+  chatFocus?: ChatFocusFieldConfig;
   dataTestId?: string;
   textareaTestId?: string;
   actionTestId?: string;
@@ -170,6 +182,7 @@ export function AgentComposerSurface({
   onRemoveAttachment,
   attachmentsUploading = false,
   mode,
+  chatFocus,
   dataTestId,
   textareaTestId,
   actionTestId,
@@ -437,7 +450,7 @@ export function AgentComposerSurface({
             background: "color-mix(in srgb, var(--bg-base) 16%, var(--bg-surface) 84%)",
           }}
         >
-          <div className="flex flex-wrap items-center gap-2 md:flex-nowrap">
+          <div className="flex flex-wrap items-center gap-2">
             {enableAttachments && (
               <input
                 ref={fileInputRef}
@@ -460,11 +473,17 @@ export function AgentComposerSurface({
               {...(mode ? { mode } : {})}
             />
 
+            {mode && <ComposerModeChip mode={mode} />}
+
+            {chatFocus && chatFocus.options.length > 1 && (
+              <ComposerChatFocusPill chatFocus={chatFocus} />
+            )}
+
             <div className="flex min-w-0 flex-1 items-stretch gap-2">
-              <ComposerDualSelectPill
+              <ComposerRuntimePill
                 provider={provider}
                 model={model}
-                className="max-w-[340px] flex-none"
+                className="flex-none"
               />
             </div>
 
@@ -603,6 +622,131 @@ function ComposerActionMenu({
   );
 }
 
+function ComposerModeChip({ mode }: { mode: ModeFieldConfig }) {
+  const activeOption = mode.options.find((o) => o.id === mode.value);
+  return (
+    <span
+      data-testid={mode.testId ? `${mode.testId}-chip` : "agent-composer-mode-chip"}
+      aria-label={`Current mode: ${activeOption?.label ?? mode.value}`}
+      className="inline-flex h-10 shrink-0 items-center gap-2 rounded-[12px] border px-3"
+      style={{
+        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
+        borderColor: "var(--overlay-weak)",
+      }}
+    >
+      <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+        Mode
+      </span>
+      <span className="text-[13px] font-medium text-[var(--text-primary)]">
+        {activeOption?.label ?? "—"}
+      </span>
+    </span>
+  );
+}
+
+function ComposerChatFocusPill({ chatFocus }: { chatFocus: ChatFocusFieldConfig }) {
+  const [open, setOpen] = useState(false);
+  const activeOption =
+    chatFocus.options.find((o) => o.id === chatFocus.value) ?? chatFocus.options[0];
+  const ActiveIcon = activeOption?.icon;
+  const triggerStyle = activeOption?.toneColor
+    ? {
+        background: activeOption.toneBackground ?? "var(--bg-surface)",
+        borderColor: activeOption.toneBorder ?? "var(--overlay-weak)",
+        color: activeOption.toneColor,
+      }
+    : {
+        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
+        borderColor: "var(--overlay-weak)",
+        color: "var(--text-primary)",
+      };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={chatFocus.disabled}
+          data-testid={
+            chatFocus.testId ? `${chatFocus.testId}-pill` : "agent-composer-chat-focus-pill"
+          }
+          aria-label={`Chat focus: ${activeOption?.label ?? chatFocus.value}. Click to change.`}
+          className="flex h-10 shrink-0 items-center gap-2 rounded-[12px] border px-3 transition-colors disabled:opacity-50"
+          style={triggerStyle}
+        >
+          <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            Chat
+          </span>
+          <span className="flex items-center gap-1.5 text-[13px] font-medium">
+            {ActiveIcon ? <ActiveIcon className="h-3.5 w-3.5" /> : null}
+            <span>{activeOption?.label ?? "—"}</span>
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={6}
+        className="w-56 rounded-xl p-1"
+        style={{
+          backgroundColor: "var(--bg-elevated)",
+          borderColor: "var(--border-subtle)",
+        }}
+      >
+        {chatFocus.options.map((option) => {
+          const selected = option.id === chatFocus.value;
+          const Icon = option.icon;
+          const optionStyle = selected && option.toneColor
+            ? {
+                color: option.toneColor,
+                background: option.toneBackground ?? "transparent",
+              }
+            : selected
+            ? {
+                color: "var(--text-primary)",
+                background: "var(--bg-surface)",
+              }
+            : {
+                color: "var(--text-secondary)",
+                background: "transparent",
+              };
+          return (
+            <button
+              key={option.id}
+              type="button"
+              data-testid={
+                chatFocus.testId
+                  ? `${chatFocus.testId}-option-${option.id}`
+                  : undefined
+              }
+              data-active={selected ? "true" : "false"}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors"
+              style={optionStyle}
+              onMouseEnter={(e) => {
+                if (!selected) {
+                  e.currentTarget.style.background = "var(--overlay-faint)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!selected) {
+                  e.currentTarget.style.background = "transparent";
+                }
+              }}
+              onClick={() => {
+                chatFocus.onValueChange(option.id);
+                setOpen(false);
+              }}
+            >
+              {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" /> : null}
+              <span>{option.label}</span>
+            </button>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ComposerModeMenuSection({
   mode,
   onDone,
@@ -654,91 +798,7 @@ function ComposerModeMenuSection({
   );
 }
 
-interface ComposerSelectFieldProps {
-  icon: ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  onValueChange: (value: string) => void;
-  options: ComposerOption[];
-  placeholder: string;
-  testId?: string;
-  disabled?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  fieldClassName?: string;
-}
-
-function ComposerSelectField({
-  icon: Icon,
-  label,
-  value,
-  onValueChange,
-  options,
-  placeholder,
-  testId,
-  disabled = false,
-  onOpenChange,
-  fieldClassName,
-}: ComposerSelectFieldProps) {
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-
-  return (
-    <div className={cn("flex min-w-0 items-center gap-2", fieldClassName)}>
-      <div
-        className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        <Icon className="h-[13px] w-[13px]" />
-      </div>
-      <div className="min-w-0">
-        <div
-          className="mb-0.5 text-[8px] font-medium uppercase tracking-[0.16em]"
-          style={{ color: "var(--text-muted)" }}
-        >
-          {label}
-        </div>
-        <Select
-          {...(value ? { value } : {})}
-          onValueChange={onValueChange}
-          disabled={disabled}
-          onOpenChange={(open) => {
-            onOpenChange?.(open);
-            if (!open) {
-              requestAnimationFrame(() => {
-                triggerRef.current?.blur();
-              });
-            }
-          }}
-        >
-          <SelectTrigger
-            ref={triggerRef}
-            className="h-auto w-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [&>span]:max-w-full"
-            style={{
-              color: value ? "var(--text-primary)" : "var(--text-secondary)",
-              boxShadow: "none",
-              outline: "none",
-              WebkitAppearance: "none",
-              appearance: "none",
-            }}
-            data-testid={testId}
-            data-theme-button-skip="true"
-            aria-label={label}
-          >
-            <SelectValue placeholder={placeholder} />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((option) => (
-              <SelectItem key={option.id} value={option.id}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-}
-
-function ComposerDualSelectPill({
+function ComposerRuntimePill({
   provider,
   model,
   className,
@@ -747,51 +807,138 @@ function ComposerDualSelectPill({
   model: ModelFieldConfig;
   className?: string;
 }) {
-  const [providerOpen, setProviderOpen] = useState(false);
-  const [modelOpen, setModelOpen] = useState(false);
+  const [open, setOpen] = useState(false);
+  const providerLabel =
+    provider.options.find((o) => o.id === provider.value)?.label ?? provider.value;
+  const modelLabel =
+    model.options.find((o) => o.id === model.value)?.label ?? model.value;
 
   return (
-    <div
-      className={cn(
-        "inline-flex min-h-10 max-w-full items-center gap-3 rounded-[12px] border px-2.5 py-1.5 transition-[border-color,box-shadow] focus-within:border-transparent focus-within:shadow-[0_0_0_1px_var(--accent-border)]",
-        (providerOpen || modelOpen) && "border-transparent shadow-[0_0_0_1px_var(--accent-border)]",
-        className
-      )}
-      style={{
-        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
-        borderColor: "var(--overlay-weak)",
-      }}
-    >
-      <ComposerSelectField
-        icon={Bot}
-        label="Provider"
-        value={provider.value}
-        onValueChange={(value) => provider.onValueChange(value as AgentProvider)}
-        options={provider.options}
-        placeholder="Select provider"
-        {...(provider.disabled !== undefined ? { disabled: provider.disabled } : {})}
-        {...(provider.testId ? { testId: provider.testId } : {})}
-        {...(provider.className ? { fieldClassName: provider.className } : {})}
-        onOpenChange={setProviderOpen}
-      />
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-testid="agent-composer-runtime-pill"
+          aria-label={`Runtime: ${providerLabel} · ${modelLabel}. Click to change.`}
+          className={cn(
+            "flex h-10 shrink-0 items-center gap-2 rounded-[12px] border px-3 transition-colors",
+            className
+          )}
+          style={{
+            background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
+            borderColor: "var(--overlay-weak)",
+          }}
+        >
+          <Cpu className="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+          <span className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+            <span className="text-[var(--text-secondary)]">{providerLabel}</span>
+            <span className="px-1 text-[var(--text-muted)]">·</span>
+            <span>{modelLabel}</span>
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--text-secondary)]" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={6}
+        className="w-72 rounded-xl p-1.5"
+        style={{
+          backgroundColor: "var(--bg-elevated)",
+          borderColor: "var(--border-subtle)",
+        }}
+      >
+        <ComposerOptionList
+          label="Provider"
+          value={provider.value}
+          options={provider.options.map((o) => ({ id: o.id, label: o.label }))}
+          disabled={provider.disabled ?? false}
+          testId={provider.testId ?? "agent-composer-runtime-provider"}
+          icon={Bot}
+          onValueChange={(value) => {
+            provider.onValueChange(value as AgentProvider);
+          }}
+        />
+        <div className="my-1 h-px" style={{ background: "var(--overlay-weak)" }} />
+        <ComposerOptionList
+          label="Model"
+          value={model.value}
+          options={model.options}
+          disabled={model.disabled ?? false}
+          testId={model.testId ?? "agent-composer-runtime-model"}
+          icon={Cpu}
+          onValueChange={(value) => {
+            model.onValueChange(value);
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
 
-      <div className="h-6 w-px shrink-0" style={{ background: "var(--overlay-weak)" }} />
-
-      <ComposerSelectField
-        icon={Cpu}
-        label="Model"
-        value={model.value}
-        onValueChange={model.onValueChange}
-        options={model.options}
-        placeholder="Select model"
-        {...(model.disabled !== undefined ? { disabled: model.disabled } : {})}
-        {...(model.testId ? { testId: model.testId } : {})}
-        {...(model.className ? { fieldClassName: model.className } : {})}
-        onOpenChange={setModelOpen}
-      />
+function ComposerOptionList({
+  label,
+  value,
+  options,
+  disabled,
+  testId,
+  icon: Icon,
+  onValueChange,
+}: {
+  label: string;
+  value: string;
+  options: ComposerOption[];
+  disabled: boolean;
+  testId?: string;
+  icon: ComponentType<{ className?: string }>;
+  onValueChange: (value: string) => void;
+}) {
+  return (
+    <div className="py-1">
+      <div className="flex items-center gap-1.5 px-2 py-1">
+        <Icon className="h-3 w-3 text-[var(--text-muted)]" />
+        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+          {label}
+        </span>
+      </div>
+      <div className="space-y-0.5">
+        {options.map((option) => {
+          const isSelected = option.id === value;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              disabled={disabled}
+              data-testid={testId ? `${testId}-${option.id}` : undefined}
+              className={cn(
+                "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[12px] transition-colors disabled:opacity-50",
+                isSelected ? "bg-[var(--accent-muted)]" : "hover:bg-[var(--bg-hover)]"
+              )}
+              onClick={() => onValueChange(option.id)}
+            >
+              <span
+                className="truncate"
+                style={{
+                  color: isSelected
+                    ? "var(--accent-primary)"
+                    : "var(--text-primary)",
+                  fontWeight: isSelected ? 600 : 500,
+                }}
+              >
+                {option.label}
+              </span>
+              {isSelected && (
+                <Check className="h-3.5 w-3.5 shrink-0 text-[var(--accent-primary)]" />
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
+
 
 export function AgentComposerProjectCreateButton({
   onClick,
