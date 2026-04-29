@@ -230,7 +230,7 @@ function TimelineItem({
             </span>
             {entryContext && (
               <span
-                className="text-[10px] text-text-primary/40 truncate min-w-0 max-w-[220px]"
+                className="text-[10px] text-text-primary/40 truncate min-w-0 flex-1"
                 title={entryContext}
               >
                 {entryContext}

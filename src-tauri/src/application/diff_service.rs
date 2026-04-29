@@ -454,7 +454,10 @@ impl DiffService {
     }
 
     /// Compute base ref for a merged task range.
-    /// If merge commit, use first parent; otherwise use merge-base with base branch.
+    /// True merge commits compare against their first parent. Non-merge recorded
+    /// task merge SHAs are usually squash/rebase commits, so compare against the
+    /// direct parent instead of a current-base merge-base that may include older
+    /// plan/agent branch work.
     pub fn get_merged_base_ref(
         &self,
         project_path: &str,
@@ -463,6 +466,18 @@ impl DiffService {
     ) -> String {
         if self.is_merge_commit(project_path, merge_commit_sha) {
             return format!("{}^1", merge_commit_sha);
+        }
+
+        let parent_ref = format!("{}^", merge_commit_sha);
+        let parent_output = Command::new("git")
+            .args(["rev-parse", "--verify", &parent_ref])
+            .current_dir(project_path)
+            .output();
+        if parent_output
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+        {
+            return parent_ref;
         }
 
         let output = Command::new("git")

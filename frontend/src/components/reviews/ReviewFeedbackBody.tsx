@@ -20,9 +20,15 @@ interface ReviewFeedbackBodyProps {
   notes?: string | null;
   mode?: "markdown" | "plain";
   previewCharLimit?: number;
+  /**
+   * Bodies up to this size expand inline when the user clicks the toggle.
+   * Bodies larger than this open in the dialog instead.
+   */
+  inlineExpandLimit?: number;
   dialogTitle?: string;
   dialogDescription?: string;
   fullButtonLabel?: string;
+  collapseButtonLabel?: string;
   fullButtonClassName?: string;
   previewClassName?: string;
   dialogBodyClassName?: string;
@@ -43,14 +49,17 @@ export function ReviewFeedbackBody({
   notes,
   mode = "markdown",
   previewCharLimit = 900,
+  inlineExpandLimit = 4000,
   dialogTitle = "Full feedback",
   dialogDescription = "Full feedback in a scrollable view.",
   fullButtonLabel = "View full details",
+  collapseButtonLabel = "Show less",
   fullButtonClassName,
   previewClassName,
   dialogBodyClassName,
 }: ReviewFeedbackBodyProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isExpandedInline, setIsExpandedInline] = useState(false);
 
   const sanitizedSummary = useMemo(
     () => (summary ? sanitizeReviewFeedbackText(summary) : null),
@@ -69,12 +78,14 @@ export function ReviewFeedbackBody({
   }, [previewCharLimit, sanitizedNotes]);
   const isNotesTruncated = useMemo(() => {
     if (!sanitizedNotes) return false;
-    return sanitizedNotes.replace(/\s+/g, " ").trim().length > previewCharLimit;
+    return sanitizedNotes.length > previewCharLimit;
   }, [previewCharLimit, sanitizedNotes]);
 
   const showSummary = !!sanitizedSummary;
   const showFullBody = !!sanitizedNotes;
-  const renderFullNotes = showFullBody && isNotesTruncated;
+  const renderToggle = showFullBody && isNotesTruncated;
+  const expandsToDialog =
+    renderToggle && (sanitizedNotes?.length ?? 0) > inlineExpandLimit;
   const notesIncludeSummary =
     showSummary &&
     showFullBody &&
@@ -83,7 +94,18 @@ export function ReviewFeedbackBody({
       .trim()
       .startsWith(sanitizedSummary.replace(/\s+/g, " ").trim());
 
-  const previewBody = showFullBody && !isNotesTruncated
+  const fullInlineBody = showFullBody
+    ? showSummary && !notesIncludeSummary
+      ? `${sanitizedSummary}\n\n${sanitizedNotes}`
+      : sanitizedNotes
+    : null;
+
+  const showFullInline =
+    isExpandedInline && renderToggle && !expandsToDialog && fullInlineBody;
+
+  const previewBody = showFullInline
+    ? fullInlineBody
+    : showFullBody && !isNotesTruncated
     ? showSummary && !notesIncludeSummary
       ? `${sanitizedSummary}\n\n${sanitizedNotes}`
       : sanitizedNotes
@@ -97,10 +119,20 @@ export function ReviewFeedbackBody({
     return null;
   }
 
+  const handleToggle = () => {
+    if (expandsToDialog) {
+      setIsDialogOpen(true);
+      return;
+    }
+    setIsExpandedInline((prev) => !prev);
+  };
+
+  const buttonLabel = showFullInline ? collapseButtonLabel : fullButtonLabel;
+
   return (
     <>
       <div className={previewClassName}>
-        {mode === "markdown" && (showSummary || !isNotesTruncated) ? (
+        {mode === "markdown" ? (
           <MarkdownBody content={previewBody} />
         ) : mode === "plain" ? (
           <pre className="whitespace-pre-wrap break-words font-inherit">
@@ -111,7 +143,7 @@ export function ReviewFeedbackBody({
         )}
       </div>
 
-      {renderFullNotes && (
+      {renderToggle && (
         <>
           <button
             type="button"
@@ -119,34 +151,36 @@ export function ReviewFeedbackBody({
               "mt-2 font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]",
               fullButtonClassName ?? "text-[12px]"
             )}
-            onClick={() => setIsDialogOpen(true)}
+            onClick={handleToggle}
           >
-            {fullButtonLabel}
+            {buttonLabel}
           </button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-hidden">
-              <DialogHeader>
-                <DialogTitle>{dialogTitle}</DialogTitle>
-                <DialogDescription>{dialogDescription}</DialogDescription>
-              </DialogHeader>
-              <div className="px-6 pb-6">
-                <div
-                  className={cn(
-                    "max-h-[56vh] overflow-y-auto rounded-lg bg-[var(--overlay-faint)] p-4",
-                    dialogBodyClassName
-                  )}
-                >
-                  {mode === "markdown" ? (
-                    <MarkdownBody content={sanitizedNotes} />
-                  ) : (
-                    <pre className="whitespace-pre-wrap break-words font-mono text-[12px] text-text-primary/80">
-                      {sanitizedNotes}
-                    </pre>
-                  )}
+          {expandsToDialog && (
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-hidden">
+                <DialogHeader>
+                  <DialogTitle>{dialogTitle}</DialogTitle>
+                  <DialogDescription>{dialogDescription}</DialogDescription>
+                </DialogHeader>
+                <div className="px-6 pb-6">
+                  <div
+                    className={cn(
+                      "max-h-[56vh] overflow-y-auto rounded-lg bg-[var(--overlay-faint)] p-4",
+                      dialogBodyClassName
+                    )}
+                  >
+                    {mode === "markdown" ? (
+                      <MarkdownBody content={sanitizedNotes} />
+                    ) : (
+                      <pre className="whitespace-pre-wrap break-words font-mono text-[12px] text-text-primary/80">
+                        {sanitizedNotes}
+                      </pre>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          )}
         </>
       )}
     </>
