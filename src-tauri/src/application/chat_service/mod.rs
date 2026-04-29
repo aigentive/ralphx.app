@@ -438,6 +438,10 @@ pub struct SendMessageOptions {
     pub model_override: Option<String>,
     /// Optional conversation override for surfaces that own explicit session selection.
     pub conversation_id_override: Option<ChatConversationId>,
+    /// Optional internal working-directory override for orchestrated maintenance
+    /// flows that must run in a resolved publish target instead of the
+    /// conversation's default workspace path.
+    pub working_directory_override: Option<PathBuf>,
     /// Optional explicit logical-effort override for this send.
     pub logical_effort_override: Option<LogicalEffort>,
     /// Optional explicit approval-policy override for this send.
@@ -2555,29 +2559,33 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         }
 
         // 6. Resolve working directory
-        let mut working_directory = if let Some(workspace) = agent_workspace.as_ref() {
-            match self
-                .resolve_agent_workspace_working_directory(workspace)
-                .await
-            {
-                Ok(dir) => dir,
-                Err(e) => {
-                    cleanup_and_err!(e);
+        let has_working_directory_override = options.working_directory_override.is_some();
+        let mut working_directory =
+            if let Some(override_path) = options.working_directory_override.as_ref() {
+                override_path.clone()
+            } else if let Some(workspace) = agent_workspace.as_ref() {
+                match self
+                    .resolve_agent_workspace_working_directory(workspace)
+                    .await
+                {
+                    Ok(dir) => dir,
+                    Err(e) => {
+                        cleanup_and_err!(e);
+                    }
                 }
-            }
-        } else {
-            match self
-                .resolve_working_directory(context_type, context_id)
-                .await
-            {
-                Ok(dir) => dir,
-                Err(e) => {
-                    cleanup_and_err!(ChatServiceError::SpawnFailed(e));
+            } else {
+                match self
+                    .resolve_working_directory(context_type, context_id)
+                    .await
+                {
+                    Ok(dir) => dir,
+                    Err(e) => {
+                        cleanup_and_err!(ChatServiceError::SpawnFailed(e));
+                    }
                 }
-            }
-        };
-        if !working_directory.exists() {
-            if agent_workspace.is_some() {
+            };
+        if !working_directory.exists() || !working_directory.is_dir() {
+            if agent_workspace.is_some() || has_working_directory_override {
                 cleanup_and_err!(ChatServiceError::SpawnFailed(format!(
                     "Agent conversation workspace is missing: {}",
                     working_directory.display()

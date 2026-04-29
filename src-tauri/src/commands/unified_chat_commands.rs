@@ -12,7 +12,7 @@
 // - agent:error - Agent failed
 // - agent:queue_sent - Queued message sent
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
@@ -202,26 +202,29 @@ fn plan_branch_base_display_name(base_ref: &str) -> Option<String> {
     Some(format!("Current branch ({base_ref})"))
 }
 
+#[doc(hidden)]
 #[derive(Debug, Clone)]
-struct AgentConversationWorkspacePublishTarget {
-    worktree_path: std::path::PathBuf,
-    branch_name: String,
-    base_ref: String,
-    base_display_name: Option<String>,
-    plan_branch: Option<PlanBranch>,
+pub(crate) struct AgentConversationWorkspacePublishTarget {
+    pub(crate) worktree_path: PathBuf,
+    pub(crate) branch_name: String,
+    pub(crate) base_ref: String,
+    pub(crate) base_display_name: Option<String>,
+    pub(crate) plan_branch: Option<PlanBranch>,
 }
 
 impl AgentConversationWorkspacePublishTarget {
-    fn repair_target(&self) -> AgentConversationWorkspaceRepairTarget {
+    pub(crate) fn repair_target(&self) -> AgentConversationWorkspaceRepairTarget {
         AgentConversationWorkspaceRepairTarget {
             branch_name: self.branch_name.clone(),
             base_ref: self.base_ref.clone(),
             base_display_name: self.base_display_name.clone(),
+            worktree_path: Some(self.worktree_path.clone()),
         }
     }
 }
 
-async fn resolve_agent_workspace_publish_target(
+#[doc(hidden)]
+pub(crate) async fn resolve_agent_workspace_publish_target(
     state: &AppState,
     project: &Project,
     workspace: &AgentConversationWorkspace,
@@ -238,7 +241,7 @@ async fn resolve_agent_workspace_publish_target(
             .ok_or_else(|| format!("Plan branch not found: {}", plan_branch_id))?;
         let base_ref = plan_branch_base_ref(&plan_branch, project);
         return Ok(AgentConversationWorkspacePublishTarget {
-            worktree_path: std::path::PathBuf::from(&project.working_directory),
+            worktree_path: PathBuf::from(&project.working_directory),
             branch_name: plan_branch.branch_name.clone(),
             base_display_name: plan_branch_base_display_name(&base_ref),
             base_ref,
@@ -2056,6 +2059,58 @@ pub async fn update_agent_conversation_workspace_from_base(
         }
     };
 
+    let mut push_status = "refreshed";
+    if let Some(plan_branch) = publish_target.plan_branch.as_ref() {
+        if plan_branch.pr_number.is_some() {
+            let Some(github) = state.github_service.as_ref() else {
+                let message = "GitHub integration is not available".to_string();
+                let _ = state
+                    .plan_branch_repo
+                    .update_pr_push_status(&plan_branch.id, PrPushStatus::Failed)
+                    .await;
+                mark_agent_workspace_publish_failure_with_target(
+                    &state,
+                    &workspace,
+                    &message,
+                    None,
+                    &repair_service,
+                    &publish_target.repair_target(),
+                )
+                .await;
+                return Err(message);
+            };
+            if let Err(error) = push_publish_branch(
+                github,
+                &publish_target.worktree_path,
+                &publish_target.branch_name,
+            )
+            .await
+            {
+                let message = error.to_string();
+                let _ = state
+                    .plan_branch_repo
+                    .update_pr_push_status(&plan_branch.id, PrPushStatus::Failed)
+                    .await;
+                mark_agent_workspace_publish_failure_with_target(
+                    &state,
+                    &workspace,
+                    &message,
+                    None,
+                    &repair_service,
+                    &publish_target.repair_target(),
+                )
+                .await;
+                return Err(message);
+            }
+            state
+                .plan_branch_repo
+                .update_pr_push_status(&plan_branch.id, PrPushStatus::Pushed)
+                .await
+                .map_err(|e| e.to_string())?;
+            push_status = "pushed";
+        }
+    }
+
     workspace.base_commit = Some(base_commit.clone());
     workspace = state
         .agent_conversation_workspace_repo
@@ -2069,17 +2124,10 @@ pub async fn update_agent_conversation_workspace_from_base(
             workspace.publication_pr_number,
             workspace.publication_pr_url.as_deref(),
             workspace.publication_pr_status.as_deref(),
-            Some("refreshed"),
+            Some(push_status),
         )
         .await
         .map_err(|e| e.to_string())?;
-    if let Some(plan_branch) = publish_target.plan_branch.as_ref() {
-        state
-            .plan_branch_repo
-            .update_pr_push_status(&plan_branch.id, PrPushStatus::Pushed)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
     append_agent_workspace_publication_event(
         &state,
         &workspace.conversation_id,
@@ -2090,9 +2138,17 @@ pub async fn update_agent_conversation_workspace_from_base(
         },
         "succeeded",
         if updated {
-            "Workspace branch updated from base"
+            if publish_target.plan_branch.is_some() && push_status == "pushed" {
+                "Plan branch updated from base and pushed"
+            } else {
+                "Workspace branch updated from base"
+            }
         } else {
-            "Workspace branch is current with base"
+            if publish_target.plan_branch.is_some() && push_status == "pushed" {
+                "Plan branch is current with base and pushed"
+            } else {
+                "Workspace branch is current with base"
+            }
         },
         None,
     )
@@ -2615,6 +2671,7 @@ pub struct AgentConversationWorkspaceRepairTarget {
     pub branch_name: String,
     pub base_ref: String,
     pub base_display_name: Option<String>,
+    pub worktree_path: Option<PathBuf>,
 }
 
 impl AgentConversationWorkspaceRepairTarget {
@@ -2623,6 +2680,7 @@ impl AgentConversationWorkspaceRepairTarget {
             branch_name: workspace.branch_name.clone(),
             base_ref: workspace.base_ref.clone(),
             base_display_name: workspace.base_display_name.clone(),
+            worktree_path: None,
         }
     }
 }
@@ -2746,6 +2804,7 @@ where
                 harness_override: runtime_overrides.harness,
                 model_override: runtime_overrides.model,
                 logical_effort_override: runtime_overrides.logical_effort,
+                working_directory_override: target.worktree_path.clone(),
                 force_new_provider_session: true,
                 preserve_conversation_provider_session_ref: true,
                 ..Default::default()
@@ -3306,10 +3365,12 @@ mod tests {
     use super::{
         build_agent_workspace_publish_repair_message_for_target,
         merge_delegated_snapshot_into_result, parse_wrapped_mcp_result_object,
-        project_plan_branch_publication_into_workspace_response, AgentConversationResponse,
+        project_plan_branch_publication_into_workspace_response,
+        send_agent_workspace_publish_repair_message_for_target, AgentConversationResponse,
         AgentConversationWorkspaceRepairTarget, AgentConversationWorkspaceResponse,
-        DelegatedToolRuntimeSnapshot,
+        AgentWorkspaceRepairRuntimeOverrides, DelegatedToolRuntimeSnapshot,
     };
+    use crate::application::chat_service::MockChatService;
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
     use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus};
     use crate::domain::entities::{
@@ -3318,6 +3379,7 @@ mod tests {
         PlanBranchId, PlanBranchStatus, ProjectId,
     };
     use serde_json::json;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn linked_plan_branch_publication_is_projected_into_workspace_response() {
@@ -3434,6 +3496,7 @@ mod tests {
             branch_name: "plan-branch".to_string(),
             base_ref: "feature/agent-screen".to_string(),
             base_display_name: Some("Current branch (feature/agent-screen)".to_string()),
+            worktree_path: Some(PathBuf::from("/tmp/project-repo")),
         };
 
         let message = build_agent_workspace_publish_repair_message_for_target(
@@ -3447,6 +3510,45 @@ mod tests {
         assert!(message.contains("Base ref: feature/agent-screen"));
         assert!(!message.contains("agent-shell-branch"));
         assert!(!message.contains("Project default (main)"));
+    }
+
+    #[tokio::test]
+    async fn publish_repair_message_routes_spawn_to_effective_target_worktree() {
+        let service = MockChatService::new();
+        let workspace = AgentConversationWorkspace::new(
+            ChatConversationId::from_string("conversation-1"),
+            ProjectId::from_string("project-1".to_string()),
+            AgentConversationWorkspaceMode::Ideation,
+            IdeationAnalysisBaseRefKind::ProjectDefault,
+            "main".to_string(),
+            Some("Project default (main)".to_string()),
+            None,
+            "agent-shell-branch".to_string(),
+            "/tmp/agent-shell".to_string(),
+        );
+        let target = AgentConversationWorkspaceRepairTarget {
+            branch_name: "plan-branch".to_string(),
+            base_ref: "feature/agent-screen".to_string(),
+            base_display_name: Some("Current branch (feature/agent-screen)".to_string()),
+            worktree_path: Some(PathBuf::from("/tmp/project-repo")),
+        };
+
+        send_agent_workspace_publish_repair_message_for_target(
+            &service,
+            &workspace,
+            "merge conflict",
+            AgentWorkspaceRepairRuntimeOverrides::default(),
+            &target,
+        )
+        .await
+        .expect("repair message should send");
+
+        let options = service.get_sent_options().await;
+        assert_eq!(options.len(), 1);
+        assert_eq!(
+            options[0].working_directory_override.as_deref(),
+            Some(Path::new("/tmp/project-repo"))
+        );
     }
 
     #[test]
