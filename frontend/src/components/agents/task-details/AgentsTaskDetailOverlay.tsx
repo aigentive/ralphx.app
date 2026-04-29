@@ -30,7 +30,6 @@ import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import type { Task, InternalStatus } from "@/types/task";
 import {
-  X,
   Pencil,
   Archive,
   RotateCcw,
@@ -681,17 +680,7 @@ export function AgentsTaskDetailOverlay({
                 >
                   <ScrollText className="w-4 h-4" />
                 </HeaderIconButton>
-                {/* Close button */}
-                <HeaderIconButton
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleClose}
-                  data-testid="task-overlay-close"
-                  aria-label="Close"
-                  tooltip="Close task details"
-                >
-                  <X className="w-4 h-4" />
-                </HeaderIconButton>
+                {/* No standalone close — Back button (or ESC) closes the detail. */}
               </div>
             </TooltipProvider>
           </div>
