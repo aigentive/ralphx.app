@@ -12,6 +12,7 @@ import {
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import type {
   AgentArtifactTab,
+  AgentProvider,
   AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
 
@@ -133,12 +134,11 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
     return getAgentConversationStoreKey(activeConversation);
   }, [activeConversation, focusedChatSessionId]);
 
-  // Workspace chats render a custom composer that hosts the chat focus pill.
-  // Child chats don't, so the header bar must keep the focus picker for them.
-  const composerHostsChatFocus = !isFocusedChildChat && chatFocusOptions.length > 1;
-  const showFocusBar =
-    chatFocusOptions.length > 1 || showWorkspaceStatus;
-  const focusBarOptions = composerHostsChatFocus ? [] : chatFocusOptions;
+  // Every chat now renders the rich composer, which hosts the chat focus
+  // pill — so the header bar should never duplicate the picker. Keep the
+  // bar only when there's a workspace status pill to surface.
+  const showFocusBar = showWorkspaceStatus;
+  const focusBarOptions: AgentsChatFocusSwitchOption[] = [];
   const composerChatFocus = useMemo<ChatFocusFieldConfig | undefined>(() => {
     if (chatFocusOptions.length <= 1) return undefined;
     const focusToneStyles: Record<
@@ -281,15 +281,24 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                     disabled: true,
                   }}
                   provider={{
-                    value: normalizedActiveRuntime.provider,
+                    value: isFocusedChildChat
+                      ? (composerProps.providerHarness as AgentProvider | undefined) ??
+                        normalizedActiveRuntime.provider
+                      : normalizedActiveRuntime.provider,
                     onValueChange: () => undefined,
                     options: AGENT_PROVIDER_OPTIONS,
                     disabled: true,
                   }}
                   model={{
-                    value: normalizedActiveRuntime.modelId,
-                    onValueChange: onActiveModelChange,
+                    value: isFocusedChildChat
+                      ? composerProps.effectiveModel?.id ??
+                        normalizedActiveRuntime.modelId
+                      : normalizedActiveRuntime.modelId,
+                    onValueChange: isFocusedChildChat
+                      ? () => undefined
+                      : onActiveModelChange,
                     options: AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
+                    disabled: isFocusedChildChat,
                   }}
                 />
                 {!isFocusedChildChat && (

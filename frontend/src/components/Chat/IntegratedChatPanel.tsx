@@ -171,6 +171,10 @@ export interface IntegratedChatComposerRenderProps {
   questionMode?: QuestionMode;
   value?: string;
   onChange?: (value: string) => void;
+  /** Model in use for this chat context, when known. Read-only signal. */
+  effectiveModel?: { id: string; label: string } | undefined;
+  /** Provider harness label (e.g. "claude", "codex") for this chat context. */
+  providerHarness?: string | null | undefined;
 }
 
 export function IntegratedChatPanel({
@@ -1385,6 +1389,8 @@ export function IntegratedChatPanel({
                     onFilesSelected: uploadFiles,
                     onRemoveAttachment: removeAttachment,
                     attachmentsUploading: uploading,
+                    effectiveModel,
+                    providerHarness: activeConversationMeta?.providerHarness ?? null,
                     ...(activeQuestion
                       ? {
                           value: questionInputValue,
