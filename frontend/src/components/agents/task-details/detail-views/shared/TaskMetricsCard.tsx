@@ -143,7 +143,7 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
         <ComplexityBadge tier={tier} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 pt-3 sm:grid-cols-3">
+      <div className="flex flex-wrap gap-x-8 gap-y-3 pt-3">
         {rows.map((row) => (
           <StatCell
             key={row.label}
