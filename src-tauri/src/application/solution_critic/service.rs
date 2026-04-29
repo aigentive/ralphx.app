@@ -13,7 +13,7 @@ use crate::domain::repositories::{
 use crate::domain::services::project_solution_critique_gaps;
 use crate::error::{AppError, AppResult};
 
-use super::generator::{DeterministicSolutionCritiqueGenerator, SolutionCritiqueGenerator};
+use super::generator::{AgentSolutionCritiqueGenerator, SolutionCritiqueGenerator};
 use super::support::{
     agent_run_source, artifact_source, build_compiled_context, build_solution_critique,
     chat_message_source, ensure_plan_target, inline_artifact_content, parse_candidate,
@@ -48,7 +48,9 @@ impl SolutionCritiqueService {
     pub fn from_app_state(app_state: &AppState) -> Self {
         Self::from_app_state_with_generator(
             app_state,
-            Arc::new(DeterministicSolutionCritiqueGenerator),
+            Arc::new(AgentSolutionCritiqueGenerator::new(Arc::clone(
+                &app_state.agent_clients.default_client,
+            ))),
         )
     }
 

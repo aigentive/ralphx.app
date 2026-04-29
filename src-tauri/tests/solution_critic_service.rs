@@ -1,10 +1,15 @@
-use std::sync::Arc;
+use std::{pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
+use futures::stream;
 use ralphx_lib::application::solution_critic::{
     CompileContextRequest, CritiqueArtifactRequest, RawContextBundle, SolutionCritiqueGenerator,
     SolutionCritiqueService, SourceLimits,
+};
+use ralphx_lib::domain::agents::{
+    AgentConfig, AgentHandle, AgentOutput, AgentResponse, AgentResult, AgenticClient,
+    ClientCapabilities, ResponseChunk,
 };
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactId, ArtifactRelationType, ArtifactType, ChatMessage, ChatMessageId,
@@ -12,6 +17,7 @@ use ralphx_lib::domain::entities::{
     ProposalCategory, TaskProposal, TaskProposalId, VerificationStatus,
 };
 use ralphx_lib::{AppResult, AppState};
+use tokio::sync::Mutex;
 
 struct StaticGenerator {
     compile_json: String,
@@ -37,6 +43,63 @@ struct Fixture {
     state: AppState,
     session_id: IdeationSessionId,
     plan_artifact_id: ArtifactId,
+}
+
+struct RecordingAgentClient {
+    responses: Mutex<Vec<String>>,
+    prompts: Mutex<Vec<String>>,
+    capabilities: ClientCapabilities,
+}
+
+impl RecordingAgentClient {
+    fn new(responses: Vec<String>) -> Self {
+        Self {
+            responses: Mutex::new(responses),
+            prompts: Mutex::new(Vec::new()),
+            capabilities: ClientCapabilities::mock(),
+        }
+    }
+
+    async fn prompts(&self) -> Vec<String> {
+        self.prompts.lock().await.clone()
+    }
+}
+
+#[async_trait]
+impl AgenticClient for RecordingAgentClient {
+    async fn spawn_agent(&self, _config: AgentConfig) -> AgentResult<AgentHandle> {
+        unreachable!("solution critic default path should call send_prompt")
+    }
+
+    async fn stop_agent(&self, _handle: &AgentHandle) -> AgentResult<()> {
+        Ok(())
+    }
+
+    async fn wait_for_completion(&self, _handle: &AgentHandle) -> AgentResult<AgentOutput> {
+        Ok(AgentOutput::success(""))
+    }
+
+    async fn send_prompt(&self, _handle: &AgentHandle, prompt: &str) -> AgentResult<AgentResponse> {
+        self.prompts.lock().await.push(prompt.to_string());
+        let response = self.responses.lock().await.remove(0);
+        Ok(AgentResponse::new(response))
+    }
+
+    fn stream_response(
+        &self,
+        _handle: &AgentHandle,
+        _prompt: &str,
+    ) -> Pin<Box<dyn futures::Stream<Item = AgentResult<ResponseChunk>> + Send>> {
+        Box::pin(stream::empty())
+    }
+
+    fn capabilities(&self) -> &ClientCapabilities {
+        &self.capabilities
+    }
+
+    async fn is_available(&self) -> AgentResult<bool> {
+        Ok(true)
+    }
 }
 
 async fn setup_fixture() -> Fixture {
@@ -115,6 +178,71 @@ fn critique_json(plan_id: &ArtifactId) -> String {
             "verification_plan": [],
             "safe_next_action": "Inspect the compiled context."
         }}"#
+    )
+}
+
+fn model_compile_response(plan_id: &ArtifactId) -> String {
+    format!(
+        r#"```json
+{{
+  "claims": [
+    {{
+      "id": "claim_backend_context_compiler",
+      "text": "The plan promises a backend context compiler.",
+      "classification": "fact",
+      "confidence": "high",
+      "evidence": [{{ "id": "plan_artifact:{plan_id}" }}]
+    }}
+  ],
+  "open_questions": [
+    {{
+      "id": "question_targeted_test",
+      "question": "Which targeted test proves the context compiler behavior?",
+      "evidence": [{{ "id": "plan_artifact:{plan_id}" }}]
+    }}
+  ],
+  "stale_assumptions": []
+}}
+```"#
+    )
+}
+
+fn model_critique_response(plan_id: &ArtifactId) -> String {
+    format!(
+        r#"{{
+  "verdict": "investigate",
+  "confidence": "high",
+  "claims": [
+    {{
+      "id": "claim_backend_context_compiler_accuracy",
+      "claim": "The plan promises a backend context compiler.",
+      "status": "unsupported",
+      "confidence": "high",
+      "evidence": [{{ "id": "plan_artifact:{plan_id}" }}],
+      "notes": "The target states the promise, but collected sources do not prove the compiler is implemented."
+    }}
+  ],
+  "recommendations": [],
+  "risks": [
+    {{
+      "id": "risk_unproven_context_compiler",
+      "risk": "Proceeding without proof could miss a broken context compiler path.",
+      "severity": "high",
+      "evidence": [{{ "id": "plan_artifact:{plan_id}" }}],
+      "mitigation": "Run the focused solution critic service test before trusting the plan."
+    }}
+  ],
+  "verification_plan": [
+    {{
+      "id": "verify_context_compiler",
+      "requirement": "Prove the context compiler persists source-bound claims.",
+      "priority": "high",
+      "evidence": [{{ "id": "plan_artifact:{plan_id}" }}],
+      "suggested_test": "cargo test --test solution_critic_service"
+    }}
+  ],
+  "safe_next_action": "Run the targeted solution critic service test before trusting the plan."
+}}"#
     )
 }
 
@@ -316,6 +444,66 @@ async fn critique_artifact_persists_findings_artifact_and_relations() {
         .unwrap();
     assert_eq!(latest.artifact_id, result.artifact_id);
     assert_eq!(latest.projected_gaps.len(), 1);
+}
+
+#[tokio::test]
+async fn default_service_uses_agent_client_for_context_and_critique() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id,
+    } = setup_fixture().await;
+    let agent_client = Arc::new(RecordingAgentClient::new(vec![
+        model_compile_response(&plan_artifact_id),
+        model_critique_response(&plan_artifact_id),
+    ]));
+    let state = state.with_agent_client(agent_client.clone());
+    let service = SolutionCritiqueService::from_app_state(&state);
+
+    let context = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest {
+                target_artifact_id: plan_artifact_id.as_str().to_string(),
+                source_limits: SourceLimits::default(),
+            },
+        )
+        .await
+        .unwrap();
+    let critique = service
+        .critique_artifact(
+            session_id.as_str(),
+            CritiqueArtifactRequest {
+                target_artifact_id: plan_artifact_id.as_str().to_string(),
+                compiled_context_artifact_id: context.artifact_id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        context.compiled_context.claims[0].text,
+        "The plan promises a backend context compiler."
+    );
+    assert_eq!(
+        critique.solution_critique.claims[0].notes.as_deref(),
+        Some("The target states the promise, but collected sources do not prove the compiler is implemented.")
+    );
+    assert_eq!(
+        critique.solution_critique.safe_next_action.as_deref(),
+        Some("Run the targeted solution critic service test before trusting the plan.")
+    );
+    assert!(critique
+        .projected_gaps
+        .iter()
+        .any(|gap| gap.category == "solution_critique_risk" && gap.severity == "high"));
+
+    let prompts = agent_client.prompts().await;
+    assert_eq!(prompts.len(), 2);
+    assert!(prompts[0].contains("solution context compiler"));
+    assert!(prompts[1].contains("solution critic"));
+    assert!(prompts[1].contains("Be strict"));
+    assert!(!prompts[1].contains("Deterministic review requires"));
 }
 
 #[tokio::test]

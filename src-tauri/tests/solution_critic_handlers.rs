@@ -21,6 +21,7 @@ use ralphx_lib::http_server::handlers::{
     get_solution_critique_artifact, post_compiled_context, post_solution_critique,
 };
 use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::infrastructure::MockAgenticClient;
 use serde_json::Value;
 use tower::ServiceExt;
 
@@ -45,8 +46,73 @@ fn solution_critic_app(state: HttpServerState) -> Router {
         .with_state(state)
 }
 
+fn handler_compile_response(plan_id: &ArtifactId) -> String {
+    format!(
+        r#"{{
+            "claims": [{{
+                "id": "claim-endpoints",
+                "text": "The plan exposes solution critic endpoints.",
+                "classification": "fact",
+                "confidence": "high",
+                "evidence": [{{"id": "plan_artifact:{plan_id}"}}]
+            }}],
+            "open_questions": [],
+            "stale_assumptions": []
+        }}"#
+    )
+}
+
+fn handler_critique_response(plan_id: &ArtifactId) -> String {
+    format!(
+        r#"{{
+            "verdict": "investigate",
+            "confidence": "medium",
+            "claims": [{{
+                "id": "claim-endpoints-review",
+                "claim": "The plan exposes solution critic endpoints.",
+                "status": "unclear",
+                "confidence": "medium",
+                "evidence": [{{"id": "plan_artifact:{plan_id}"}}],
+                "notes": "The endpoint claim still needs test evidence."
+            }}],
+            "recommendations": [],
+            "risks": [{{
+                "id": "risk-endpoint-proof",
+                "risk": "Endpoint wiring may drift without handler coverage.",
+                "severity": "medium",
+                "evidence": [{{"id": "plan_artifact:{plan_id}"}}],
+                "mitigation": "Run the solution critic handler test."
+            }}],
+            "verification_plan": [{{
+                "id": "verify-endpoints",
+                "requirement": "Verify compile and critique routes persist artifacts.",
+                "priority": "medium",
+                "evidence": [{{"id": "plan_artifact:{plan_id}"}}],
+                "suggested_test": "cargo test --test solution_critic_handlers"
+            }}],
+            "safe_next_action": "Run the solution critic handler test."
+        }}"#
+    )
+}
+
 async fn setup_state() -> (HttpServerState, IdeationSessionId, ArtifactId) {
-    let app_state = Arc::new(AppState::new_test());
+    let project_id = ProjectId::from_string("project-solution-critic-http".to_string());
+    let session_id = IdeationSessionId::from_string("session-solution-critic-http");
+    let plan_artifact_id = ArtifactId::from_string("plan-artifact-http");
+    let mock_agent = Arc::new(MockAgenticClient::new());
+    mock_agent
+        .when_prompt_contains(
+            "solution context compiler",
+            &handler_compile_response(&plan_artifact_id),
+        )
+        .await;
+    mock_agent
+        .when_prompt_contains(
+            "You are RalphX's solution critic",
+            &handler_critique_response(&plan_artifact_id),
+        )
+        .await;
+    let app_state = Arc::new(AppState::new_test().with_agent_client(mock_agent));
     let execution_state = Arc::new(ExecutionState::new());
     let tracker = TeamStateTracker::new();
     let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
@@ -57,10 +123,6 @@ async fn setup_state() -> (HttpServerState, IdeationSessionId, ArtifactId) {
         team_service,
         delegation_service: Default::default(),
     };
-
-    let project_id = ProjectId::from_string("project-solution-critic-http".to_string());
-    let session_id = IdeationSessionId::from_string("session-solution-critic-http");
-    let plan_artifact_id = ArtifactId::from_string("plan-artifact-http");
 
     let mut project = Project::new(
         "HTTP Solution Critic".to_string(),

@@ -61,7 +61,7 @@ function verdictLabel(verdict: string | undefined): string {
     case "reject":
       return "Reject";
     default:
-      return "No critique";
+      return "Critique pending";
   }
 }
 
@@ -157,6 +157,7 @@ export function SolutionCritiqueSummary({
   const contextSignals = useMemo(() => contextItems(context), [context]);
   const critiqueSignals = useMemo(() => critiqueItems(critique), [critique]);
   const visibleGaps = useMemo(() => topProjectedGaps(projectedGaps), [projectedGaps]);
+  const hasCritique = Boolean(critique);
 
   if (!context && !critique) return null;
 
@@ -172,13 +173,13 @@ export function SolutionCritiqueSummary({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
-            Solution Critique
+            {hasCritique ? "Solution Critique" : "Critique Pending"}
           </div>
           <div
             className="mt-1 text-[13px] font-semibold truncate"
             style={{ color: "var(--text-primary)" }}
           >
-            {verdictLabel(critique?.verdict)}
+            {hasCritique ? verdictLabel(critique?.verdict) : "Compiled context ready"}
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -232,6 +233,11 @@ export function SolutionCritiqueSummary({
           {critique.safeNextAction}
         </p>
       )}
+      {!critique && context && (
+        <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+          Model critique has not been persisted for this context yet.
+        </p>
+      )}
 
       <div className="grid gap-2 lg:grid-cols-2">
         <SummarySignalList
@@ -240,9 +246,13 @@ export function SolutionCritiqueSummary({
           emptyText="No context signals captured yet."
         />
         <SummarySignalList
-          title="Critique Signals"
+          title={hasCritique ? "Critique Signals" : "Model Critique"}
           items={critiqueSignals}
-          emptyText="No critique signals captured yet."
+          emptyText={
+            hasCritique
+              ? "No critique signals captured yet."
+              : "No LLM critique persisted yet."
+          }
         />
       </div>
 

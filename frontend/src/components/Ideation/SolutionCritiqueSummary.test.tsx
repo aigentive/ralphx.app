@@ -157,4 +157,41 @@ describe("SolutionCritiqueSummary", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/solution_critique/i)).not.toBeInTheDocument();
   });
+
+  it("labels compiled context without critique as pending model critique", async () => {
+    vi.mocked(solutionCriticApi.getLatestCompiledContext).mockResolvedValue({
+      artifactId: "context-1",
+      compiledContext: {
+        id: "context-1",
+        target: { targetType: "plan_artifact", id: "plan-1", label: "Plan" },
+        sources: [
+          { sourceType: "plan_artifact", id: "plan_artifact:plan-1", label: "Plan" },
+        ],
+        claims: [
+          {
+            id: "claim-1",
+            text: "The selected target is the plan.",
+            classification: "fact",
+            confidence: "high",
+            evidence: [],
+          },
+        ],
+        openQuestions: [],
+        staleAssumptions: [],
+        generatedAt: "2026-04-29T12:00:00Z",
+      },
+    });
+    vi.mocked(solutionCriticApi.getLatestSolutionCritique).mockResolvedValue(null);
+
+    renderSummary();
+
+    expect(await screen.findByTestId("solution-critique-summary")).toBeInTheDocument();
+    expect(screen.getByText("Critique Pending")).toBeInTheDocument();
+    expect(screen.getByText("Compiled context ready")).toBeInTheDocument();
+    expect(
+      screen.getByText("Model critique has not been persisted for this context yet.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("No LLM critique persisted yet.")).toBeInTheDocument();
+    expect(screen.queryByText("No critique")).not.toBeInTheDocument();
+  });
 });
