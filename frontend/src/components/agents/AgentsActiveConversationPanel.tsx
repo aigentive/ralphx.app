@@ -256,7 +256,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                     ? { questionMode: composerProps.questionMode }
                     : {})}
                   submitLabel="Send"
-                  {...(!isFocusedChildChat && activeConversationMode
+                  {...(activeConversationMode
                     ? {
                         mode: {
                           value: activeConversationMode,
@@ -265,7 +265,10 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                               value as AgentConversationWorkspaceMode,
                             ),
                           options: AGENT_CONVERSATION_MODE_OPTIONS,
+                          // Workspace conversation owns mode; child chats
+                          // inherit and display it read-only.
                           disabled:
+                            isFocusedChildChat ||
                             activeConversationModeLocked ||
                             composerProps.agentStatus !== "idle" ||
                             switchingConversationModeId === selectedConversationId,
@@ -301,20 +304,16 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                     disabled: isFocusedChildChat,
                   }}
                 />
-                {!isFocusedChildChat && (
-                  <div className="mt-2 flex w-full flex-wrap items-center justify-between gap-2 px-2">
-                    <AgentComposerProjectLine
-                      value={activeProjectId}
-                      onValueChange={() => undefined}
-                      options={activeProjectOptions}
-                      placeholder="Current project"
-                      disabled
-                    />
-                    <AgentConversationBaseLine
-                      workspace={activeWorkspace}
-                    />
-                  </div>
-                )}
+                <div className="mt-2 flex w-full flex-wrap items-center justify-between gap-2 px-2">
+                  <AgentComposerProjectLine
+                    value={activeProjectId}
+                    onValueChange={() => undefined}
+                    options={activeProjectOptions}
+                    placeholder="Current project"
+                    disabled
+                  />
+                  <AgentConversationBaseLine workspace={activeWorkspace} />
+                </div>
               </>
             ),
           }}
