@@ -197,6 +197,7 @@ export function AgentComposerSurface({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const value = isControlled ? controlledValue : internalValue;
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const isAgentAlive = agentStatus !== "idle";
   const canQueue = !isReadOnly && isAgentAlive;
   const shouldShowStop = Boolean(onStop) && isAgentAlive && value.trim().length === 0;
@@ -470,10 +471,17 @@ export function AgentComposerSurface({
               enableAttachments={enableAttachments}
               attachmentDisabled={attachmentDisabled}
               onOpenAttachmentPicker={handleOpenAttachmentPicker}
+              open={actionMenuOpen}
+              onOpenChange={setActionMenuOpen}
               {...(mode ? { mode } : {})}
             />
 
-            {mode && <ComposerModeChip mode={mode} />}
+            {mode && (
+              <ComposerModeChip
+                mode={mode}
+                onClick={() => setActionMenuOpen(true)}
+              />
+            )}
 
             {chatFocus && chatFocus.options.length > 1 && (
               <ComposerChatFocusPill chatFocus={chatFocus} />
@@ -542,15 +550,19 @@ function ComposerActionMenu({
   enableAttachments,
   attachmentDisabled,
   onOpenAttachmentPicker,
+  open,
+  onOpenChange,
 }: {
   project: ProjectFieldConfig;
   mode?: ModeFieldConfig;
   enableAttachments: boolean;
   attachmentDisabled: boolean;
   onOpenAttachmentPicker: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const hasPersistentActions = enableAttachments || Boolean(project.endAction) || Boolean(mode);
-  const [open, setOpen] = useState(false);
+  const setOpen = onOpenChange;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -622,13 +634,22 @@ function ComposerActionMenu({
   );
 }
 
-function ComposerModeChip({ mode }: { mode: ModeFieldConfig }) {
+function ComposerModeChip({
+  mode,
+  onClick,
+}: {
+  mode: ModeFieldConfig;
+  onClick?: () => void;
+}) {
   const activeOption = mode.options.find((o) => o.id === mode.value);
   return (
-    <span
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={mode.disabled}
       data-testid={mode.testId ? `${mode.testId}-chip` : "agent-composer-mode-chip"}
-      aria-label={`Current mode: ${activeOption?.label ?? mode.value}`}
-      className="inline-flex h-10 shrink-0 items-center gap-2 rounded-[12px] border px-3"
+      aria-label={`Mode: ${activeOption?.label ?? mode.value}. Click to change.`}
+      className="inline-flex h-10 shrink-0 items-center gap-2 rounded-[12px] border px-3 transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
       style={{
         background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
         borderColor: "var(--overlay-weak)",
@@ -640,7 +661,7 @@ function ComposerModeChip({ mode }: { mode: ModeFieldConfig }) {
       <span className="text-[13px] font-medium text-[var(--text-primary)]">
         {activeOption?.label ?? "—"}
       </span>
-    </span>
+    </button>
   );
 }
 
