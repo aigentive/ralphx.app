@@ -1,12 +1,12 @@
 import {
   AlertTriangle,
-  ChevronDown,
   CheckCircle2,
   Code,
   FileText,
   GitPullRequestArrow,
   GitBranch,
   Loader2,
+  MoreVertical,
   XCircle,
 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
@@ -494,8 +494,8 @@ export function AgentPublishPanel({
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
-                      variant="outline"
-                      className="h-9 w-9 p-0"
+                      variant="ghost"
+                      className="h-9 w-7 p-0 border-0 bg-transparent hover:bg-[var(--bg-hover)]"
                       disabled={isClosingPr || effectivePublishing}
                       aria-label="Publish actions"
                       data-testid="agents-publish-actions-menu"
@@ -503,7 +503,7 @@ export function AgentPublishPanel({
                       {isClosingPr ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <ChevronDown className="h-3.5 w-3.5" />
+                        <MoreVertical className="h-3.5 w-3.5" />
                       )}
                     </Button>
                   </DropdownMenuTrigger>
