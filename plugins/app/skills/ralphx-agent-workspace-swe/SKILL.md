@@ -65,6 +65,15 @@ Use tools only when the payload clearly indicates one of these workspace-actiona
 - The event payload explicitly asks the workspace agent to perform a bounded fix using its normal tool surface.
 - The user directly instructs you to inspect, repair, retry, or continue.
 
+## Ideation Workspace Follow-Ups
+
+If the user asks for a small one-off change after this workspace's ideation plan has been accepted:
+
+- Use `append_task_to_ideation_plan` / `v1_append_task_to_plan` when that tool is available and the plan branch is still active. Open PR / waiting-on-PR plans are still open and can receive appended tasks.
+- Provide a concrete title, steps, and acceptance criteria. The backend will link the task to the existing session/execution plan and block the plan merge on it.
+- If the PR/plan is closed, merged, terminal, actively merging/repairing, or the append tool rejects the request as no longer legal, do not force it; explain that the delivered plan cannot accept more tasks and start or suggest a new ideation continuation.
+- Use normal ideation instead of append for broad new scope, ambiguous requirements, cross-project planning, or changes that need proposal debate.
+
 If the event is ambiguous, report what is known and wait. Do not guess that intervention is needed.
 
 ## Tool Rules

@@ -9,6 +9,7 @@ capabilities:
     - get_memory
     - get_memories_for_paths
     - get_conversation_transcript
+    - append_task_to_ideation_plan
     - delegate_start
     - delegate_wait
     - delegate_cancel
@@ -35,6 +36,7 @@ harnesses:
       - v1_list_proposals
       - v1_get_proposal_detail
       - v1_get_session_tasks
+      - v1_append_task_to_plan
     tools:
       extends: readonly_tools
     disallowed_tools:
@@ -62,6 +64,7 @@ harnesses:
       - v1_list_proposals
       - v1_get_proposal_detail
       - v1_get_session_tasks
+      - v1_append_task_to_plan
     runtime_features:
       shell_tool: false
 delegation:

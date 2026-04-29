@@ -251,6 +251,10 @@ pub async fn start_http_server(
         // Project tools (ralphx-chat-project agent)
         .route("/api/list_tasks", post(list_tasks))
         .route("/api/suggest_task", post(suggest_task))
+        .route(
+            "/api/append_task_to_ideation_plan",
+            post(append_ideation_plan_task_http),
+        )
         // Review tools (reviewer agent)
         .route("/api/complete_review", post(complete_review))
         .route("/api/review_notes/:task_id", get(get_review_notes))
@@ -364,7 +368,7 @@ pub async fn start_http_server(
         )
         .route(
             "/api/external/sessions/:session_id/tasks",
-            get(get_session_tasks_http),
+            get(get_session_tasks_http).post(append_session_task_http),
         )
         .route(
             "/api/external/pipeline/:project_id",
