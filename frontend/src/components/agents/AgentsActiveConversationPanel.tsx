@@ -219,92 +219,96 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
           hideSessionToolbar
           surfaceBackground="transparent"
           contentWidthClassName={AGENTS_CHAT_CONTENT_WIDTH_CLASS}
-          {...(!isFocusedChildChat
-            ? {
-                inputContainerClassName:
-                  "shrink-0 bg-transparent px-4 pb-4 pt-3",
-                renderComposer: (composerProps: IntegratedChatComposerRenderProps) => (
-                  <>
-                    <AgentComposerSurface
-                      dataTestId="agents-conversation-composer"
-                      actionTestId="agents-conversation-submit"
-                      onSend={composerProps.onSend}
-                      onStop={composerProps.onStop}
-                      agentStatus={composerProps.agentStatus}
-                      isSubmitting={composerProps.isSending}
-                      isReadOnly={composerProps.isReadOnly}
-                      autoFocus={composerProps.autoFocus}
-                      placeholder="Ask the agent to plan, build, debug, or review something"
-                      showHelperText={false}
-                      hasQueuedMessages={composerProps.hasQueuedMessages}
-                      onEditLastQueued={composerProps.onEditLastQueued}
-                      attachments={composerProps.attachments}
-                      enableAttachments={composerProps.enableAttachments}
-                      onFilesSelected={composerProps.onFilesSelected}
-                      onRemoveAttachment={composerProps.onRemoveAttachment}
-                      attachmentsUploading={composerProps.attachmentsUploading}
-                      {...(composerProps.value !== undefined
-                        ? {
-                            value: composerProps.value,
-                            onChange: composerProps.onChange,
-                          }
-                        : {})}
-                      {...(composerProps.questionMode !== undefined
-                        ? { questionMode: composerProps.questionMode }
-                        : {})}
-                      submitLabel="Send"
-                      {...(activeConversationMode
-                        ? {
-                            mode: {
-                              value: activeConversationMode,
-                              onValueChange: (value: string) =>
-                                onActiveConversationModeChange(
-                                  value as AgentConversationWorkspaceMode,
-                                ),
-                              options: AGENT_CONVERSATION_MODE_OPTIONS,
-                              disabled:
-                                activeConversationModeLocked ||
-                                composerProps.agentStatus !== "idle" ||
-                                switchingConversationModeId === selectedConversationId,
-                            },
-                          }
-                        : {})}
-                      {...(composerChatFocus ? { chatFocus: composerChatFocus } : {})}
-                      project={{
-                        value: activeProjectId,
-                        onValueChange: () => undefined,
-                        options: activeProjectOptions,
-                        placeholder: "Current project",
-                        disabled: true,
-                      }}
-                      provider={{
-                        value: normalizedActiveRuntime.provider,
-                        onValueChange: () => undefined,
-                        options: AGENT_PROVIDER_OPTIONS,
-                        disabled: true,
-                      }}
-                      model={{
-                        value: normalizedActiveRuntime.modelId,
-                        onValueChange: onActiveModelChange,
-                        options: AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
-                      }}
+          {...{
+            inputContainerClassName:
+              "shrink-0 bg-transparent px-4 pb-4 pt-3",
+            renderComposer: (composerProps: IntegratedChatComposerRenderProps) => (
+              <>
+                <AgentComposerSurface
+                  dataTestId="agents-conversation-composer"
+                  actionTestId="agents-conversation-submit"
+                  onSend={composerProps.onSend}
+                  onStop={composerProps.onStop}
+                  agentStatus={composerProps.agentStatus}
+                  isSubmitting={composerProps.isSending}
+                  isReadOnly={composerProps.isReadOnly}
+                  autoFocus={composerProps.autoFocus}
+                  placeholder={
+                    isFocusedChildChat
+                      ? "Send a message..."
+                      : "Ask the agent to plan, build, debug, or review something"
+                  }
+                  showHelperText={false}
+                  hasQueuedMessages={composerProps.hasQueuedMessages}
+                  onEditLastQueued={composerProps.onEditLastQueued}
+                  attachments={composerProps.attachments}
+                  enableAttachments={composerProps.enableAttachments}
+                  onFilesSelected={composerProps.onFilesSelected}
+                  onRemoveAttachment={composerProps.onRemoveAttachment}
+                  attachmentsUploading={composerProps.attachmentsUploading}
+                  {...(composerProps.value !== undefined
+                    ? {
+                        value: composerProps.value,
+                        onChange: composerProps.onChange,
+                      }
+                    : {})}
+                  {...(composerProps.questionMode !== undefined
+                    ? { questionMode: composerProps.questionMode }
+                    : {})}
+                  submitLabel="Send"
+                  {...(!isFocusedChildChat && activeConversationMode
+                    ? {
+                        mode: {
+                          value: activeConversationMode,
+                          onValueChange: (value: string) =>
+                            onActiveConversationModeChange(
+                              value as AgentConversationWorkspaceMode,
+                            ),
+                          options: AGENT_CONVERSATION_MODE_OPTIONS,
+                          disabled:
+                            activeConversationModeLocked ||
+                            composerProps.agentStatus !== "idle" ||
+                            switchingConversationModeId === selectedConversationId,
+                        },
+                      }
+                    : {})}
+                  {...(composerChatFocus ? { chatFocus: composerChatFocus } : {})}
+                  project={{
+                    value: activeProjectId,
+                    onValueChange: () => undefined,
+                    options: activeProjectOptions,
+                    placeholder: "Current project",
+                    disabled: true,
+                  }}
+                  provider={{
+                    value: normalizedActiveRuntime.provider,
+                    onValueChange: () => undefined,
+                    options: AGENT_PROVIDER_OPTIONS,
+                    disabled: true,
+                  }}
+                  model={{
+                    value: normalizedActiveRuntime.modelId,
+                    onValueChange: onActiveModelChange,
+                    options: AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
+                  }}
+                />
+                {!isFocusedChildChat && (
+                  <div className="mt-2 flex w-full flex-wrap items-center justify-between gap-2 px-2">
+                    <AgentComposerProjectLine
+                      value={activeProjectId}
+                      onValueChange={() => undefined}
+                      options={activeProjectOptions}
+                      placeholder="Current project"
+                      disabled
                     />
-                    <div className="mt-2 flex w-full flex-wrap items-center justify-between gap-2 px-2">
-                      <AgentComposerProjectLine
-                        value={activeProjectId}
-                        onValueChange={() => undefined}
-                        options={activeProjectOptions}
-                        placeholder="Current project"
-                        disabled
-                      />
-                      <AgentConversationBaseLine
-                        workspace={activeWorkspace}
-                      />
-                    </div>
-                  </>
-                ),
-              }
-            : {})}
+                    <AgentConversationBaseLine
+                      workspace={activeWorkspace}
+                    />
+                  </div>
+                )}
+              </>
+            ),
+          }}
           {...(!isFocusedChildChat && activeConversation.contextType === "project" && attachedIdeationSessionId
             ? { additionalQuestionSessionIds: [attachedIdeationSessionId] }
             : {})}
