@@ -16,7 +16,6 @@ import {
   DetailCard,
   StatusBanner,
   StatusPill,
-  TwoColumnLayout,
   TaskMetricsCard,
   ChangeReviewSection,
   PlanMergeContextSection,
@@ -180,25 +179,8 @@ export function MergedTaskDetail({
       </button>
     ) : null;
 
-  // Plan-merge tasks fold into a single column (the rail's content is already
-  // surfaced in the body). Regular tasks keep the rail for now since some
-  // metadata (proposal, plan link) still lives there.
-  const renderBody = (children: React.ReactNode) =>
-    isPlanMerge ? (
-      <div data-testid="merged-task-detail" className="space-y-6 min-w-0">
-        {children}
-      </div>
-    ) : (
-      <TwoColumnLayout
-        description={task.description}
-        testId="merged-task-detail"
-      >
-        {children}
-      </TwoColumnLayout>
-    );
-
-  return renderBody(
-    <>
+  return (
+    <div data-testid="merged-task-detail" className="space-y-6 min-w-0">
       {/* Status Banner */}
       <StatusBanner
         icon={CheckCircle2}
@@ -216,6 +198,10 @@ export function MergedTaskDetail({
         {...(bannerAction !== null && { action: bannerAction })}
       />
 
+      {/* Description right under the banner so the body opens with what the
+          task is, before metrics and merge plumbing. */}
+      <TaskDescriptionSection description={task.description} />
+
       {/* Duration (static) */}
       {task.startedAt && task.completedAt && (
         <div data-testid="merged-task-duration">
@@ -228,9 +214,6 @@ export function MergedTaskDetail({
       )}
 
       {isPlanMerge && !detailContext && <PlanMergeContextSection taskId={task.id} />}
-
-      {/* Plan-merge surfaces description above commits in single-column mode. */}
-      {isPlanMerge && <TaskDescriptionSection description={task.description} />}
 
       {/* Task Metrics */}
       {!isPlanMerge && (
@@ -264,6 +247,6 @@ export function MergedTaskDetail({
         stateTransitions={stateTransitions}
         context={isPlanMerge ? "plan_merge" : "task"}
       />
-    </>,
+    </div>
   );
 }
