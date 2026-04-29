@@ -10,27 +10,7 @@
 import { Loader2, ListChecks, RotateCcw, Timer, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTaskMetrics } from "@/hooks/useTaskMetrics";
-import { deriveComplexityTier, type ComplexityTier } from "@/api/task-metrics";
-
-// ── Complexity badge ─────────────────────────────────────────────────────────
-
-const COMPLEXITY_STYLE: { bg: string; color: string } = {
-  bg: "var(--overlay-weak)",
-  color: "var(--text-muted)",
-};
-
-function ComplexityBadge({ tier }: { tier: ComplexityTier }) {
-  return (
-    <span
-      data-testid="complexity-badge"
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
-      style={{ backgroundColor: COMPLEXITY_STYLE.bg, color: COMPLEXITY_STYLE.color }}
-    >
-      <Zap className="w-3 h-3" />
-      {tier}
-    </span>
-  );
-}
+import { deriveComplexityTier } from "@/api/task-metrics";
 
 // ── Stat cell ────────────────────────────────────────────────────────────────
 
@@ -107,6 +87,11 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
 
   const rows = [
     {
+      icon: Zap,
+      label: "Complexity",
+      value: tier,
+    },
+    {
       icon: ListChecks,
       label: "Steps",
       value:
@@ -130,29 +115,15 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
   ];
 
   return (
-    <div>
-      {/* Complexity sits inline with the section so the stats below can use
-          the full row width without competing for the badge slot. */}
-      <div
-        className="flex items-center justify-between pb-3"
-        style={{ borderBottom: "1px solid var(--border-subtle)" }}
-      >
-        <span className="text-[10px] uppercase tracking-wider text-text-primary/40">
-          Complexity
-        </span>
-        <ComplexityBadge tier={tier} />
-      </div>
-
-      <div className="flex flex-wrap gap-x-8 gap-y-3 pt-3">
-        {rows.map((row) => (
-          <StatCell
-            key={row.label}
-            icon={row.icon}
-            label={row.label}
-            value={row.value}
-          />
-        ))}
-      </div>
+    <div className="flex flex-wrap gap-x-8 gap-y-3">
+      {rows.map((row) => (
+        <StatCell
+          key={row.label}
+          icon={row.icon}
+          label={row.label}
+          value={row.value}
+        />
+      ))}
     </div>
   );
 }
