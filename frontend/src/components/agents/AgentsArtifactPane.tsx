@@ -600,7 +600,7 @@ function ArtifactContent({
   proposals,
   onPublishWorkspace,
   isPublishingWorkspace,
-  onFocusVerificationSession,
+  onFocusVerificationSession: _onFocusVerificationSession,
   onDisplayedVerificationStatusChange,
   taskArtifactSelectedId,
   onTaskArtifactSelectedIdChange,
@@ -625,12 +625,14 @@ function ArtifactContent({
     setViewingProposalId(null);
     setViewingEnrichment(undefined);
   }, []);
+  // Opening the Verification tab no longer auto-focuses the chat on the
+  // verification child. The user switches chats explicitly via the composer
+  // chat-focus pill instead.
   const handleDisplayedVerificationChildChange = useCallback(
-    (childSessionId: string | null) => {
-      if (!attachedSessionId || !childSessionId) return;
-      onFocusVerificationSession?.(attachedSessionId, childSessionId);
+    (_childSessionId: string | null) => {
+      // intentionally empty — see comment above.
     },
-    [attachedSessionId, onFocusVerificationSession],
+    [],
   );
   const handleDisplayedVerificationStatusChange = useCallback(
     (status: VerificationStatus, inProgress: boolean) => {

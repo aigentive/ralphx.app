@@ -356,25 +356,10 @@ export function useAgentsViewController({
     selectedConversationId,
     setArtifactPaneVisibility,
   });
-  const handleSelectArtifactWithChatFocus = useCallback(
-    (tab: Parameters<typeof handleSelectArtifact>[0]) => {
-      handleSelectArtifact(tab);
-      if (tab !== "plan") {
-        return;
-      }
-      const targetIdeationSessionId =
-        focusedArtifactIdeationSessionId ?? attachedIdeationSessionId;
-      if (targetIdeationSessionId) {
-        handleFocusIdeationSession(targetIdeationSessionId);
-      }
-    },
-    [
-      attachedIdeationSessionId,
-      focusedArtifactIdeationSessionId,
-      handleFocusIdeationSession,
-      handleSelectArtifact,
-    ],
-  );
+  // Switching artifact tabs no longer touches the chat focus. The user
+  // toggles between workspace and child chats explicitly via the composer
+  // chat-focus pill.
+  const handleSelectArtifactWithChatFocus = handleSelectArtifact;
 
   const handleAgentUserMessageSent = useAgentUserMessageAutoTitle({
     activeProjectId,

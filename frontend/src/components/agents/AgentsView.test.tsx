@@ -211,7 +211,7 @@ describe("AgentsView", () => {
     );
   });
 
-  it("focuses the main chat on the attached ideation run when the Plan artifact tab is selected", async () => {
+  it("does NOT auto-switch the chat focus when the Plan artifact tab is selected", async () => {
     mockAgentViewData();
     getAgentConversationWorkspaceMock.mockResolvedValue(
       conversationWorkspace({ mode: "ideation", linkedIdeationSessionId: "session-1" })
@@ -236,23 +236,18 @@ describe("AgentsView", () => {
 
     fireEvent.click(screen.getByLabelText("Plan"));
 
+    // Workspace chat stays selected — clicking artifact tabs no longer
+    // auto-focuses the attached ideation chat. The user opts in via the
+    // composer chat-focus pill explicitly.
     await waitFor(() => {
       expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
-        "data-ideation-session-id",
-        "session-1",
+        "data-conversation-id-override",
+        "conversation-1",
       );
     });
     expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
-      "data-conversation-id-override",
+      "data-ideation-session-id",
       "",
-    );
-    // Composer hosts the focus switcher across all chats
-    expect(screen.getByTestId("agents-composer-chat-focus-pill")).toHaveTextContent(
-      "Ideation",
-    );
-    expect(screen.getByTestId("agents-chat-header")).toHaveAttribute(
-      "data-focus-type",
-      "ideation",
     );
   });
 
