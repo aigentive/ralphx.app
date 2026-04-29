@@ -268,6 +268,7 @@ describe("AgentsChatHeader", () => {
     );
 
     expect(screen.getByTestId("agents-chat-focus-bar")).not.toHaveAttribute("style");
+    fireEvent.click(screen.getByTestId("agents-chat-focus-trigger"));
     expect(screen.getByTestId("agents-chat-focus-return")).toHaveAttribute(
       "data-active",
       "false",

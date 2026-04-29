@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ChevronDown,
   CheckCircle2,
   Code,
   FileText,
@@ -24,6 +25,12 @@ import type {
 } from "@/components/diff";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeferredAgentHydration } from "./useDeferredAgentHydration";
 import { EmptyArtifactState } from "./AgentsArtifactEmptyState";
@@ -225,13 +232,13 @@ export function AgentPublishPanel({
         )
       ? "checking"
       : workspace.publicationPushStatus;
-  const baseActionLabel = workspace.baseRef || base;
+  const baseActionLabel = freshness?.baseRef ?? workspace.baseRef ?? base;
   const isFreshnessLoading = freshnessQuery.isLoading;
   const publishDisabled =
     !onPublishWorkspace ||
     isPipelineOwnedWorkspace ||
     effectivePublishing ||
-    isRepairPending ||
+    (isRepairPending && !isPipelineOwnedWorkspace) ||
     isPublishCurrent ||
     Boolean(terminalPublicationStatus) ||
     workspace.status === "missing";
@@ -451,7 +458,10 @@ export function AgentPublishPanel({
                   type="button"
                   className={primaryActionClassName}
                   onClick={() => void confirmUpdateFromBase()}
-                  disabled={effectivePublishing}
+                  disabled={
+                    effectivePublishing ||
+                    (isRepairPending && !isPipelineOwnedWorkspace)
+                  }
                   data-testid="agents-update-from-base"
                 >
                   {isUpdatingFromBase ? (
@@ -479,29 +489,41 @@ export function AgentPublishPanel({
                   {isFreshnessLoading ? "Checking..." : publishButtonLabel}
                 </Button>
               )}
+              {canClosePr && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 w-9 p-0"
+                      disabled={isClosingPr || effectivePublishing}
+                      aria-label="Publish actions"
+                      data-testid="agents-publish-actions-menu"
+                    >
+                      {isClosingPr ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[160px]">
+                    <DropdownMenuItem
+                      data-testid="agents-close-pr"
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        void confirmClosePr();
+                      }}
+                      disabled={isClosingPr || effectivePublishing}
+                    >
+                      <XCircle className="h-3.5 w-3.5" />
+                      Close PR
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
-          {canClosePr && (
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium transition-colors"
-                style={{ color: "var(--text-muted)" }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--status-error)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
-                onClick={() => void confirmClosePr()}
-                disabled={isClosingPr || effectivePublishing}
-                data-testid="agents-close-pr"
-              >
-                {isClosingPr ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <XCircle className="h-3 w-3" />
-                )}
-                Close pull request
-              </button>
-            </div>
-          )}
         </section>
         <PublishEventLog
           events={publicationEvents}

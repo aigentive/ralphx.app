@@ -50,7 +50,10 @@ import {
 } from "./agentChatFocus";
 import type { IdeationArtifactTab } from "./agentArtifactTabs";
 import { resolveConversationAgentMode } from "./agentConversationMode";
-import { shouldShowAgentWorkspacePublishSurface } from "./agentWorkspacePublishState";
+import {
+  hasPublishedWorkspacePr,
+  shouldShowAgentWorkspacePublishSurface,
+} from "./agentWorkspacePublishState";
 
 const HEADER_ARTIFACT_TABS: Array<{
   id: IdeationArtifactTab;
@@ -111,11 +114,13 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
   options,
   onSelectFocus,
   workspace = null,
+  surfaceBackground = false,
 }: {
   activeType: AgentsChatFocusType;
   options: readonly AgentsChatFocusSwitchOption[];
   onSelectFocus: (type: AgentsChatFocusType) => void;
   workspace?: AgentConversationWorkspace | null;
+  surfaceBackground?: boolean;
 }) {
   const showFocusSwitcher = options.length > 1;
   const [open, setOpen] = useState(false);
@@ -136,7 +141,7 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
     <div
       className="flex h-9 shrink-0 items-center gap-3 overflow-hidden px-3"
       data-testid="agents-chat-focus-bar"
-      style={{ backgroundColor: "var(--bg-base)" }}
+      style={surfaceBackground ? { backgroundColor: "var(--bg-base)" } : undefined}
     >
       {showFocusSwitcher && activeOption ? (
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
@@ -201,6 +206,7 @@ export const AgentsChatFocusBar = memo(function AgentsChatFocusBar({
                         ? "agents-chat-focus-return"
                         : `agents-chat-focus-option-${option.type}`
                     }
+                    data-active={selected ? "true" : "false"}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors",
                       selected ? "cursor-default" : "cursor-pointer",
@@ -433,7 +439,7 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
                   !onPublishWorkspace ||
                   !onOpenPublishPane ||
                   isPublishingWorkspace ||
-                  workspace?.status === "missing"
+                  (workspace?.mode === "edit" && workspace?.status === "missing")
                 }
                 aria-label={`Open workspace publish panel: ${publishShortcutLabel}`}
                 data-testid="agents-publish-workspace"
@@ -528,7 +534,9 @@ const AgentsWorkspaceStatusPill = memo(function AgentsWorkspaceStatusPill({
   const { data: freshness } = useQuery({
     queryKey: ["agents", "conversation-workspace-freshness", workspace.conversationId],
     queryFn: () => chatApi.getAgentConversationWorkspaceFreshness(workspace.conversationId),
-    enabled: !terminalStatus,
+    enabled:
+      !terminalStatus &&
+      (workspace.mode === "edit" || hasPublishedWorkspacePr(workspace)),
     staleTime: 10_000,
   });
   const isBehindBase = !terminalStatus && Boolean(freshness?.isBaseAhead);
@@ -537,7 +545,8 @@ const AgentsWorkspaceStatusPill = memo(function AgentsWorkspaceStatusPill({
     : isBehindBase
       ? "Behind base"
       : (workspace.publicationPushStatus ?? workspace.status).replace(/_/g, " ");
-  const baseLabel = workspace.baseDisplayName ?? workspace.baseRef;
+  const baseLabel =
+    freshness?.baseDisplayName ?? freshness?.baseRef ?? workspace.baseDisplayName ?? workspace.baseRef;
 
   return (
     <Tooltip>
