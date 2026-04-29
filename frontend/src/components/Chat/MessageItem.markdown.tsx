@@ -159,10 +159,11 @@ export const markdownComponents = {
     }
     return (
       <code
-        className="px-1.5 py-0.5 rounded text-[12px] break-all"
+        className="px-1 py-px rounded text-[12px] break-all"
         style={{
-          /* macOS Tahoe: subtle inline code background */
-          backgroundColor: "var(--bg-hover)",
+          /* Soft inline code chip — distinguishable as code without
+             dominating dense paragraphs that contain many spans. */
+          backgroundColor: "var(--overlay-faint)",
           color: "var(--text-primary)",
           fontFamily: "var(--font-mono)",
         }}
