@@ -91,6 +91,12 @@ Manual testing:
 2. Click **Run workflow** from `main`.
 3. Use `dry_run=true` to verify Codex proposal, version bump, and note generation without committing, tagging, pushing, or dispatching the build.
 
+Skipping scheduled release for maintenance-only commits:
+
+- Add `[skip daily-release]`, `[skip release]`, `[no daily-release]`, or `[no release]` to every commit message after the latest release tag that should not produce a daily release.
+- The scheduled workflow skips only when all commits after the latest reachable release tag carry one of those markers.
+- Pushing to `main` can still run CI/CodeQL; this marker only affects the `Daily Release` workflow.
+
 Scheduled runs use `draft=false`, `prerelease=false`, and the self-hosted ARM release runner by default. Manual dispatch can override those values.
 
 ---
@@ -191,10 +197,11 @@ Then:
    - `release-notes/v0.2.0.md`
 2. If draft generation fails or you want to inspect the Codex run, check the logs in:
    - `.artifacts/release-notes/logs/`
-3. Commit that curated notes file before tagging if you want the workflow-created draft GitHub release to use it automatically:
+3. Generated drafts include Markdown commit links for traceability; keep them clickable when editing notes.
+4. Commit that curated notes file before tagging if you want the workflow-created draft GitHub release to use it automatically:
    - `git add release-notes/v0.2.0.md`
    - `git commit -m "docs: add release notes for v0.2.0"`
-4. If you decide not to keep the draft in git, leave it uncommitted or remove it locally:
+5. If you decide not to keep the draft in git, leave it uncommitted or remove it locally:
    - `rm -f release-notes/v0.2.0.md`
 
 ### Step 5: Create And Push The Release Tag

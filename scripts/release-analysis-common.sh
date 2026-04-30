@@ -97,19 +97,117 @@ release_analysis_resolve_range() {
   [[ "${RELEASE_ANALYSIS_COMMIT_COUNT}" -gt 0 ]] || release_analysis_die "No commits found in range ${RELEASE_ANALYSIS_RANGE_SPEC}"
 }
 
+release_analysis_repo_full_name() {
+  if [[ -n "${GITHUB_REPOSITORY:-}" ]]; then
+    [[ "${GITHUB_REPOSITORY}" =~ ^[^/]+/[^/]+$ ]] || return 1
+    printf '%s\n' "${GITHUB_REPOSITORY}"
+    return 0
+  fi
+
+  local remote_url
+  remote_url="$(git config --get remote.origin.url 2>/dev/null || true)"
+  [[ -n "${remote_url}" ]] || return 1
+
+  local repo=""
+  case "${remote_url}" in
+    git@github.com:*)
+      repo="${remote_url#git@github.com:}"
+      ;;
+    ssh://git@github.com/*)
+      repo="${remote_url#ssh://git@github.com/}"
+      ;;
+    https://github.com/*)
+      repo="${remote_url#https://github.com/}"
+      ;;
+    https://*@github.com/*)
+      repo="${remote_url#https://*@github.com/}"
+      ;;
+    http://github.com/*)
+      repo="${remote_url#http://github.com/}"
+      ;;
+    http://*@github.com/*)
+      repo="${remote_url#http://*@github.com/}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  repo="${repo%.git}"
+  [[ "${repo}" =~ ^[^/]+/[^/]+$ ]] || return 1
+
+  printf '%s\n' "${repo}"
+}
+
+release_analysis_extract_pr_number() {
+  local text="$1"
+  printf '%s\n' "${text}" | sed -nE 's/.*\(#([0-9]+)\).*/\1/p' | head -n 1
+}
+
+release_analysis_fetch_pr_details() {
+  local pr_number="$1"
+
+  command -v gh >/dev/null 2>&1 || return 1
+
+  local repo_full_name
+  repo_full_name="$(release_analysis_repo_full_name)" || return 1
+
+  GH_PROMPT_DISABLED=1 gh pr view "${pr_number}" \
+    --repo "${repo_full_name}" \
+    --json title,body,url \
+    --template $'URL: {{.url}}\nTitle: {{.title}}\nBody:\n{{.body}}\n' \
+    2>/dev/null
+}
+
+release_analysis_write_associated_pr_details() {
+  local commit_body="$1"
+  local pr_number
+  pr_number="$(release_analysis_extract_pr_number "${commit_body}" || true)"
+  [[ -n "${pr_number}" ]] || return 0
+
+  local pr_details
+  pr_details="$(release_analysis_fetch_pr_details "${pr_number}" || true)"
+  [[ -n "$(printf '%s' "${pr_details}" | tr -d '[:space:]')" ]] || return 0
+
+  printf 'Associated GitHub PR #%s (primary narrative source when commit body is sparse):\n' "${pr_number}"
+  printf '%s\n' "${pr_details}"
+}
+
+release_analysis_commit_link() {
+  local sha="$1"
+  local short_sha="${sha:0:8}"
+  local repo_full_name
+
+  if repo_full_name="$(release_analysis_repo_full_name 2>/dev/null)"; then
+    printf '[%s](https://github.com/%s/commit/%s)\n' "${short_sha}" "${repo_full_name}" "${sha}"
+    return 0
+  fi
+
+  printf '%s\n' "${short_sha}"
+}
+
 release_analysis_collect_evidence() {
   RELEASE_ANALYSIS_SHORTSTAT="$(git diff --shortstat "${RELEASE_ANALYSIS_RANGE_SPEC}" || true)"
   [[ -n "${RELEASE_ANALYSIS_SHORTSTAT}" ]] || RELEASE_ANALYSIS_SHORTSTAT="No diff stat available."
 
   RELEASE_ANALYSIS_COMMIT_LOG="$(git log --reverse --no-merges --pretty=format:'- %h %s' "${RELEASE_ANALYSIS_RANGE_SPEC}")"
+  RELEASE_ANALYSIS_COMMIT_REFERENCES="$(
+    while IFS= read -r sha; do
+      [[ -n "${sha}" ]] || continue
+      subject="$(git show -s --format=%s "${sha}")"
+      printf -- '- %s %s\n' "$(release_analysis_commit_link "${sha}")" "${subject}"
+    done < <(git rev-list --reverse "${RELEASE_ANALYSIS_RANGE_SPEC}")
+  )"
 
   RELEASE_ANALYSIS_RAW_COMMIT_BODIES="$(
     while IFS= read -r sha; do
       [[ -n "${sha}" ]] || continue
       body="$(git show -s --format=%B "${sha}")"
       [[ -n "$(printf '%s' "${body}" | tr -d '[:space:]')" ]] || continue
-      printf -- '--- %s ---\n' "${sha:0:8}"
+      printf -- '--- %s ---\n' "$(release_analysis_commit_link "${sha}")"
       printf '%s\n\n' "${body}"
+      release_analysis_write_associated_pr_details "${body}"
+      printf '\n'
     done < <(git rev-list --reverse "${RELEASE_ANALYSIS_RANGE_SPEC}")
   )"
 }
@@ -123,6 +221,9 @@ release_analysis_write_evidence_sections() {
   printf '\nReader guidance:\n%s\n' "${guidance}"
   printf '\nCommit subjects:\n'
   printf '%s\n' "${RELEASE_ANALYSIS_COMMIT_LOG}"
+  if [[ -n "${RELEASE_ANALYSIS_COMMIT_REFERENCES}" ]]; then
+    printf '\nCommit references (use these exact Markdown links for traceability):\n%s\n' "${RELEASE_ANALYSIS_COMMIT_REFERENCES}"
+  fi
   if [[ -n "${RELEASE_ANALYSIS_RAW_COMMIT_BODIES}" ]]; then
     printf '\nRaw commit bodies (primary narrative source):\n%s\n' "${RELEASE_ANALYSIS_RAW_COMMIT_BODIES}"
   fi
