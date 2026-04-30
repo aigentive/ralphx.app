@@ -285,6 +285,40 @@ fn model_critique_response(plan_id: &ArtifactId) -> String {
     )
 }
 
+fn claude_stream_response(text: String) -> String {
+    [
+        serde_json::json!({
+            "type": "system",
+            "subtype": "hook_started",
+            "hook_id": "hook-1",
+            "hook_name": "SessionStart:startup",
+        })
+        .to_string(),
+        serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": text,
+                    }
+                ],
+                "stop_reason": "end_turn",
+            },
+            "session_id": "claude-session-1",
+        })
+        .to_string(),
+        serde_json::json!({
+            "type": "result",
+            "result": "done",
+            "session_id": "claude-session-1",
+            "is_error": false,
+        })
+        .to_string(),
+    ]
+    .join("\n")
+}
+
 #[tokio::test]
 async fn collector_respects_limits_and_truncates_sources() {
     let Fixture {
@@ -783,6 +817,57 @@ async fn default_service_uses_agent_client_for_context_and_critique() {
     assert!(prompts[1].contains("solution critic"));
     assert!(prompts[1].contains("Be strict"));
     assert!(!prompts[1].contains("Deterministic review requires"));
+}
+
+#[tokio::test]
+async fn default_service_extracts_critique_from_claude_stream_json() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id,
+    } = setup_fixture().await;
+    let agent_client = Arc::new(RecordingAgentClient::new(vec![
+        claude_stream_response(model_compile_response(&plan_artifact_id)),
+        claude_stream_response(model_critique_response(&plan_artifact_id)),
+    ]));
+    let state = state.with_agent_client(agent_client.clone());
+    let service = SolutionCritiqueService::from_app_state(&state);
+
+    let context = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
+        )
+        .await
+        .unwrap();
+    let critique = service
+        .critique_artifact(
+            session_id.as_str(),
+            CritiqueArtifactRequest::for_plan_artifact(
+                plan_artifact_id.as_str(),
+                context.artifact_id.clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(context.compiled_context.claims.len(), 1);
+    assert_eq!(
+        critique.solution_critique.safe_next_action.as_deref(),
+        Some("Run the targeted solution critic service test before trusting the plan.")
+    );
+    assert_eq!(
+        state
+            .artifact_repo
+            .get_by_type(ArtifactType::Findings)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let prompts = agent_client.prompts().await;
+    assert_eq!(prompts.len(), 2);
 }
 
 #[tokio::test]

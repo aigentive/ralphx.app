@@ -162,7 +162,7 @@ impl AgentSolutionCritiqueGenerator {
         let role = AgentRole::Custom(MODEL_ROLE.to_string());
         let handle = AgentHandle::new(ClientType::Custom(MODEL_ROLE.to_string()), role);
         let response = self.client.send_prompt(&handle, &prompt).await?;
-        extract_json_object(&response.content)
+        extract_agent_json_object(&response.content)
     }
 
     async fn run_schema_validated_json_prompt<T, F>(
@@ -657,6 +657,119 @@ fn extract_json_object(response: &str) -> AppResult<String> {
     })
 }
 
+fn extract_agent_json_object(response: &str) -> AppResult<String> {
+    let response_text = extract_stream_json_response_text(response)
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or_else(|| response.trim().to_string());
+    extract_json_object(&response_text)
+}
+
+fn extract_stream_json_response_text(response: &str) -> Option<String> {
+    let mut saw_stream_event = false;
+    let mut assistant_text = Vec::new();
+    let mut delta_text = Vec::new();
+    let mut result_text = Vec::new();
+
+    for line in response.lines() {
+        let candidate = line
+            .trim()
+            .strip_prefix("data:")
+            .map(str::trim)
+            .unwrap_or_else(|| line.trim());
+        if candidate.is_empty() || candidate == "[DONE]" {
+            continue;
+        }
+
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(candidate) else {
+            continue;
+        };
+        let Some(event_type) = stream_event_type(&value) else {
+            continue;
+        };
+        saw_stream_event = true;
+
+        match event_type {
+            "assistant" => assistant_text.extend(extract_assistant_text(&value)),
+            "content_block_delta" => {
+                if let Some(text) = value
+                    .get("delta")
+                    .and_then(|delta| delta.get("text"))
+                    .and_then(|text| text.as_str())
+                {
+                    delta_text.push(text.to_string());
+                }
+            }
+            "result" => {
+                if value.get("is_error").and_then(|flag| flag.as_bool()) != Some(true) {
+                    if let Some(text) = value.get("result").and_then(|result| result.as_str()) {
+                        result_text.push(text.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !saw_stream_event {
+        return None;
+    }
+
+    if !assistant_text.is_empty() {
+        return Some(assistant_text.join("\n"));
+    }
+    if !delta_text.is_empty() {
+        return Some(delta_text.join(""));
+    }
+    Some(result_text.join("\n"))
+}
+
+fn stream_event_type(value: &serde_json::Value) -> Option<&str> {
+    value
+        .get("type")
+        .and_then(|event_type| event_type.as_str())
+        .or_else(|| {
+            value
+                .get("message")
+                .and_then(|message| message.get("type"))
+                .and_then(|event_type| event_type.as_str())
+        })
+        .or_else(|| {
+            value
+                .get("data")
+                .and_then(|data| data.get("type"))
+                .and_then(|event_type| event_type.as_str())
+        })
+        .or_else(|| {
+            value
+                .get("event")
+                .and_then(|event| event.get("type"))
+                .and_then(|event_type| event_type.as_str())
+        })
+}
+
+fn extract_assistant_text(value: &serde_json::Value) -> Vec<String> {
+    value
+        .get("message")
+        .and_then(|message| message.get("content"))
+        .and_then(|content| content.as_array())
+        .map(|content| {
+            content
+                .iter()
+                .filter_map(|block| {
+                    if block.get("type").and_then(|value| value.as_str()) == Some("text") {
+                        block
+                            .get("text")
+                            .and_then(|text| text.as_str())
+                            .map(ToString::to_string)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn strip_code_fence(value: &str) -> &str {
     let Some(rest) = value.strip_prefix("```") else {
         return value;
@@ -837,6 +950,98 @@ mod tests {
         assert_eq!(prompts.len(), 1);
         assert!(prompts[0].contains("Return strict JSON only"));
         assert!(prompts[0].contains("plan_artifact:plan-1"));
+    }
+
+    #[tokio::test]
+    async fn agent_generator_extracts_json_from_claude_stream_json_response() {
+        let compiler_json = r#"{
+  "claims": [
+    {
+      "id": "claim_migration",
+      "text": "The plan requires a migration.",
+      "classification": "fact",
+      "confidence": "high",
+      "evidence": [{ "id": "plan_artifact:plan-1" }]
+    }
+  ],
+  "open_questions": [],
+  "stale_assumptions": []
+}"#;
+        let response = [
+            json!({
+                "type": "system",
+                "subtype": "hook_started",
+                "hook_id": "hook-1",
+                "hook_name": "SessionStart:startup",
+            })
+            .to_string(),
+            json!({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": compiler_json,
+                        }
+                    ],
+                    "stop_reason": "end_turn",
+                },
+                "session_id": "claude-session-1",
+            })
+            .to_string(),
+            json!({
+                "type": "result",
+                "result": compiler_json,
+                "session_id": "claude-session-1",
+                "is_error": false,
+            })
+            .to_string(),
+        ]
+        .join("\n");
+        let client = Arc::new(RecordingAgentClient::new(vec![response]));
+        let generator = AgentSolutionCritiqueGenerator::new(client);
+
+        let json = generator
+            .compile_context_candidate(&raw_bundle())
+            .await
+            .unwrap();
+
+        assert!(json.contains("claim_migration"));
+        assert!(!json.contains("hook_started"));
+        serde_json::from_str::<CompiledContextCandidate>(&json).unwrap();
+    }
+
+    #[test]
+    fn extract_agent_json_object_uses_stream_result_when_assistant_text_is_absent() {
+        let critique_json = r#"{
+  "verdict": "investigate",
+  "confidence": "medium",
+  "claims": [],
+  "recommendations": [],
+  "risks": [],
+  "verification_plan": [],
+  "safe_next_action": "Inspect the evidence."
+}"#;
+        let response = [
+            json!({
+                "type": "system",
+                "subtype": "hook_started",
+            })
+            .to_string(),
+            json!({
+                "type": "result",
+                "result": critique_json,
+                "is_error": false,
+            })
+            .to_string(),
+        ]
+        .join("\n");
+
+        let json = extract_agent_json_object(&response).unwrap();
+
+        assert!(json.contains("\"verdict\""));
+        assert!(!json.contains("hook_started"));
+        serde_json::from_str::<SolutionCritiqueCandidate>(&json).unwrap();
     }
 
     #[test]
