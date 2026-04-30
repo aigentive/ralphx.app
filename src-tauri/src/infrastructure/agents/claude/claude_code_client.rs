@@ -25,7 +25,8 @@ use crate::domain::agents::{
 
 use super::{
     apply_common_spawn_env, claude_runtime_config, create_mcp_config, ensure_claude_spawn_allowed,
-    get_allowed_tools, get_effective_settings, get_preapproved_tools, sanitize_claude_user_state,
+    find_claude_cli, get_allowed_tools, get_effective_settings, get_preapproved_tools,
+    sanitize_claude_user_state,
 };
 
 // ============================================================================
@@ -303,9 +304,9 @@ pub struct ClaudeCodeClient {
 impl ClaudeCodeClient {
     /// Create a new Claude Code client
     ///
-    /// Attempts to find `claude` in PATH, falls back to "claude" if not found
+    /// Attempts to find `claude` in terminal and GUI app contexts.
     pub fn new() -> Self {
-        let cli_path = which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
+        let cli_path = find_claude_cli().unwrap_or_else(|| PathBuf::from("claude"));
         Self {
             cli_path,
             capabilities: ClientCapabilities::claude_code(),

@@ -1,11 +1,12 @@
 use super::ideation_harness_availability::{
-    build_lane_harness_availability, validate_claude_runtime_path, LaneHarnessAvailability,
-    ResolvedLaneHarnessConfig,
+    build_harness_override_availability, build_lane_harness_availability,
+    validate_claude_runtime_path, LaneHarnessAvailability, ResolvedLaneHarnessConfig,
 };
 use crate::application::harness_runtime_registry::{
     standard_harness_probe_registry, HarnessRuntimeProbe,
 };
 use crate::domain::agents::{AgentHarnessKind, AgentLane};
+use crate::domain::entities::ChatContextType;
 use std::collections::HashMap;
 
 fn unavailable_probe(error: &str) -> HarnessRuntimeProbe {
@@ -187,5 +188,31 @@ fn missing_requested_probe_does_not_silently_fall_back_to_default_probe() {
     assert_eq!(
         availability.error.as_deref(),
         Some("No harness probe registered for codex")
+    );
+}
+
+#[test]
+fn project_chat_runtime_override_uses_requested_harness_probe() {
+    let availability = build_harness_override_availability(
+        ChatContextType::Project,
+        AgentHarnessKind::Codex,
+        &probe_map(
+            unavailable_probe("Claude CLI not found"),
+            HarnessRuntimeProbe {
+                binary_path: Some("/opt/homebrew/bin/codex".to_string()),
+                binary_found: true,
+                probe_succeeded: true,
+                available: true,
+                missing_core_exec_features: Vec::new(),
+                error: None,
+            },
+        ),
+    );
+
+    assert_eq!(availability.effective_harness, AgentHarnessKind::Codex);
+    assert!(availability.available);
+    assert_eq!(
+        availability.binary_path.as_deref(),
+        Some("/opt/homebrew/bin/codex")
     );
 }

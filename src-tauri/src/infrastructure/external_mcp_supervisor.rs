@@ -21,6 +21,7 @@ use tokio_util::sync::CancellationToken;
 use tracing;
 
 use crate::infrastructure::agents::claude::ExternalMcpConfig;
+use crate::infrastructure::tool_paths::resolve_ps_cli_path;
 
 pub const TAURI_MCP_BYPASS_TOKEN_ENV: &str = "RALPHX_TAURI_MCP_BYPASS_TOKEN";
 
@@ -589,7 +590,7 @@ fn is_external_mcp_process(pid: i32) -> bool {
     }
 
     let pid_arg = pid.to_string();
-    let output = std::process::Command::new("ps")
+    let output = std::process::Command::new(resolve_ps_cli_path())
         .args(["-p", pid_arg.as_str(), "-o", "command="])
         .output();
 

@@ -82,6 +82,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 import { ScreenshotGalleryTestPage } from "@/test-pages/ScreenshotGalleryTest";
+import ralphxLogo from "@/assets/ralphx-logo.png";
 
 const queryClient = getQueryClient();
 
@@ -795,17 +796,26 @@ function AppContent() {
           <div className="flex items-center gap-6">
             {/* App Branding */}
             <h1
-              className="text-xl font-bold tracking-tight select-none"
+              className="flex items-center gap-2 text-xl font-bold tracking-tight select-none"
               style={{ color: "var(--text-primary)" }}
             >
-              Ralph
-              <span
-                style={{
-                  color: "var(--accent-primary)",
-                  textShadow: "0 0 12px color-mix(in srgb, var(--accent-primary) 50%, transparent)",
-                }}
-              >
-                X
+              <img
+                src={ralphxLogo}
+                alt=""
+                aria-hidden="true"
+                className="h-8 w-8 rounded-md object-contain"
+                data-testid="app-logo-mark"
+              />
+              <span>
+                Ralph
+                <span
+                  style={{
+                    color: "var(--accent-primary)",
+                    textShadow: "0 0 12px color-mix(in srgb, var(--accent-primary) 50%, transparent)",
+                  }}
+                >
+                  X
+                </span>
               </span>
             </h1>
 

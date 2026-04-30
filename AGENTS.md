@@ -14,6 +14,7 @@ Primary project docs:
 - `.claude/rules/ideation-verification-architecture.md` for the ideation verification feature map: parent-vs-child ownership, runtime flow, UI surfaces, debugging, and tests
 - `.claude/rules/delegation-topology.md` for canonical non-team delegation allowlists, auto-injected delegation guidance, and MCP visibility/enforcement rules
 - `.claude/rules/runtime-root-vs-target-project.md` for the contract between RalphX-owned runtime/plugin/log roots and the user’s active target project checkout
+- `.claude/rules/production-cli-resolution.md` for Finder/Homebrew-safe CLI binary resolution in installed app runtime paths
 - `.claude/rules/codeql-path-safety.md` for CodeQL-safe filesystem sink validation when paths are influenced by env vars, settings, HTTP/MCP payloads, DB state, agent metadata, or repo contents
 - `.claude/rules/multi-harness.md` for provider-neutral runtime/config/event rules and documentation sync requirements
 - `.claude/rules/agent-mcp-tools.md` for multi-layer agent MCP/tool alignment across prompt frontmatter, `config/ralphx.yaml`, and MCP allowlists
@@ -30,6 +31,7 @@ Primary project docs:
 - For GPT-5.4/Codex prompt work, check `.claude/rules/openai-gpt-5.4-prompting.md` and `docs/ai-docs/openai/gpt-5.4-prompting.md` before substantial prompt edits.
 - When touching ideation verification, read `.claude/rules/ideation-verification-architecture.md` first.
 - When touching plugin/root resolution, canonical agent loading, generated plugin bundles, or runtime log placement, read `.claude/rules/runtime-root-vs-target-project.md` first.
+- When touching production subprocess launches or CLI discovery, read `.claude/rules/production-cli-resolution.md` first.
 - When touching filesystem sinks or any path influenced by external/runtime state, read `.claude/rules/codeql-path-safety.md` first.
 - CodeQL path findings block PRs: tests are scanned too; use process-owned runtime roots, fixed entry lists, pure test builders, and suppress `rust/path-injection` only after containment validation.
 - When touching merge failure recovery, merge retry/resolve actions, merge reconciliation, or startup merge remediation, read `.claude/rules/merge-recovery-consistency.md` first.
@@ -80,6 +82,7 @@ When working in `src-tauri/`, also follow:
 - `.claude/rules/rust-test-execution.md`
 - `.claude/rules/task-git-branching.md`
 - `.claude/rules/code-quality-standards.md`
+- `.claude/rules/production-cli-resolution.md`
 - `.claude/rules/codeql-path-safety.md`
 - `.claude/rules/agent-mcp-tools.md`
 

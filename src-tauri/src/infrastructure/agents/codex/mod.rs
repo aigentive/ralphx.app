@@ -356,22 +356,7 @@ pub fn normalize_codex_exec_output(raw_stdout: &str) -> String {
 }
 
 pub fn find_codex_cli() -> Option<PathBuf> {
-    if let Ok(path) = which::which("codex") {
-        return Some(path);
-    }
-
-    for candidate in [
-        "/opt/homebrew/bin/codex",
-        "/usr/local/bin/codex",
-        "/usr/bin/codex",
-    ] {
-        let path = PathBuf::from(candidate);
-        if path.exists() {
-            return Some(path);
-        }
-    }
-
-    None
+    crate::infrastructure::tool_paths::find_codex_cli_path()
 }
 
 #[cfg(test)]
