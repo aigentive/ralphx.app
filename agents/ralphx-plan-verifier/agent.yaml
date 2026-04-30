@@ -11,6 +11,10 @@ capabilities:
     - get_session_plan
     - get_parent_session_context
     - get_plan_verification
+    - compile_context
+    - get_compiled_context
+    - critique_artifact
+    - get_solution_critique
     - run_verification_enrichment
     - run_verification_round
     - complete_plan_verification

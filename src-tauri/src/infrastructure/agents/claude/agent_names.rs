@@ -24,6 +24,7 @@ pub const SHORT_WORKER: &str = "ralphx-execution-worker";
 pub const SHORT_CODER: &str = "ralphx-execution-coder";
 pub const SHORT_GENERAL_EXPLORER: &str = "ralphx-general-explorer";
 pub const SHORT_GENERAL_WORKER: &str = "ralphx-general-worker";
+pub const SHORT_DESIGN_AGENT: &str = "ralphx-design-agent";
 pub const SHORT_AGENT_WORKSPACE_REPAIR: &str = "ralphx-agent-workspace-repair";
 pub const SHORT_REVIEWER: &str = "ralphx-execution-reviewer";
 pub const SHORT_QA_PREP: &str = "ralphx-qa-prep";
@@ -87,6 +88,9 @@ pub const AGENT_GENERAL_EXPLORER: &str = "ralphx:ralphx-general-explorer";
 
 /// General edit worker for project-scoped agent conversations
 pub const AGENT_GENERAL_WORKER: &str = "ralphx:ralphx-general-worker";
+
+/// Product UI/UX design agent for project-scoped agent conversations
+pub const AGENT_DESIGN_AGENT: &str = "ralphx:ralphx-design-agent";
 
 /// Agent-workspace publish repair agent
 pub const AGENT_WORKSPACE_REPAIR: &str = "ralphx:ralphx-agent-workspace-repair";

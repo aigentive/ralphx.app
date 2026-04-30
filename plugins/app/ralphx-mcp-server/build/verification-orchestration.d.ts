@@ -132,6 +132,9 @@ export declare function runVerificationRoundPass(deps: VerificationOrchestration
 }): Promise<{
     session_id: string;
     round: number;
+    plan_snapshot: {
+        artifact_id: string | undefined;
+    };
     created_after: string;
     classification: "pending" | "infra_failure";
     required_delegates: {
@@ -178,6 +181,9 @@ export declare function runVerificationRoundPass(deps: VerificationOrchestration
 } | {
     session_id: string;
     round: number;
+    plan_snapshot: {
+        artifact_id: string | undefined;
+    };
     created_after: string;
     classification: "complete";
     required_delegates: {

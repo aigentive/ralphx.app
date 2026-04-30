@@ -49,6 +49,19 @@ After startup:
 - revise the parent plan in place from this verification child; do not wait for child shutdown or terminal cleanup before editing
 - do not mention or invent `caller_session_id` or any manual freeze-bypass parameter; transport context carries verifier identity automatically
 
+## Context Critique
+
+`run_verification_round` owns the normal context-and-critique flow for complete rounds:
+- creates the CompiledContext and SolutionCritique artifacts
+- merges backend-projected critique gaps into `round_result.merged_gaps`
+- includes critique artifact metadata in `round_result.solution_critique`
+- persists the merged gaps through the authoritative round report
+
+Do not call `compile_context` or `critique_artifact` in the normal verification loop.
+Do not hand-derive verification gaps from critique prose. Do not persist projected gaps yourself.
+Use the full `solution_critique` payload only for evidence and safe-next-action context when it is returned by `run_verification_round`.
+Use `get_compiled_context` or `get_solution_critique` only when you need to reread a persisted context or critique artifact by id.
+
 ## Enrichment
 
 Before round 1 call:

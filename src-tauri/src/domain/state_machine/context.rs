@@ -6,22 +6,22 @@ use super::mocks::{
     MockTaskScheduler,
 };
 use super::services::{
-    AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter, TaskScheduler,
-    WebhookPublisher,
+    AgentSpawner, DependencyManager, EventEmitter, NoOpReviewCritiquePreparer, Notifier,
+    ReviewCritiquePreparer, ReviewStarter, TaskScheduler, WebhookPublisher,
 };
 use super::types::Blocker;
 use crate::application::ChatService;
 use crate::application::PrPollerRegistry;
 use crate::application::TaskTransitionService;
-use crate::domain::services::github_service::GithubServiceTrait;
 use crate::commands::ExecutionState;
 use crate::domain::entities::PlanBranchId;
 use crate::domain::repositories::{
     ActivityEventRepository, ArtifactRepository, IdeationSessionRepository, PlanBranchRepository,
     ProjectRepository, TaskRepository, TaskStepRepository,
 };
-use ralphx_domain::repositories::ExternalEventsRepository;
+use crate::domain::services::github_service::GithubServiceTrait;
 use dashmap::DashMap;
+use ralphx_domain::repositories::ExternalEventsRepository;
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -48,6 +48,9 @@ pub struct TaskServices {
 
     /// Service for starting reviews on tasks
     pub review_starter: Arc<dyn ReviewStarter>,
+
+    /// Optional preflight that compiles and critiques task execution context before review.
+    pub review_critique_preparer: Arc<dyn ReviewCritiquePreparer>,
 
     /// Unified chat service for worker execution (handles TaskExecution context).
     /// Worker spawning uses this service to persist output to database.
@@ -158,6 +161,7 @@ impl TaskServices {
             notifier,
             dependency_manager,
             review_starter,
+            review_critique_preparer: Arc::new(NoOpReviewCritiquePreparer),
             chat_service,
             execution_state: None,
             app_handle: None,
@@ -216,6 +220,14 @@ impl TaskServices {
     /// Useful in tests to inject a custom MockChatService after `new_mock()`.
     pub fn with_chat_service(mut self, svc: Arc<dyn ChatService>) -> Self {
         self.chat_service = svc;
+        self
+    }
+
+    pub fn with_review_critique_preparer(
+        mut self,
+        preparer: Arc<dyn ReviewCritiquePreparer>,
+    ) -> Self {
+        self.review_critique_preparer = preparer;
         self
     }
 
@@ -294,10 +306,7 @@ impl TaskServices {
 
     /// Set the PR creation guard DashMap (builder pattern).
     /// Should be the same Arc as PrPollerRegistry::pr_creation_guard.
-    pub fn with_pr_creation_guard(
-        mut self,
-        guard: Arc<DashMap<PlanBranchId, ()>>,
-    ) -> Self {
+    pub fn with_pr_creation_guard(mut self, guard: Arc<DashMap<PlanBranchId, ()>>) -> Self {
         self.pr_creation_guard = Some(guard);
         self
     }
@@ -344,6 +353,7 @@ impl TaskServices {
             notifier: Arc::new(MockNotifier::new()),
             dependency_manager: Arc::new(MockDependencyManager::new()),
             review_starter: Arc::new(MockReviewStarter::new()),
+            review_critique_preparer: Arc::new(NoOpReviewCritiquePreparer),
             chat_service: Arc::new(MockChatService::new()),
             execution_state: None,
             app_handle: None,
@@ -377,6 +387,7 @@ impl std::fmt::Debug for TaskServices {
             .field("notifier", &"<Notifier>")
             .field("dependency_manager", &"<DependencyManager>")
             .field("review_starter", &"<ReviewStarter>")
+            .field("review_critique_preparer", &"<ReviewCritiquePreparer>")
             .field("chat_service", &"<ChatService>")
             .field(
                 "execution_state",
@@ -449,11 +460,17 @@ impl std::fmt::Debug for TaskServices {
             )
             .field(
                 "transition_service",
-                &self.transition_service.as_ref().map(|_| "<TaskTransitionService>"),
+                &self
+                    .transition_service
+                    .as_ref()
+                    .map(|_| "<TaskTransitionService>"),
             )
             .field(
                 "webhook_publisher",
-                &self.webhook_publisher.as_ref().map(|_| "<WebhookPublisher>"),
+                &self
+                    .webhook_publisher
+                    .as_ref()
+                    .map(|_| "<WebhookPublisher>"),
             )
             .field(
                 "external_events_repo",

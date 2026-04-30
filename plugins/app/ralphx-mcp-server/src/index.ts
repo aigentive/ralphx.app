@@ -174,6 +174,38 @@ function buildArtifactMutationTransportHeaders(): Record<string, string> | undef
   };
 }
 
+type SolutionCritiqueTargetArgs = {
+  target_artifact_id?: string;
+  target_type?: string;
+  target_id?: string;
+};
+
+function buildSolutionCritiqueTargetPayload(
+  args: SolutionCritiqueTargetArgs
+): Record<string, string> {
+  const payload: Record<string, string> = {};
+  if (typeof args.target_artifact_id === "string" && args.target_artifact_id) {
+    payload.target_artifact_id = args.target_artifact_id;
+  }
+  const hasTypedTarget = Boolean(args.target_type || args.target_id);
+  if (hasTypedTarget) {
+    if (typeof args.target_type !== "string" || !args.target_type) {
+      throw new Error("target_type is required when target_id is provided.");
+    }
+    if (typeof args.target_id !== "string" || !args.target_id) {
+      throw new Error("target_id is required when target_type is provided.");
+    }
+    payload.target_type = args.target_type;
+    payload.target_id = args.target_id;
+  }
+  if (!payload.target_artifact_id && !payload.target_type) {
+    throw new Error(
+      "A critique target is required: provide target_artifact_id or target_type plus target_id."
+    );
+  }
+  return payload;
+}
+
 const {
   getPlanVerificationForTool,
   reportVerificationRoundForTool,
@@ -181,7 +213,7 @@ const {
   runVerificationEnrichment,
   runVerificationRound,
   resolveVerificationFindingSessionId,
-  resolveContextSessionId,
+  resolveVerifierParentSessionId,
 } = createVerificationRuntime({
   callTauri,
   callTauriGet,
@@ -592,6 +624,62 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         convergence_reason?: string;
         generation: number;
       });
+    } else if (name === "compile_context") {
+      const { session_id, source_limits, ...targetArgs } = args as {
+        session_id?: string;
+        source_limits?: Record<string, unknown>;
+      } & SolutionCritiqueTargetArgs;
+      const resolvedSessionId = await resolveVerifierParentSessionId(
+        session_id,
+        "compile_context"
+      );
+      result = await callTauri(
+        `ideation/sessions/${resolvedSessionId}/compiled-context`,
+        {
+          ...buildSolutionCritiqueTargetPayload(targetArgs),
+          source_limits: source_limits ?? {},
+        }
+      );
+    } else if (name === "get_compiled_context") {
+      const { session_id, artifact_id } = args as {
+        session_id?: string;
+        artifact_id: string;
+      };
+      const resolvedSessionId = await resolveVerifierParentSessionId(
+        session_id,
+        "get_compiled_context"
+      );
+      result = await callTauriGet(
+        `ideation/sessions/${resolvedSessionId}/compiled-context/${artifact_id}`
+      );
+    } else if (name === "critique_artifact") {
+      const { session_id, compiled_context_artifact_id, ...targetArgs } = args as {
+        session_id?: string;
+        compiled_context_artifact_id: string;
+      } & SolutionCritiqueTargetArgs;
+      const resolvedSessionId = await resolveVerifierParentSessionId(
+        session_id,
+        "critique_artifact"
+      );
+      result = await callTauri(
+        `ideation/sessions/${resolvedSessionId}/solution-critique`,
+        {
+          ...buildSolutionCritiqueTargetPayload(targetArgs),
+          compiled_context_artifact_id,
+        }
+      );
+    } else if (name === "get_solution_critique") {
+      const { session_id, artifact_id } = args as {
+        session_id?: string;
+        artifact_id: string;
+      };
+      const resolvedSessionId = await resolveVerifierParentSessionId(
+        session_id,
+        "get_solution_critique"
+      );
+      result = await callTauriGet(
+        `ideation/sessions/${resolvedSessionId}/solution-critique/${artifact_id}`
+      );
     } else if (name === "revert_and_skip") {
       // POST /api/ideation/sessions/:id/revert-and-skip
       const { session_id, plan_version_to_restore } = args as {

@@ -60,6 +60,7 @@ Canonical authoring flow: `.claude/rules/agent-authoring.md`
 | `ralphx-project-analyzer` | — | sonnet | Project analysis |
 | `ralphx-memory-maintainer` | — | sonnet | Memory management |
 | `ralphx-memory-capture` | — | sonnet | Memory capture |
+| `ralphx-design-agent` | — | opus | Cross-harness UI/UX design agent for design-system alignment, component polish, interaction states, visual review, prototypes, and focused frontend implementation. Canonical prompt: `agents/ralphx-design-agent/shared/prompt.md`. Native wrappers: `.claude/agents/ralphx-design-agent.md` and `.codex/agents/ralphx-design-agent.toml`. |
 | `plan-critic-layer1` | — | opus | Layer 1 completeness critic for plan verification. Returns structured JSON gap analysis only. |
 | `plan-critic-layer2` | — | opus | Dual-lens implementation critic (minimal/surgical + defense-in-depth). Read-only. No Write/Edit/Bash. |
 | `ralphx-plan-verifier` | — | opus | Owns adversarial round loop — spawns critics, merges gaps, revises plan. |

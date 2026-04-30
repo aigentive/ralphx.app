@@ -7,6 +7,7 @@ mod append;
 mod dependency_analysis;
 mod proposals;
 mod runtime;
+mod solution_critic;
 mod verification;
 
 pub use acceptance::*;
@@ -14,6 +15,7 @@ pub use append::*;
 pub use dependency_analysis::*;
 pub use proposals::*;
 pub use runtime::*;
+pub use solution_critic::*;
 pub use verification::*;
 pub(crate) use verification::{
     is_blank_orphaned_active_generation, load_verification_child_state,

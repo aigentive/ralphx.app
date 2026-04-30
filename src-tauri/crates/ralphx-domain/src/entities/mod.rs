@@ -23,6 +23,7 @@ pub mod project;
 pub mod research;
 pub mod review;
 pub mod review_issue;
+pub mod solution_critique;
 pub mod status;
 pub mod task;
 pub mod task_context;
@@ -112,6 +113,15 @@ pub use review_issue::{
     IssueCategory, IssueProgressSummary, IssueSeverity, IssueStatus, ParseIssueCategoryError,
     ParseIssueSeverityError, ParseIssueStatusError, ReviewIssue as ReviewIssueEntity,
     SeverityBreakdown, SeverityCount,
+};
+pub use solution_critique::{
+    ClaimReview, ClaimReviewStatus, CompiledContext, ContextAssumption, ContextClaim,
+    ContextClaimKind, ContextQuestion, ContextSourceRef, ContextSourceType, ContextTargetRef,
+    ContextTargetType, CritiqueConfidence, CritiqueSeverity, ProjectedCritiqueGap,
+    ProjectedCritiqueGapOrigin, ProjectedCritiqueGapOriginKind, ProjectedCritiqueGapStatus,
+    RecommendationReview, RecommendationStatus, RiskAssessment, SolutionCritique,
+    SolutionCritiqueGapAction, SolutionCritiqueGapActionKind, SolutionCritiqueVerdict,
+    VerificationRequirement,
 };
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::{Task, TaskCategory};

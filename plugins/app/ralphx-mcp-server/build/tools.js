@@ -11,6 +11,7 @@ import { IDEATION_TOOLS } from "./ideation-tools.js";
 import { WORKFLOW_TOOLS } from "./workflow-tools.js";
 import { AGENT_WORKSPACE_TOOLS } from "./agent-workspace-tools.js";
 import { SUPPORT_TOOLS } from "./support-tools.js";
+import { SOLUTION_CRITIC_TOOLS } from "./solution-critic-tools.js";
 import { formatToolErrorMessageFromRegistry, getToolRecoveryHintFromRegistry, } from "./tool-recovery.js";
 import { logToolsByAgent } from "./tool-debug.js";
 import { getAllowedToolNames as resolveAllowedToolNames, getToolsByAgent as resolveToolsByAgent, parseAllowedToolsFromArgs as parseAllowedToolsFromKnownRegistry, } from "./tool-authorization.js";
@@ -31,6 +32,10 @@ export const ALL_TOOLS = [
     // PLAN ARTIFACT TOOLS (ralphx-ideation agent)
     // ========================================================================
     ...PLAN_TOOLS,
+    // ========================================================================
+    // SOLUTION CRITIC TOOLS (verification context compiler + critique)
+    // ========================================================================
+    ...SOLUTION_CRITIC_TOOLS,
     // ========================================================================
     // WORKER CONTEXT TOOLS (worker agent)
     // ========================================================================

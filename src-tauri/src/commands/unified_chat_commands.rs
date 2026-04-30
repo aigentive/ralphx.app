@@ -1560,7 +1560,7 @@ pub async fn send_agent_message(
         .filter(|conversation_id| !conversation_id.is_empty())
         .map(ChatConversationId::from_string);
 
-    service
+    match service
         .send_message(
             context_type,
             &input.context_id,
@@ -1573,8 +1573,18 @@ pub async fn send_agent_message(
             },
         )
         .await
-        .map(SendAgentMessageResponse::from)
-        .map_err(|e| e.to_string())
+    {
+        Ok(result) => Ok(SendAgentMessageResponse::from(result)),
+        Err(error) => {
+            tracing::error!(
+                context_type = %input.context_type,
+                context_id = %input.context_id,
+                error = %error,
+                "[SEND_MSG] send_agent_message failed"
+            );
+            Err(error.to_string())
+        }
+    }
 }
 
 /// Queue a message to be sent when the current agent run completes

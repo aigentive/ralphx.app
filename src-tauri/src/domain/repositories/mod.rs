@@ -15,9 +15,9 @@ pub use ralphx_domain::repositories::{
     memory_entry_repository, memory_event_repository, methodology_repo, plan_branch_repository,
     plan_selection_stats_repository, process_repo, project_repository,
     proposal_dependency_repository, review_repository, review_settings_repository,
-    session_link_repository, status_transition, task_dependency_repository,
-    task_proposal_repository, task_qa_repository, task_repository, task_step_repository,
-    team_message_repository, team_session_repository, workflow_repository,
+    session_link_repository, solution_critique_gap_action_repository, status_transition,
+    task_dependency_repository, task_proposal_repository, task_qa_repository, task_repository,
+    task_step_repository, team_message_repository, team_session_repository, workflow_repository,
 };
 pub use permission_repository::PermissionRepository;
 pub use question_repository::QuestionRepository;

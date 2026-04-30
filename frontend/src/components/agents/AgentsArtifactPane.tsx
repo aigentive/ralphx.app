@@ -35,6 +35,7 @@ import { useConversationHistoryWindow } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { useVerificationStatus } from "@/hooks/useVerificationStatus";
+import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
 import type { Artifact } from "@/types/artifact";
 import type { IdeationSession, TaskProposal, VerificationStatus } from "@/types/ideation";
 import type {
@@ -812,19 +813,37 @@ function AgentPlanPanel({
             />
           </Suspense>
         ) : (
-          <Suspense fallback={<EmptyArtifactState title="Loading plan..." />}>
-            <LazyPlanDisplay
-              plan={planArtifact}
-              linkedProposalsCount={proposals.filter((proposal) => proposal.planArtifactId === planArtifact.id).length}
-              onEdit={() => setIsEditing(true)}
-              onExport={() => setExportDialogOpen(true)}
-              isExpanded={isPlanExpanded}
-              onExpandedChange={setIsPlanExpanded}
-              chromeless
-              {...(teamMetadata !== undefined && { teamMetadata })}
-              {...(session !== null && { onCreateProposals: handleCreateProposals })}
-            />
-          </Suspense>
+          <div className="space-y-3">
+            {session && (
+              <div className="flex items-center justify-end">
+                <SolutionCritiqueAction
+                  sessionId={session.id}
+                  target={{
+                    targetType: "plan_artifact",
+                    id: planArtifact.id,
+                    label: planArtifact.name,
+                  }}
+                  label="Critique"
+                  size="xs"
+                />
+              </div>
+            )}
+            <Suspense fallback={<EmptyArtifactState title="Loading plan..." />}>
+              <LazyPlanDisplay
+                plan={planArtifact}
+                linkedProposalsCount={
+                  proposals.filter((proposal) => proposal.planArtifactId === planArtifact.id).length
+                }
+                onEdit={() => setIsEditing(true)}
+                onExport={() => setExportDialogOpen(true)}
+                isExpanded={isPlanExpanded}
+                onExpandedChange={setIsPlanExpanded}
+                chromeless
+                {...(teamMetadata !== undefined && { teamMetadata })}
+                {...(session !== null && { onCreateProposals: handleCreateProposals })}
+              />
+            </Suspense>
+          </div>
         )
       ) : (
         <Suspense fallback={<EmptyArtifactState title="Loading plan..." />}>

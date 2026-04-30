@@ -10,6 +10,7 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
+import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
 import type { InternalStatus } from "@/types/task";
 import { DescriptionBlock } from "./DescriptionBlock";
 import { DetailCard } from "./DetailCard";
@@ -317,6 +318,21 @@ export function TaskContextRail({
       </RailSection>
 
       <HistoricalLensCard viewMode={model.viewMode} />
+      {model.sessionId && model.viewMode.kind === "current" && (
+        <RailSection title="Critique">
+          <DetailCard>
+            <SolutionCritiqueAction
+              sessionId={model.sessionId}
+              target={{
+                targetType: "task_execution",
+                id: model.task.id,
+                label: model.task.title,
+              }}
+              className="w-full justify-center"
+            />
+          </DetailCard>
+        </RailSection>
+      )}
       <PlanCard model={model} />
       {model.branch && <BranchCard branch={model.branch} />}
       {model.pullRequest && <PullRequestCard pullRequest={model.pullRequest} />}

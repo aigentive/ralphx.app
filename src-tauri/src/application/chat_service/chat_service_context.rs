@@ -11,14 +11,15 @@ use std::sync::Arc;
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::entities::{
-    Artifact, ArtifactContent, ArtifactId, ArtifactType, ChatAttachment, ChatContextType,
-    ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, DelegatedSessionId, GitMode,
-    IdeationSessionId, MessageRole, ProjectId, TaskId,
+    AgentConversationWorkspaceStatus, Artifact, ArtifactContent, ArtifactId, ArtifactType,
+    ChatAttachment, ChatContextType, ChatConversation, ChatConversationId, ChatMessage,
+    ChatMessageId, DelegatedSessionId, GitMode, IdeationSession, IdeationSessionId, MessageRole,
+    Project, ProjectId, TaskId,
 };
 use crate::domain::repositories::{
-    AgentLaneSettingsRepository, ArtifactRepository, ChatAttachmentRepository,
-    DelegatedSessionRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
-    IdeationSessionRepository, ProjectRepository, TaskRepository,
+    AgentConversationWorkspaceRepository, AgentLaneSettingsRepository, ArtifactRepository,
+    ChatAttachmentRepository, DelegatedSessionRepository, IdeationEffortSettingsRepository,
+    IdeationModelSettingsRepository, IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::agent_names;
 use crate::infrastructure::agents::claude::{
@@ -33,10 +34,13 @@ use crate::utils::truncate_str;
 
 use super::super::agent_lane_resolution::ResolvedAgentSpawnSettings;
 use super::chat_service_helpers::resolve_agent_with_team_mode;
+use crate::application::agent_conversation_workspace::repair_missing_agent_conversation_workspace;
 use crate::application::harness_runtime_registry::{
     resolve_chat_harness_cli, ResolvedChatHarnessCli,
 };
-use crate::application::ideation_workspace::resolve_ideation_workspace_path;
+use crate::application::ideation_workspace::{
+    repair_missing_ideation_workspace, resolve_ideation_workspace_path,
+};
 
 /// Maximum number of recent messages to inject into the bootstrap prompt.
 pub const SESSION_HISTORY_LIMIT: usize = 50;
@@ -1224,6 +1228,53 @@ pub async fn resolve_project_id(
     }
 }
 
+async fn repair_missing_ideation_or_linked_agent_workspace(
+    session: &IdeationSession,
+    project: &Project,
+    agent_conversation_workspace_repo: Option<&Arc<dyn AgentConversationWorkspaceRepository>>,
+) -> Result<PathBuf, String> {
+    let session_workspace_path = session.analysis.workspace_path.as_deref();
+
+    if let Some(repo) = agent_conversation_workspace_repo {
+        let workspaces = repo
+            .get_by_project_id(&session.project_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        if let Some(workspace) = workspaces.into_iter().find(|workspace| {
+            workspace
+                .linked_ideation_session_id
+                .as_ref()
+                .is_some_and(|linked_session_id| linked_session_id == &session.id)
+                || session_workspace_path
+                    .is_some_and(|workspace_path| workspace.worktree_path == workspace_path)
+        }) {
+            let repaired = repair_missing_agent_conversation_workspace(project, &workspace)
+                .await
+                .map_err(|error| error.to_string())?;
+            if workspace.status != AgentConversationWorkspaceStatus::Active {
+                if let Err(error) = repo
+                    .update_status(
+                        &workspace.conversation_id,
+                        AgentConversationWorkspaceStatus::Active,
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        conversation_id = workspace.conversation_id.as_str(),
+                        error = %error,
+                        "Failed to mark repaired agent conversation workspace active"
+                    );
+                }
+            }
+            return Ok(repaired);
+        }
+    }
+
+    repair_missing_ideation_workspace(session, project)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 /// Resolve the project's working directory from a context
 ///
 /// For task-related contexts:
@@ -1242,6 +1293,7 @@ pub async fn resolve_working_directory(
     task_repo: Arc<dyn TaskRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
+    agent_conversation_workspace_repo: Option<Arc<dyn AgentConversationWorkspaceRepository>>,
     default_working_directory: &Path,
 ) -> Result<PathBuf, String> {
     match context_type {
@@ -1269,7 +1321,19 @@ pub async fn resolve_working_directory(
                         if let Ok(Some(project)) =
                             project_repo.get_by_id(&parent_session.project_id).await
                         {
-                            return resolve_ideation_workspace_path(&parent_session, &project);
+                            return match resolve_ideation_workspace_path(&parent_session, &project)
+                            {
+                                Ok(path) => Ok(path),
+                                Err(error) if error.contains("analysis workspace is missing") => {
+                                    repair_missing_ideation_or_linked_agent_workspace(
+                                        &parent_session,
+                                        &project,
+                                        agent_conversation_workspace_repo.as_ref(),
+                                    )
+                                    .await
+                                }
+                                Err(error) => Err(error),
+                            };
                         }
                     }
                 }
@@ -1426,7 +1490,94 @@ pub async fn resolve_working_directory(
                 .await
             {
                 if let Ok(Some(project)) = project_repo.get_by_id(&session.project_id).await {
-                    return resolve_ideation_workspace_path(&session, &project);
+                    if session.session_purpose == SessionPurpose::Verification {
+                        match resolve_ideation_workspace_path(&session, &project) {
+                            Ok(path) => return Ok(path),
+                            Err(child_error)
+                                if child_error.contains("analysis workspace is missing") =>
+                            {
+                                match repair_missing_ideation_or_linked_agent_workspace(
+                                    &session,
+                                    &project,
+                                    agent_conversation_workspace_repo.as_ref(),
+                                )
+                                .await
+                                {
+                                    Ok(path) => return Ok(path),
+                                    Err(repair_error) => {
+                                        tracing::warn!(
+                                            child_session_id = context_id,
+                                            child_error = %child_error,
+                                            repair_error = %repair_error,
+                                            "Failed to repair missing verification child analysis workspace; trying parent session"
+                                        );
+                                    }
+                                }
+                                if let Some(parent_session_id) = session.parent_session_id.as_ref()
+                                {
+                                    if let Ok(Some(parent_session)) =
+                                        ideation_session_repo.get_by_id(parent_session_id).await
+                                    {
+                                        match resolve_ideation_workspace_path(
+                                            &parent_session,
+                                            &project,
+                                        ) {
+                                            Ok(path) => return Ok(path),
+                                            Err(parent_error)
+                                                if parent_error
+                                                    .contains("analysis workspace is missing") =>
+                                            {
+                                                match repair_missing_ideation_or_linked_agent_workspace(
+                                                    &parent_session,
+                                                    &project,
+                                                    agent_conversation_workspace_repo.as_ref(),
+                                                )
+                                                .await
+                                                {
+                                                    Ok(path) => return Ok(path),
+                                                    Err(parent_repair_error) => {
+                                                        tracing::warn!(
+                                                            child_session_id = context_id,
+                                                            parent_session_id = parent_session_id.as_str(),
+                                                            parent_error = %parent_error,
+                                                            repair_error = %parent_repair_error,
+                                                            "Failed to repair missing parent analysis workspace for verification child"
+                                                        );
+                                                    }
+                                                }
+                                                tracing::warn!(
+                                                    child_session_id = context_id,
+                                                    parent_session_id = parent_session_id.as_str(),
+                                                    child_error = %child_error,
+                                                    parent_error = %parent_error,
+                                                    fallback = %project.working_directory,
+                                                    "Verification child inherited a missing analysis workspace; falling back to project root"
+                                                );
+                                                return Ok(PathBuf::from(
+                                                    &project.working_directory,
+                                                ));
+                                            }
+                                            Err(parent_error) => return Err(parent_error),
+                                        }
+                                    }
+                                }
+                                return Err(child_error);
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    }
+                    return match resolve_ideation_workspace_path(&session, &project) {
+                        Ok(path) => Ok(path),
+                        Err(error) if error.contains("analysis workspace is missing") => {
+                            repair_missing_ideation_or_linked_agent_workspace(
+                                &session,
+                                &project,
+                                agent_conversation_workspace_repo.as_ref(),
+                            )
+                            .await
+                        }
+                        Err(error) => Err(error),
+                    };
                 }
             }
         }

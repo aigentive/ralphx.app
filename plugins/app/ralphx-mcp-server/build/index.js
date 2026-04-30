@@ -136,7 +136,28 @@ function buildArtifactMutationTransportHeaders() {
         "X-RalphX-Caller-Session-Id": RALPHX_CONTEXT_ID,
     };
 }
-const { getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, resolveVerificationFindingSessionId, resolveContextSessionId, } = createVerificationRuntime({
+function buildSolutionCritiqueTargetPayload(args) {
+    const payload = {};
+    if (typeof args.target_artifact_id === "string" && args.target_artifact_id) {
+        payload.target_artifact_id = args.target_artifact_id;
+    }
+    const hasTypedTarget = Boolean(args.target_type || args.target_id);
+    if (hasTypedTarget) {
+        if (typeof args.target_type !== "string" || !args.target_type) {
+            throw new Error("target_type is required when target_id is provided.");
+        }
+        if (typeof args.target_id !== "string" || !args.target_id) {
+            throw new Error("target_id is required when target_type is provided.");
+        }
+        payload.target_type = args.target_type;
+        payload.target_id = args.target_id;
+    }
+    if (!payload.target_artifact_id && !payload.target_type) {
+        throw new Error("A critique target is required: provide target_artifact_id or target_type plus target_id.");
+    }
+    return payload;
+}
+const { getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, resolveVerificationFindingSessionId, resolveVerifierParentSessionId, } = createVerificationRuntime({
     callTauri,
     callTauriGet,
     agentType: AGENT_TYPE,
@@ -483,6 +504,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         else if (name === "complete_plan_verification") {
             result = await completePlanVerificationForTool(args);
+        }
+        else if (name === "compile_context") {
+            const { session_id, source_limits, ...targetArgs } = args;
+            const resolvedSessionId = await resolveVerifierParentSessionId(session_id, "compile_context");
+            result = await callTauri(`ideation/sessions/${resolvedSessionId}/compiled-context`, {
+                ...buildSolutionCritiqueTargetPayload(targetArgs),
+                source_limits: source_limits ?? {},
+            });
+        }
+        else if (name === "get_compiled_context") {
+            const { session_id, artifact_id } = args;
+            const resolvedSessionId = await resolveVerifierParentSessionId(session_id, "get_compiled_context");
+            result = await callTauriGet(`ideation/sessions/${resolvedSessionId}/compiled-context/${artifact_id}`);
+        }
+        else if (name === "critique_artifact") {
+            const { session_id, compiled_context_artifact_id, ...targetArgs } = args;
+            const resolvedSessionId = await resolveVerifierParentSessionId(session_id, "critique_artifact");
+            result = await callTauri(`ideation/sessions/${resolvedSessionId}/solution-critique`, {
+                ...buildSolutionCritiqueTargetPayload(targetArgs),
+                compiled_context_artifact_id,
+            });
+        }
+        else if (name === "get_solution_critique") {
+            const { session_id, artifact_id } = args;
+            const resolvedSessionId = await resolveVerifierParentSessionId(session_id, "get_solution_critique");
+            result = await callTauriGet(`ideation/sessions/${resolvedSessionId}/solution-critique/${artifact_id}`);
         }
         else if (name === "revert_and_skip") {
             // POST /api/ideation/sessions/:id/revert-and-skip

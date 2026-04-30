@@ -167,13 +167,17 @@ export function useChatActions({
           });
         }
         if (sentResult) {
+          if (!sentResult.wasQueued && sentResult.agentRunId) {
+            setAgentRunning(storeContextKey, true);
+          }
           void onUserMessageSent?.({ content, result: sentResult });
         }
-      } catch {
+      } catch (error) {
         // Reset agent running state on error for the correct store context key.
         // Covers review, task_execution, merge, and ideation (idempotent for ideation
         // where storeContextKey and useChat's contextKey happen to match).
         setAgentRunning(storeContextKey, false);
+        throw error;
       }
     },
     [sendMessage, contextType, contextId, selectedTaskId, storeContextKey, setAgentRunning, setSending, setActiveConversation, queryClient, ideationSessionId, messageCount, queueMessage, onUserMessageSent]

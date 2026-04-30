@@ -52,6 +52,7 @@ pub(super) async fn resolve_teammate_working_dir(
                 Arc::clone(&state.app_state.task_repo),
                 Arc::clone(&state.app_state.ideation_session_repo),
                 Arc::clone(&state.app_state.delegated_session_repo),
+                Some(Arc::clone(&state.app_state.agent_conversation_workspace_repo)),
                 &default_working_dir(),
             )
             .await;

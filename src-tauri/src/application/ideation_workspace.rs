@@ -56,6 +56,60 @@ pub fn resolve_ideation_workspace_path(
         .unwrap_or(project_root))
 }
 
+pub async fn repair_missing_ideation_workspace(
+    session: &IdeationSession,
+    project: &Project,
+) -> AppResult<PathBuf> {
+    match resolve_ideation_workspace_path(session, project) {
+        Ok(path) => return Ok(path),
+        Err(error) if error.contains("analysis workspace is missing") => {}
+        Err(error) => return Err(AppError::Validation(error)),
+    }
+
+    let Some(workspace_path) = session.analysis.workspace_path.as_deref() else {
+        return Err(AppError::Validation(format!(
+            "Ideation session {} requires a dedicated workspace but has no analysis_workspace_path",
+            session.id
+        )));
+    };
+    let Some(base_ref) = session
+        .analysis
+        .base_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(AppError::Validation(format!(
+            "Ideation session {} analysis workspace is missing and has no base ref to recreate it",
+            session.id
+        )));
+    };
+
+    let repo_path = PathBuf::from(&project.working_directory);
+    let workspace_path = PathBuf::from(workspace_path);
+    if workspace_path == repo_path {
+        return Err(AppError::Validation(format!(
+            "Ideation session {} dedicated workspace points to project root",
+            session.id
+        )));
+    }
+    if !GitService::ref_exists(&repo_path, base_ref).await? {
+        return Err(AppError::Validation(format!(
+            "Ideation session {} analysis workspace is missing and base ref '{}' no longer exists",
+            session.id, base_ref
+        )));
+    }
+
+    tracing::warn!(
+        session_id = session.id.as_str(),
+        workspace_path = %workspace_path.display(),
+        base_ref,
+        "Recreating missing ideation analysis workspace before agent spawn"
+    );
+    GitService::checkout_existing_branch_worktree(&repo_path, &workspace_path, base_ref).await?;
+    resolve_ideation_workspace_path(session, project).map_err(AppError::Validation)
+}
+
 pub async fn prepare_ideation_analysis_state(
     project: &Project,
     session_id: &IdeationSessionId,

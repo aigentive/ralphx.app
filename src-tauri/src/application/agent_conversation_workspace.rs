@@ -420,6 +420,41 @@ pub async fn resolve_valid_agent_conversation_workspace_path(
     Ok(expected_path)
 }
 
+pub async fn repair_missing_agent_conversation_workspace(
+    project: &Project,
+    workspace: &AgentConversationWorkspace,
+) -> AppResult<PathBuf> {
+    match resolve_valid_agent_conversation_workspace_path(project, workspace).await {
+        Ok(path) => return Ok(path),
+        Err(error)
+            if error
+                .to_string()
+                .contains("Agent conversation workspace is missing") => {}
+        Err(error) => return Err(error),
+    }
+
+    let repo_path = PathBuf::from(&project.working_directory);
+    let expected_path =
+        resolve_agent_conversation_workspace_path(project, &workspace.conversation_id)?;
+
+    tracing::warn!(
+        conversation_id = workspace.conversation_id.as_str(),
+        workspace_path = %expected_path.display(),
+        branch_name = workspace.branch_name.as_str(),
+        base_ref = workspace.base_ref.as_str(),
+        "Recreating missing agent conversation workspace before agent spawn"
+    );
+
+    ensure_agent_conversation_worktree(
+        &repo_path,
+        &expected_path,
+        &workspace.branch_name,
+        &workspace.base_ref,
+    )
+    .await?;
+    resolve_valid_agent_conversation_workspace_path(project, workspace).await
+}
+
 fn expand_worktree_parent(parent: &str) -> AppResult<PathBuf> {
     let expanded = if let Some(rest) = parent.strip_prefix("~/") {
         let home = dirs::home_dir().ok_or_else(|| {
@@ -618,6 +653,49 @@ mod tests {
             .await
             .expect("rolled workspace branch should resolve");
         assert_eq!(checked_out, updated.branch_name);
+    }
+
+    #[tokio::test]
+    async fn repair_missing_agent_conversation_workspace_restores_recorded_branch() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let repo_path = temp.path().join("repo");
+        let worktree_parent = temp.path().join("worktrees");
+        setup_repo(&repo_path);
+
+        let mut project = Project::new(
+            "Agent Repair".to_string(),
+            repo_path.to_string_lossy().to_string(),
+        );
+        project.worktree_parent_directory = Some(worktree_parent.to_string_lossy().to_string());
+
+        let conversation_id =
+            ChatConversationId::from_string("conversation-repair-test".to_string());
+        let workspace = prepare_agent_conversation_workspace(
+            &project,
+            &conversation_id,
+            AgentConversationWorkspaceMode::Ideation,
+            AgentConversationWorkspaceBaseSelection {
+                kind: Some(IdeationAnalysisBaseRefKind::ProjectDefault),
+                base_ref: Some("main".to_string()),
+                display_name: None,
+            },
+        )
+        .await
+        .expect("workspace should be prepared");
+        git(
+            &repo_path,
+            &["worktree", "remove", "-f", workspace.worktree_path.as_str()],
+        );
+
+        let repaired = repair_missing_agent_conversation_workspace(&project, &workspace)
+            .await
+            .expect("missing workspace should be repaired");
+
+        assert_eq!(repaired, PathBuf::from(&workspace.worktree_path));
+        let checked_out = GitService::get_current_branch(&repaired)
+            .await
+            .expect("repaired workspace branch should resolve");
+        assert_eq!(checked_out, workspace.branch_name);
     }
 
     #[tokio::test]

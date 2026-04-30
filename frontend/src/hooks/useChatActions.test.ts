@@ -243,6 +243,22 @@ describe("useChatActions", () => {
       expect(mockSpawnSessionNamer).not.toHaveBeenCalled();
     });
 
+    it("marks the context running after a confirmed non-queued send", async () => {
+      const { result } = setup({
+        contextType: "ideation",
+        contextId: "session-1",
+        storeContextKey: "session:session-1",
+        ideationSessionId: "session-1",
+        messageCount: 3,
+      });
+
+      await act(async () => {
+        await result.current.handleSend("follow-up message");
+      });
+
+      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("session:session-1", true);
+    });
+
     it("ideation seeds waiting-for-capacity state immediately when queued as pending", async () => {
       const queuedAsPendingResult = {
         conversationId: "conv-pending",
@@ -280,6 +296,7 @@ describe("useChatActions", () => {
           lastEffectiveModel: null,
         },
       );
+      expect(mockActions.setAgentRunning).not.toHaveBeenCalledWith("ideation:session-1", true);
     });
   });
 
@@ -482,9 +499,7 @@ describe("useChatActions", () => {
 
       mutateAsync.mockRejectedValue(new Error("send failed"));
 
-      await act(async () => {
-        await result.current.handleSend("will fail");
-      });
+      await expect(result.current.handleSend("will fail")).rejects.toThrow("send failed");
 
       // On error, agent running state is reset on the correct key
       expect(mockActions.setAgentRunning).toHaveBeenCalledWith("task_execution:task-err", false);
@@ -499,9 +514,7 @@ describe("useChatActions", () => {
 
       mockSendAgentMessage.mockRejectedValue(new Error("merge failed"));
 
-      await act(async () => {
-        await result.current.handleSend("will fail");
-      });
+      await expect(result.current.handleSend("will fail")).rejects.toThrow("merge failed");
 
       expect(mockActions.setAgentRunning).toHaveBeenCalledWith("merge:task-merge-err", false);
     });

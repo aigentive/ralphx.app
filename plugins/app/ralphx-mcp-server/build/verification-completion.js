@@ -1,4 +1,5 @@
 import { aggregateVerificationGaps, parseTypedVerificationFinding, } from "./verification-round-assessment.js";
+import { hasBlockingVerificationGaps, mergeVerificationGaps, } from "./verification-gaps.js";
 const TERMINAL_NEEDS_REVISION_REASONS = new Set([
     "max_rounds",
     "critic_parse_failure",
@@ -54,14 +55,15 @@ export async function completePlanVerificationWithSettlement(deps) {
                 .map((finding) => finding.label)
                 .join(", ")}.`);
         }
-        const { merged_gaps, gap_counts } = aggregateVerificationGaps(parsedRequiredFindings);
+        const { merged_gaps } = aggregateVerificationGaps(parsedRequiredFindings);
+        const finalMergedGaps = mergeVerificationGaps(merged_gaps, deps.projectedSolutionCritiqueGaps ?? []);
         if (deps.body.status === "verified" &&
-            (gap_counts.critical > 0 || gap_counts.high > 0 || gap_counts.medium > 0)) {
-            throw new Error("Cannot complete verification as verified while required findings still contain blocking gaps.");
+            hasBlockingVerificationGaps(finalMergedGaps)) {
+            throw new Error("Cannot complete verification as verified while verification findings or solution critique still contain blocking gaps.");
         }
         completionBody = {
             ...completionBody,
-            gaps: merged_gaps,
+            gaps: finalMergedGaps,
         };
     }
     if (settledRound.classification === "infra_failure") {

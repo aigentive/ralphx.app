@@ -16,6 +16,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { artifactApi } from "@/api/artifact";
+import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
 import type { Artifact } from "@/types/artifact";
 import type { TeamArtifactSummary } from "@/api/team";
 import { cn } from "@/lib/utils";
@@ -197,7 +198,13 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({ content }: { content: 
 // Artifact Card (collapsed by default, lazy-fetches on first expand)
 // ============================================================================
 
-function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
+function ArtifactCard({
+  artifact,
+  sessionId,
+}: {
+  artifact: TeamArtifactSummary;
+  sessionId: string;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [cardState, setCardState] = useState<ArtifactCardState>({
     full: null,
@@ -251,76 +258,93 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
             : "1px solid var(--overlay-faint)",
         }}
       >
-        <CollapsibleTrigger asChild>
-          <button className="flex items-center gap-3 w-full text-left">
-            {/* Type icon */}
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200"
-              style={{
-                background: isOpen ? withAlpha(config.color, 15) : "var(--overlay-faint)",
-                border: isOpen
-                  ? `1px solid ${withAlpha(config.color, 30)}`
-                  : "1px solid var(--overlay-faint)",
-              }}
+        <div className="flex items-center gap-2">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-3 text-left"
             >
-              <Icon
-                className="w-4 h-4 transition-colors duration-200"
-                style={{ color: isOpen ? config.color : "var(--text-muted)" }}
-              />
-            </div>
-
-            {/* Title, version badge, author */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span
-                  className="text-[13px] font-medium truncate tracking-[-0.01em]"
-                  style={{ color: "var(--text-primary)" }}
-                >
-                  {artifact.name}
-                </span>
-                <span
-                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
-                  style={{
-                    background: "var(--overlay-faint)",
-                    border: "1px solid var(--overlay-faint)",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  v{artifact.version}
-                </span>
+              {/* Type icon */}
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200"
+                style={{
+                  background: isOpen ? withAlpha(config.color, 15) : "var(--overlay-faint)",
+                  border: isOpen
+                    ? `1px solid ${withAlpha(config.color, 30)}`
+                    : "1px solid var(--overlay-faint)",
+                }}
+              >
+                <Icon
+                  className="w-4 h-4 transition-colors duration-200"
+                  style={{ color: isOpen ? config.color : "var(--text-muted)" }}
+                />
               </div>
 
-              {/* Collapsed: show author for scannable context */}
-              {!isOpen && artifact.author_teammate && (
-                <span
-                  className="text-[11px] mt-0.5 block truncate"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  by {artifact.author_teammate}
-                </span>
-              )}
+              {/* Title, version badge, author */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-[13px] font-medium truncate tracking-[-0.01em]"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    {artifact.name}
+                  </span>
+                  <span
+                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
+                    style={{
+                      background: "var(--overlay-faint)",
+                      border: "1px solid var(--overlay-faint)",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    v{artifact.version}
+                  </span>
+                </div>
 
-              {/* Expanded: show author if available */}
-              {isOpen && author && (
-                <span
-                  className="text-[11px] mt-0.5 block"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  by {author}
-                </span>
-              )}
-            </div>
+                {/* Collapsed: show author for scannable context */}
+                {!isOpen && artifact.author_teammate && (
+                  <span
+                    className="text-[11px] mt-0.5 block truncate"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    by {artifact.author_teammate}
+                  </span>
+                )}
 
-            {/* Chevron toggle (matches PlanDisplay rotation) */}
-            <ChevronDown
-              className={cn(
-                "w-4 h-4 transition-transform duration-200 flex-shrink-0",
-                !isOpen && "-rotate-90",
-              )}
-              style={{ color: "var(--text-muted)" }}
+                {/* Expanded: show author if available */}
+                {isOpen && author && (
+                  <span
+                    className="text-[11px] mt-0.5 block"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    by {author}
+                  </span>
+                )}
+              </div>
+
+              {/* Chevron toggle (matches PlanDisplay rotation) */}
+              <ChevronDown
+                className={cn(
+                  "w-4 h-4 transition-transform duration-200 flex-shrink-0",
+                  !isOpen && "-rotate-90",
+                )}
+                style={{ color: "var(--text-muted)" }}
+              />
+            </button>
+          </CollapsibleTrigger>
+          {isOpen && (
+            <SolutionCritiqueAction
+              sessionId={sessionId}
+              target={{
+                targetType: "artifact",
+                id: artifact.id,
+                label: artifact.name,
+              }}
+              label="Critique"
+              size="xs"
             />
-          </button>
-        </CollapsibleTrigger>
+          )}
+        </div>
       </div>
 
       {/* Content - renders BELOW header, visually separate (matches PlanDisplay) */}
@@ -376,7 +400,7 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
 // Component
 // ============================================================================
 
-export function TeamResearchView({ artifacts }: TeamResearchViewProps) {
+export function TeamResearchView({ artifacts, sessionId }: TeamResearchViewProps) {
   // Empty state
   if (artifacts.length === 0) {
     return (
@@ -416,7 +440,7 @@ export function TeamResearchView({ artifacts }: TeamResearchViewProps) {
 
       {/* Collapsible artifact cards */}
       {artifacts.map((artifact) => (
-        <ArtifactCard key={artifact.id} artifact={artifact} />
+        <ArtifactCard key={artifact.id} artifact={artifact} sessionId={sessionId} />
       ))}
     </div>
   );

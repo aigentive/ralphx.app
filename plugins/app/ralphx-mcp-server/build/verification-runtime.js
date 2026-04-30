@@ -1,6 +1,7 @@
 import { assessVerificationRound, } from "./verification-round-assessment.js";
 import { runVerificationEnrichmentPass, runVerificationRoundPass, } from "./verification-orchestration.js";
 import { completePlanVerificationWithSettlement } from "./verification-completion.js";
+import { isVerificationGapLike, mergeVerificationGaps, } from "./verification-gaps.js";
 export function createVerificationRuntime(deps) {
     const { callTauri, callTauriGet, agentType, contextType, contextId } = deps;
     const VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS = 90 * 1000;
@@ -35,6 +36,42 @@ export function createVerificationRuntime(deps) {
     }
     async function sleep(ms) {
         await new Promise((resolve) => setTimeout(resolve, ms));
+    }
+    async function generateSolutionCritiqueForRound(args) {
+        if (!args.targetArtifactId) {
+            throw new Error("Solution critique enforcement failed: verification round did not include a target artifact id.");
+        }
+        const compiledContext = await callTauri(`ideation/sessions/${args.sessionId}/compiled-context`, {
+            target_artifact_id: args.targetArtifactId,
+            source_limits: {},
+        });
+        const compiledContextArtifactId = compiledContext.artifact_id;
+        if (typeof compiledContextArtifactId !== "string") {
+            throw new Error("Solution critique enforcement failed: compiled context response did not include artifact_id.");
+        }
+        const critique = await callTauri(`ideation/sessions/${args.sessionId}/solution-critique`, {
+            target_artifact_id: args.targetArtifactId,
+            compiled_context_artifact_id: compiledContextArtifactId,
+        });
+        const critiqueArtifactId = critique.artifact_id;
+        if (typeof critiqueArtifactId !== "string") {
+            throw new Error("Solution critique enforcement failed: critique response did not include artifact_id.");
+        }
+        return {
+            compiled_context_artifact_id: compiledContextArtifactId,
+            critique_artifact_id: critiqueArtifactId,
+            projected_gaps: Array.isArray(critique.projected_gaps)
+                ? critique.projected_gaps.filter(isVerificationGapLike)
+                : [],
+        };
+    }
+    function solutionCritiqueInfraFailure(error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return {
+            classification: "infra_failure",
+            recommended_next_action: "complete_verification_with_infra_failure",
+            summary: `Solution critique generation failed: ${errorMessage}`,
+        };
     }
     function selectLatestVerificationFindingsByCritic(findings, critics, createdAfter, round) {
         const createdAfterMs = typeof createdAfter === "string" && createdAfter.length > 0
@@ -634,6 +671,7 @@ export function createVerificationRuntime(deps) {
                 maxWaitMs: VERIFICATION_REQUIRED_WAIT_DEFAULT_MS,
                 pollIntervalMs: 750,
                 awaitVerificationRoundSettlement,
+                projectedSolutionCritiqueGaps: cachedRoundState.solutionCritique?.projected_gaps ?? [],
                 callInfraFailure: async ({ generation, convergence_reason, round }) => (await callTauri(`ideation/sessions/${sessionId}/verification/infra-failure`, {
                     generation,
                     convergence_reason: convergence_reason ?? "agent_error",
@@ -718,6 +756,46 @@ export function createVerificationRuntime(deps) {
             optionalWaitMs: VERIFICATION_OPTIONAL_WAIT_DEFAULT_MS,
             pollIntervalMs: 750,
         });
+        const resultRecord = result;
+        const planSnapshot = resultRecord.plan_snapshot;
+        let resultClassification = result.classification ??
+            "pending";
+        const baseMergedGaps = Array.isArray(resultRecord.merged_gaps)
+            ? resultRecord.merged_gaps
+            : [];
+        let solutionCritique = null;
+        let mergedGaps = baseMergedGaps;
+        if (agentType === "ralphx-plan-verifier" && resultClassification === "complete") {
+            try {
+                solutionCritique = await generateSolutionCritiqueForRound({
+                    sessionId,
+                    targetArtifactId: typeof planSnapshot?.artifact_id === "string"
+                        ? planSnapshot.artifact_id
+                        : undefined,
+                });
+                mergedGaps = mergeVerificationGaps(baseMergedGaps, solutionCritique.projected_gaps);
+                resultRecord.merged_gaps = mergedGaps;
+                resultRecord.solution_critique = solutionCritique;
+            }
+            catch (error) {
+                const infraFailure = solutionCritiqueInfraFailure(error);
+                resultClassification = "infra_failure";
+                mergedGaps = [];
+                resultRecord.classification = "infra_failure";
+                resultRecord.merged_gaps = [];
+                resultRecord.gap_counts = { critical: 0, high: 0, medium: 0, low: 0 };
+                resultRecord.solution_critique_error = infraFailure.summary;
+                const requiredCriticSettlement = typeof resultRecord.required_critic_settlement === "object" &&
+                    resultRecord.required_critic_settlement !== null &&
+                    !Array.isArray(resultRecord.required_critic_settlement)
+                    ? resultRecord.required_critic_settlement
+                    : {};
+                resultRecord.required_critic_settlement = {
+                    ...requiredCriticSettlement,
+                    ...infraFailure,
+                };
+            }
+        }
         const requiredDelegates = Array.isArray(result.required_delegates)
             ? (result.required_delegates ?? [])
             : [];
@@ -727,17 +805,15 @@ export function createVerificationRuntime(deps) {
         if (requiredDelegates.length > 0 && createdAfter.length > 0) {
             rememberVerificationRoundState(sessionId, {
                 round: args.round,
-                classification: result.classification ??
-                    "pending",
+                classification: resultClassification,
                 createdAfter,
                 requiredDelegates,
-                mergedGaps: Array.isArray(result.merged_gaps)
-                    ? (result.merged_gaps ?? [])
-                    : [],
+                mergedGaps,
+                solutionCritique: solutionCritique ?? undefined,
             });
         }
         if (agentType === "ralphx-plan-verifier" &&
-            (result.classification ?? "pending") === "complete") {
+            resultClassification === "complete") {
             const roundReport = await reportVerificationRoundForTool({
                 round: args.round,
                 generation: roundStart.generation,

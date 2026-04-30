@@ -41,8 +41,16 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { navigateToIdeationSession } from "@/lib/navigation";
 import { getTaskCategoryLabel } from "@/lib/task-category";
 import { withAlpha } from "@/lib/theme-colors";
+import {
+  solutionCriticApi,
+  solutionCriticQueryKeys,
+  type SolutionCritiqueTargetInput,
+} from "@/api/solution-critic";
 import type { Commit } from "@/components/diff";
 import type { ReviewNoteResponse } from "@/lib/tauri";
+import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
+import { ReviewCritiquePreflightBanner } from "@/components/solution-critic/ReviewCritiquePreflightBanner";
+import { buildCritiqueApprovalWarning } from "@/components/solution-critic/reviewCritiqueApproval";
 
 interface ReviewDetailModalProps {
   taskId: string;
@@ -374,7 +382,7 @@ export function ReviewDetailModal({
   });
 
   // Fetch reviews for this task (for hasAiReview indicator)
-  const { hasAiReview } = useReviewsByTaskId(taskId);
+  const { hasAiReview, latestReview } = useReviewsByTaskId(taskId);
 
   // Use pre-fetched history from prop, or fetch if not provided
   const { data: fetchedHistory } = useTaskStateHistory(taskId, { enabled: !historyProp });
@@ -398,6 +406,33 @@ export function ReviewDetailModal({
   // Check if task is in a state that allows human approval
   // (review_passed or escalated)
   const canApprove = task?.internalStatus === "review_passed" || task?.internalStatus === "escalated";
+  const critiqueTarget = useMemo<SolutionCritiqueTargetInput | null>(
+    () =>
+      task
+        ? {
+            targetType: "task_execution",
+            id: task.id,
+            label: `Task execution: ${task.title}`,
+          }
+        : null,
+    [task],
+  );
+  const { data: approvalCritique } = useQuery({
+    queryKey: solutionCriticQueryKeys.targetCritique(
+      task?.ideationSessionId,
+      critiqueTarget ?? { targetType: "task_execution", id: taskId },
+    ),
+    queryFn: () => {
+      if (!task?.ideationSessionId || !critiqueTarget) return Promise.resolve(null);
+      return solutionCriticApi.getLatestTargetSolutionCritique(
+        task.ideationSessionId,
+        critiqueTarget,
+      );
+    },
+    enabled: showActions && Boolean(task?.ideationSessionId && critiqueTarget),
+    staleTime: 30_000,
+    retry: false,
+  });
 
   // Get latest approved review for summary
   const latestApproved = useMemo(() => {
@@ -443,15 +478,16 @@ export function ReviewDetailModal({
   }, [showFeedbackInput, feedback, requestChangesMutation]);
 
   const handleApprove = useCallback(async () => {
+    const critiqueWarning = buildCritiqueApprovalWarning(approvalCritique);
     const confirmed = await confirm({
-      title: "Approve this task?",
-      description: "The task will be marked as approved and completed.",
-      confirmText: "Approve",
-      variant: "default",
+      title: critiqueWarning?.title ?? "Approve this task?",
+      description: critiqueWarning?.description ?? "The task will be marked as approved and completed.",
+      confirmText: critiqueWarning?.confirmText ?? "Approve",
+      variant: critiqueWarning?.variant ?? "default",
     });
     if (!confirmed) return;
     approveMutation.mutate();
-  }, [confirm, approveMutation]);
+  }, [approvalCritique, confirm, approveMutation]);
 
   const handleCommitSelect = useCallback((_commit: Commit) => {
     // In a real implementation, this would fetch files changed in the commit
@@ -503,6 +539,18 @@ export function ReviewDetailModal({
               Review: {task?.title ?? "Loading..."}
             </h2>
             <RevisionCountBadge count={revisionCount} />
+            {task?.ideationSessionId && latestReview && (
+              <SolutionCritiqueAction
+                sessionId={task.ideationSessionId}
+                target={{
+                  targetType: "review_report",
+                  id: latestReview.id,
+                  label: `Review: ${task.title}`,
+                }}
+                label="Critique"
+                size="xs"
+              />
+            )}
           </div>
           <Button
             data-testid="review-detail-modal-close"
@@ -634,6 +682,22 @@ export function ReviewDetailModal({
             />
           </div>
         </div>
+
+        {showActions && task?.ideationSessionId && (
+          <div
+            className="border-t px-4 py-3"
+            style={{
+              borderColor: "var(--overlay-weak)",
+              background: "var(--bg-surface)",
+            }}
+          >
+            <ReviewCritiquePreflightBanner
+              sessionId={task.ideationSessionId}
+              taskId={task.id}
+              taskTitle={task.title}
+            />
+          </div>
+        )}
 
         {/* Footer: Action Buttons */}
         {showActions && (

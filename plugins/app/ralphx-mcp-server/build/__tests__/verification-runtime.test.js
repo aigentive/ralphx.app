@@ -340,6 +340,19 @@ describe("verification runtime settlement and terminal cleanup", () => {
                     },
                 };
             }
+            if (endpoint === "ideation/sessions/parent-session/compiled-context") {
+                return {
+                    artifact_id: "context-1",
+                    compiled_context: { id: "context-1" },
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/solution-critique") {
+                return {
+                    artifact_id: "critique-1",
+                    projected_gaps: [],
+                    solution_critique: { id: "critique-1", verdict: "accept" },
+                };
+            }
             if (endpoint === "ideation/sessions/parent-session/verification") {
                 return {
                     session_id: "parent-session",
@@ -452,6 +465,328 @@ describe("verification runtime settlement and terminal cleanup", () => {
             generation: 9,
             round: 1,
         }));
+    });
+    it("generates a solution critique for complete rounds and reports projected gaps", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date("2026-04-30T09:12:00.000Z"));
+        const callTauri = vi.fn(async (endpoint, payload) => {
+            if (endpoint === "coordination/delegate/start") {
+                const agentName = String(payload?.agent_name ?? "");
+                return {
+                    job_id: `${agentName.split(":").pop() ?? "critic"}-job`,
+                    delegated_session_id: `${agentName.split(":").pop() ?? "critic"}-session`,
+                    agent_name: agentName,
+                };
+            }
+            if (endpoint === "coordination/delegate/wait") {
+                return {
+                    job_id: String(payload?.job_id ?? ""),
+                    status: "completed",
+                    delegated_status: {
+                        latest_run: { status: "completed" },
+                        agent_state: { estimated_status: "completed" },
+                    },
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/compiled-context") {
+                expect(payload).toMatchObject({
+                    target_artifact_id: "plan-1",
+                });
+                return {
+                    artifact_id: "context-1",
+                    compiled_context: {
+                        id: "context-1",
+                        target: { id: "plan-1" },
+                    },
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/solution-critique") {
+                expect(payload).toMatchObject({
+                    target_artifact_id: "plan-1",
+                    compiled_context_artifact_id: "context-1",
+                });
+                return {
+                    artifact_id: "critique-1",
+                    projected_gaps: [
+                        {
+                            severity: "high",
+                            category: "solution_critique_claim",
+                            description: "Unsupported plan claim: missing migration proof.",
+                            why_it_matters: "The plan could be trusted without evidence.",
+                        },
+                    ],
+                    solution_critique: {
+                        id: "critique-1",
+                        verdict: "investigate",
+                    },
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/verification") {
+                return {
+                    session_id: "parent-session",
+                    status: "needs_revision",
+                    in_progress: true,
+                    verification_generation: 11,
+                    selected_generation: 11,
+                    current_gaps: payload?.gaps ?? [],
+                    rounds: [{ round: 1, gap_score: 10, gap_count: 1 }],
+                    round_details: [
+                        {
+                            round: 1,
+                            gap_score: 10,
+                            gap_count: Array.isArray(payload?.gaps) ? payload.gaps.length : 0,
+                            gaps: payload?.gaps ?? [],
+                        },
+                    ],
+                    run_history: [],
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const callTauriGet = vi.fn(async (endpoint) => {
+            if (endpoint === "parent_session_context/child-session") {
+                return {
+                    parent_session: {
+                        id: "parent-session",
+                    },
+                };
+            }
+            if (endpoint === "get_session_plan/parent-session") {
+                return {
+                    id: "plan-1",
+                    artifact_id: "plan-1",
+                    content: "## Goal\nShip enforced solution critique.\n\n## Affected Files\n- `src-tauri/src/application/solution_critic/service.rs` — use existing critique service.\n",
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/verification") {
+                return {
+                    session_id: "parent-session",
+                    status: "reviewing",
+                    in_progress: true,
+                    verification_generation: 11,
+                    selected_generation: 11,
+                    current_round: 0,
+                    max_rounds: 5,
+                    current_gaps: [],
+                    rounds: [],
+                    round_details: [],
+                    run_history: [],
+                };
+            }
+            if (endpoint.startsWith("team/verification-findings/parent-session")) {
+                if (endpoint.includes("created_after=")) {
+                    return {
+                        findings: [
+                            {
+                                artifact_id: "finding-1",
+                                title: "Completeness finding",
+                                created_at: "2026-04-30T09:12:01.000Z",
+                                critic: "completeness",
+                                round: 1,
+                                status: "complete",
+                                summary: "No completeness gaps.",
+                                gaps: [],
+                            },
+                            {
+                                artifact_id: "finding-2",
+                                title: "Feasibility finding",
+                                created_at: "2026-04-30T09:12:01.500Z",
+                                critic: "feasibility",
+                                round: 1,
+                                status: "complete",
+                                summary: "No feasibility gaps.",
+                                gaps: [],
+                            },
+                        ],
+                        count: 2,
+                    };
+                }
+                return {
+                    findings: [],
+                    count: 0,
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const runtime = createVerificationRuntime({
+            callTauri,
+            callTauriGet,
+            agentType: "ralphx-plan-verifier",
+            contextType: "ideation",
+            contextId: "child-session",
+        });
+        const result = await runtime.runVerificationRound({
+            round: 1,
+            selected_specialists: [],
+        });
+        expect(result.classification).toBe("complete");
+        expect(result.solution_critique).toMatchObject({
+            compiled_context_artifact_id: "context-1",
+            critique_artifact_id: "critique-1",
+            projected_gaps: [
+                expect.objectContaining({ category: "solution_critique_claim" }),
+            ],
+        });
+        expect(result.merged_gaps).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                category: "solution_critique_claim",
+                description: "Unsupported plan claim: missing migration proof.",
+            }),
+        ]));
+        expect(result.round_report).toMatchObject({
+            status: "needs_revision",
+            current_gaps: [
+                expect.objectContaining({ category: "solution_critique_claim" }),
+            ],
+        });
+        expect(callTauri).toHaveBeenCalledWith("ideation/sessions/parent-session/verification", expect.objectContaining({
+            gaps: [
+                expect.objectContaining({ category: "solution_critique_claim" }),
+            ],
+        }));
+    });
+    it("classifies the round as infra failure when enforced solution critique generation fails", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date("2026-04-30T09:18:00.000Z"));
+        const callTauri = vi.fn(async (endpoint, payload) => {
+            if (endpoint === "coordination/delegate/start") {
+                const agentName = String(payload?.agent_name ?? "");
+                return {
+                    job_id: `${agentName.split(":").pop() ?? "critic"}-job`,
+                    delegated_session_id: `${agentName.split(":").pop() ?? "critic"}-session`,
+                    agent_name: agentName,
+                };
+            }
+            if (endpoint === "coordination/delegate/wait") {
+                return {
+                    job_id: String(payload?.job_id ?? ""),
+                    status: "completed",
+                    delegated_status: {
+                        latest_run: { status: "completed" },
+                        agent_state: { estimated_status: "completed" },
+                    },
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/compiled-context") {
+                return {
+                    artifact_id: "context-1",
+                    compiled_context: {
+                        id: "context-1",
+                        target: { id: "plan-1" },
+                    },
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/solution-critique") {
+                throw new Error("solution critic model response did not contain JSON");
+            }
+            if (endpoint === "ideation/sessions/parent-session/verification") {
+                if (payload?.status === "reviewing") {
+                    return {
+                        session_id: "parent-session",
+                        status: "reviewing",
+                        in_progress: true,
+                        verification_generation: 11,
+                        selected_generation: 11,
+                        current_gaps: [],
+                        rounds: [],
+                        round_details: [],
+                        run_history: [],
+                    };
+                }
+                throw new Error("round report should not be persisted for critique infra failure");
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const callTauriGet = vi.fn(async (endpoint) => {
+            if (endpoint === "parent_session_context/child-session") {
+                return {
+                    parent_session: {
+                        id: "parent-session",
+                    },
+                };
+            }
+            if (endpoint === "get_session_plan/parent-session") {
+                return {
+                    id: "plan-1",
+                    artifact_id: "plan-1",
+                    content: "## Goal\nShip enforced solution critique.\n\n## Affected Files\n- `src-tauri/src/application/solution_critic/service.rs` — use existing critique service.\n",
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/verification") {
+                return {
+                    session_id: "parent-session",
+                    status: "reviewing",
+                    in_progress: true,
+                    verification_generation: 11,
+                    selected_generation: 11,
+                    current_round: 0,
+                    max_rounds: 5,
+                    current_gaps: [],
+                    rounds: [],
+                    round_details: [],
+                    run_history: [],
+                };
+            }
+            if (endpoint.startsWith("team/verification-findings/parent-session")) {
+                if (endpoint.includes("created_after=")) {
+                    return {
+                        findings: [
+                            {
+                                artifact_id: "finding-1",
+                                title: "Completeness finding",
+                                created_at: "2026-04-30T09:18:01.000Z",
+                                critic: "completeness",
+                                round: 1,
+                                status: "complete",
+                                summary: "No completeness gaps.",
+                                gaps: [],
+                            },
+                            {
+                                artifact_id: "finding-2",
+                                title: "Feasibility finding",
+                                created_at: "2026-04-30T09:18:01.500Z",
+                                critic: "feasibility",
+                                round: 1,
+                                status: "complete",
+                                summary: "No feasibility gaps.",
+                                gaps: [],
+                            },
+                        ],
+                        count: 2,
+                    };
+                }
+                return {
+                    findings: [],
+                    count: 0,
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const runtime = createVerificationRuntime({
+            callTauri,
+            callTauriGet,
+            agentType: "ralphx-plan-verifier",
+            contextType: "ideation",
+            contextId: "child-session",
+        });
+        const result = await runtime.runVerificationRound({
+            round: 1,
+            selected_specialists: [],
+        });
+        expect(result.classification).toBe("infra_failure");
+        expect(result.merged_gaps).toEqual([]);
+        expect(result.round_report).toBeUndefined();
+        expect(result.solution_critique_error).toContain("Solution critique generation failed");
+        expect(result.required_critic_settlement).toMatchObject({
+            classification: "infra_failure",
+            recommended_next_action: "complete_verification_with_infra_failure",
+            summary: "Solution critique generation failed: solution critic model response did not contain JSON",
+        });
+        expect(callTauri).not.toHaveBeenCalledWith("ideation/sessions/parent-session/verification", expect.objectContaining({ gaps: expect.any(Array) }));
+        expect(runtime.getVerificationRoundState("parent-session")).toMatchObject({
+            classification: "infra_failure",
+            mergedGaps: [],
+        });
     });
     it("routes verifier terminal cleanup with missing round context to infra-failure instead of persisting a zero-gap verdict", async () => {
         const callTauri = vi.fn(async (endpoint, payload) => ({
@@ -631,6 +966,95 @@ describe("verification runtime settlement and terminal cleanup", () => {
         expect(result).toMatchObject({
             endpoint: "ideation/sessions/parent-session/verification",
         });
+    });
+    it("blocks verified terminal cleanup when solution critique projected blocking gaps", async () => {
+        const callTauri = vi.fn(async (endpoint, payload) => {
+            if (endpoint === "coordination/delegate/wait") {
+                return {
+                    job_id: "job-1",
+                    status: "completed",
+                    delegated_status: {
+                        latest_run: {
+                            status: "completed",
+                        },
+                        agent_state: {
+                            estimated_status: "completed",
+                        },
+                    },
+                };
+            }
+            return {
+                endpoint,
+                payload,
+            };
+        });
+        const callTauriGet = vi.fn(async (endpoint) => {
+            if (endpoint === "parent_session_context/child-session") {
+                return {
+                    parent_session: {
+                        id: "parent-session",
+                    },
+                };
+            }
+            if (endpoint.startsWith("team/verification-findings/")) {
+                return {
+                    findings: [
+                        {
+                            artifact_id: "finding-1",
+                            title: "Completeness: Round 1",
+                            critic: "completeness",
+                            round: 1,
+                            created_at: "2026-04-30T09:20:01.000Z",
+                            status: "complete",
+                            summary: "No blockers.",
+                            gaps: [],
+                        },
+                    ],
+                    count: 1,
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const runtime = createVerificationRuntime({
+            callTauri,
+            callTauriGet,
+            agentType: "ralphx-plan-verifier",
+            contextType: "ideation",
+            contextId: "child-session",
+        });
+        runtime.rememberVerificationRoundState("parent-session", {
+            round: 1,
+            classification: "complete",
+            createdAfter: "2026-04-30T09:20:00.000Z",
+            mergedGaps: [],
+            solutionCritique: {
+                compiled_context_artifact_id: "context-1",
+                critique_artifact_id: "critique-1",
+                projected_gaps: [
+                    {
+                        severity: "high",
+                        category: "solution_critique_claim",
+                        description: "Unsupported plan claim: missing migration proof.",
+                    },
+                ],
+            },
+            requiredDelegates: [
+                {
+                    job_id: "job-1",
+                    critic: "completeness",
+                    label: "completeness",
+                    required: true,
+                },
+            ],
+        });
+        await expect(runtime.completePlanVerificationForTool({
+            session_id: "wrong-session",
+            status: "verified",
+            convergence_reason: "zero_blocking",
+            generation: 7,
+            round: 1,
+        })).rejects.toThrow("Cannot complete verification as verified while verification findings or solution critique still contain blocking gaps.");
+        expect(callTauri).not.toHaveBeenCalledWith("ideation/sessions/parent-session/verification", expect.anything());
     });
 });
 //# sourceMappingURL=verification-runtime.test.js.map

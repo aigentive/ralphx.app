@@ -165,6 +165,46 @@ pub trait ReviewStarter: Send + Sync {
     async fn start_ai_review(&self, task_id: &str, project_id: &str) -> ReviewStartResult;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewCritiquePreparation {
+    pub compiled_context_artifact_id: String,
+    pub critique_artifact_id: String,
+    pub projected_gap_count: usize,
+    pub verdict: Option<String>,
+    pub safe_next_action: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReviewCritiquePreparationResult {
+    Prepared(ReviewCritiquePreparation),
+    Skipped { reason: String },
+    Error(String),
+}
+
+#[async_trait]
+pub trait ReviewCritiquePreparer: Send + Sync {
+    async fn prepare_task_execution_critique(
+        &self,
+        task_id: &str,
+        project_id: &str,
+    ) -> ReviewCritiquePreparationResult;
+}
+
+pub struct NoOpReviewCritiquePreparer;
+
+#[async_trait]
+impl ReviewCritiquePreparer for NoOpReviewCritiquePreparer {
+    async fn prepare_task_execution_critique(
+        &self,
+        _task_id: &str,
+        _project_id: &str,
+    ) -> ReviewCritiquePreparationResult {
+        ReviewCritiquePreparationResult::Skipped {
+            reason: "solution critique preflight not configured".to_string(),
+        }
+    }
+}
+
 /// Trait for scheduling Ready tasks when execution slots are available.
 ///
 /// The TransitionHandler uses this trait to automatically schedule Ready tasks
@@ -211,12 +251,7 @@ pub trait TaskScheduler: Send + Sync {
 #[async_trait]
 pub trait WebhookPublisher: Send + Sync {
     /// Publish an event to all registered webhook endpoints for the given project.
-    async fn publish(
-        &self,
-        event_type: EventType,
-        project_id: &str,
-        payload: serde_json::Value,
-    );
+    async fn publish(&self, event_type: EventType, project_id: &str, payload: serde_json::Value);
 
     /// Evict a project's webhooks from the publisher cache after a registration mutation.
     ///

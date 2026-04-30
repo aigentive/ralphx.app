@@ -1,0 +1,36 @@
+name: ralphx-design-agent
+role: design_agent
+description: "Cross-harness UI/UX design agent for product interface design, design-system alignment, prototypes, and focused frontend implementation"
+capabilities:
+  mcp_tools:
+    - fs_read_file
+    - fs_list_dir
+    - fs_grep
+    - fs_glob
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+harnesses:
+  claude:
+    model: opus
+    permission_mode: acceptEdits
+    tools:
+      extends: readonly_tools
+      include:
+        - Write
+        - Edit
+        - Bash
+        - LSP
+    preapproved_cli_tools:
+      - Read
+      - Grep
+      - Glob
+      - WebFetch
+      - WebSearch
+      - Skill
+      - Write
+      - Edit
+      - Bash
+  codex:
+    runtime_features:
+      shell_tool: true
