@@ -14,6 +14,7 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use crate::application::{AppState, TeamService, TeamStateTracker};
 use crate::commands::ExecutionState;
 use crate::error::AppResult;
+use crate::utils::backend_endpoint::{backend_http_base_url, backend_http_bind_addr};
 use delegation::DelegationService;
 
 // ============================================================================
@@ -471,9 +472,10 @@ pub async fn start_http_server(
         .merge(public_routes)
         .with_state(state);
 
-    let listener = bind_with_retry("127.0.0.1:3847", 5, Duration::from_millis(250)).await?;
+    let bind_addr = backend_http_bind_addr();
+    let listener = bind_with_retry(&bind_addr, 5, Duration::from_millis(250)).await?;
 
-    tracing::info!("MCP HTTP server listening on http://127.0.0.1:3847");
+    tracing::info!(url = %backend_http_base_url(), "MCP HTTP server listening");
 
     axum::serve(listener, app).await.map_err(|e| {
         crate::error::AppError::Infrastructure(format!("HTTP server crashed: {}", e))

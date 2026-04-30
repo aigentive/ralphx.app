@@ -146,6 +146,8 @@ pub fn build_codex_mcp_overrides(
         mcp_server_path.to_string_lossy().into_owned(),
         "--agent-type".to_string(),
         short_name.to_string(),
+        "--tauri-api-url".to_string(),
+        crate::utils::backend_endpoint::backend_http_base_url(),
     ];
 
     if let Some(runtime_context) = runtime_context {

@@ -12,6 +12,7 @@ import { normalizeConversationProviderMetadata } from "../types/chat-conversatio
 import type { ToolCall } from "../components/Chat/ToolCallIndicator";
 import type { ContentBlockItem } from "../components/Chat/MessageItem";
 import { isWebMode } from "@/lib/tauri-detection";
+import { backendApiUrl } from "@/api/backend";
 
 // ============================================================================
 // Typed Invoke Helper
@@ -226,7 +227,7 @@ export async function getConversationActiveState(
   conversationId: string
 ): Promise<ConversationActiveStateResponse> {
   const res = await fetch(
-    `http://localhost:3847/api/conversations/${conversationId}/active-state`
+    backendApiUrl(`conversations/${conversationId}/active-state`)
   );
   if (!res.ok) {
     throw new Error(`Failed to get conversation active state: ${res.status}`);
@@ -285,7 +286,9 @@ export async function getChildSessionStatus(
   }
 
   const res = await fetch(
-    `http://localhost:3847/api/ideation/sessions/${sessionId}/child-status?include_messages=true&message_limit=5`
+    backendApiUrl(
+      `ideation/sessions/${sessionId}/child-status?include_messages=true&message_limit=5`
+    )
   );
   if (!res.ok) {
     throw new Error(`Failed to get child session status: ${res.status}`);

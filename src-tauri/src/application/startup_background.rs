@@ -14,6 +14,7 @@ use crate::domain::repositories::{
     TaskRepository,
 };
 use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
+use crate::utils::backend_endpoint::backend_http_port;
 use tauri::Manager;
 use tokio::time::MissedTickBehavior;
 use tracing::{info, warn};
@@ -186,12 +187,16 @@ pub async fn maybe_start_external_mcp(
         }
     };
 
-    match wait_for_backend_ready(3847, Duration::from_secs(30)).await {
+    let backend_port = backend_http_port();
+    match wait_for_backend_ready(backend_port, Duration::from_secs(30)).await {
         Err(e) => {
             warn!("Backend not ready, skipping external MCP start: {}", e);
         }
         Ok(()) => {
-            info!("Backend :3847 ready, starting external MCP server");
+            info!(
+                port = backend_port,
+                "Backend ready, starting external MCP server"
+            );
             let app_data_dir = app_handle
                 .path()
                 .app_data_dir()

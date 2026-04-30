@@ -224,6 +224,7 @@ npm run tauri dev
 ```
 
 First build compiles the Rust backend. Subsequent starts are faster.
+Source dev uses backend port `3857`, so it can run while the installed app keeps production port `3847`.
 
 For a fresh native dev start from the repo root:
 

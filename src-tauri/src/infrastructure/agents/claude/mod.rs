@@ -222,6 +222,10 @@ pub fn apply_common_spawn_env(cmd: &mut Command) {
     cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
     cmd.env("CLAUDE_CODE_ENABLE_TASKS", "1");
     cmd.env("DEBUG", "true");
+    cmd.env(
+        "TAURI_API_URL",
+        crate::utils::backend_endpoint::backend_http_base_url(),
+    );
 }
 
 /// Normalize legacy short agent ids to the current canonical ids.
@@ -849,6 +853,8 @@ pub(crate) fn build_mcp_config_with_runtime_context(
             args_vec.push("--agent-type".to_string());
             args_vec.push(short_name.to_string());
         }
+        args_vec.push("--tauri-api-url".to_string());
+        args_vec.push(crate::utils::backend_endpoint::backend_http_base_url());
 
         // Inject --allowed-tools from agent's mcp_tools config (Wave 3).
         // - Agent not in config (None) → skip arg entirely (MCP server resolves canonical metadata,
@@ -1590,8 +1596,8 @@ pub async fn register_mcp_server(cli_path: &Path, plugin_dir: &Path) -> Result<(
     // IMPORTANT: Do NOT specify an "env" field here. The env field in MCP config
     // REPLACES the parent environment entirely (Node.js spawn behavior). We need
     // the MCP server to INHERIT RALPHX_AGENT_TYPE from Claude CLI's environment
-    // (set by Rust when spawning). The MCP server defaults to http://127.0.0.1:3847
-    // for TAURI_API_URL if not specified.
+    // (set by Rust when spawning). The MCP server defaults to the production
+    // backend port when TAURI_API_URL is not specified.
     let mcp_config = serde_json::json!({
         "type": "stdio",
         "command": "node",

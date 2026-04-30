@@ -22,6 +22,7 @@ use tracing;
 
 use crate::infrastructure::agents::claude::ExternalMcpConfig;
 use crate::infrastructure::tool_paths::resolve_ps_cli_path;
+use crate::utils::backend_endpoint::backend_http_base_url;
 
 pub const TAURI_MCP_BYPASS_TOKEN_ENV: &str = "RALPHX_TAURI_MCP_BYPASS_TOKEN";
 
@@ -370,7 +371,7 @@ impl ExternalMcpSupervisor {
 
         cmd.env("EXTERNAL_MCP_PORT", self.config.port.to_string());
         cmd.env("EXTERNAL_MCP_HOST", &self.config.host);
-        cmd.env("RALPHX_BACKEND_URL", "http://127.0.0.1:3847");
+        cmd.env("RALPHX_BACKEND_URL", backend_http_base_url());
         cmd.env(TAURI_MCP_BYPASS_TOKEN_ENV, ensure_tauri_mcp_bypass_token());
         if let Some(token) = &self.config.auth_token {
             cmd.env("EXTERNAL_MCP_AUTH_TOKEN", token);

@@ -1051,6 +1051,20 @@ fn test_create_mcp_config_injects_agent_type() {
     );
     // short name for "ralphx-ideation" drops the "ralphx:" prefix if present
     assert_eq!(arg_strs[agent_type_idx + 1], "ralphx-ideation");
+
+    let tauri_api_idx = arg_strs
+        .iter()
+        .position(|&a| a == "--tauri-api-url")
+        .expect("--tauri-api-url must be present in MCP server args");
+    assert!(
+        tauri_api_idx + 1 < arg_strs.len(),
+        "--tauri-api-url must be followed by a value"
+    );
+    assert!(
+        arg_strs[tauri_api_idx + 1].starts_with("http://127.0.0.1:"),
+        "TAURI API URL must point at a loopback backend; got {}",
+        arg_strs[tauri_api_idx + 1]
+    );
 }
 
 // ==================== Effort Flag Tests (build_teammate_cli_args) ====================
