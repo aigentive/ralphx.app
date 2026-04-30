@@ -148,10 +148,10 @@ describe("SolutionCritiqueSummary", () => {
 
     expect(await screen.findByTestId("solution-critique-summary")).toBeInTheDocument();
     expect(screen.getByText("Plan Solution Critique")).toBeInTheDocument();
-    expect(screen.getByText("Investigate")).toBeInTheDocument();
+    expect(screen.getAllByText("Investigate").length).toBeGreaterThan(0);
     expect(screen.getByText("2 sources")).toBeInTheDocument();
     expect(screen.getByText("1 claim")).toBeInTheDocument();
-    expect(screen.getAllByText("2 gaps")).toHaveLength(2);
+    expect(screen.getAllByText("2 gaps").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Inspect projected gaps.")).toBeInTheDocument();
     expect(screen.getByText("Which migration file owns the change?")).toBeInTheDocument();
     expect(screen.getByText("The previous schema is still current.")).toBeInTheDocument();
@@ -160,6 +160,7 @@ describe("SolutionCritiqueSummary", () => {
     expect(
       screen.getByText("Required verification: prove the migration exists.")
     ).toBeInTheDocument();
+    expect(screen.getByText("from critique: verification")).toBeInTheDocument();
     expect(screen.queryByText(/solution_critique/i)).not.toBeInTheDocument();
   });
 
@@ -246,7 +247,7 @@ describe("SolutionCritiqueSummary", () => {
     renderSummary();
 
     expect(await screen.findByText("Compiled plan context ready")).toBeInTheDocument();
-    expect(await screen.findByText("Investigate", {}, { timeout: 2_500 })).toBeInTheDocument();
+    expect((await screen.findAllByText("Investigate", {}, { timeout: 2_500 })).length).toBeGreaterThan(0);
     expect(screen.getByText("Review the critique.")).toBeInTheDocument();
     expect(solutionCriticApi.getLatestSolutionCritique).toHaveBeenCalledTimes(2);
   });

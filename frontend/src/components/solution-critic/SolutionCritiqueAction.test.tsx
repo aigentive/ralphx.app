@@ -7,6 +7,8 @@ import { SolutionCritiqueAction } from "./SolutionCritiqueAction";
 
 vi.mock("@/api/solution-critic", () => ({
   solutionCriticApi: {
+    getLatestTargetCompiledContext: vi.fn(),
+    getLatestTargetSolutionCritique: vi.fn(),
     compileTargetContext: vi.fn(),
     critiqueTarget: vi.fn(),
   },
@@ -30,13 +32,44 @@ const critiqueResponse = {
         notes: "No diff source backs the claim.",
       },
     ],
-    recommendations: [],
-    risks: [],
-    verificationPlan: [],
+    recommendations: [
+      {
+        id: "recommendation-1",
+        recommendation: "Treat the completion claim as unproven.",
+        status: "revise",
+        evidence: [],
+        rationale: "The critique did not collect a diff source.",
+      },
+    ],
+    risks: [
+      {
+        id: "risk-1",
+        risk: "Unsupported completion claims can lead to approving broken work.",
+        severity: "high",
+        evidence: [],
+        mitigation: "Inspect the worker diff.",
+      },
+    ],
+    verificationPlan: [
+      {
+        id: "verify-1",
+        requirement: "Check the worker diff against the stated acceptance criteria.",
+        priority: "high",
+        evidence: [],
+        suggestedTest: "Review changed files manually.",
+      },
+    ],
     safeNextAction: "Inspect the worker diff.",
     generatedAt: "2026-04-30T12:00:10Z",
   },
-  projectedGaps: [],
+  projectedGaps: [
+    {
+      severity: "high",
+      category: "solution_critique_risk",
+      description: "Unsupported completion claim.",
+      whyItMatters: "Approval could merge broken work.",
+    },
+  ],
 };
 
 function renderAction() {
@@ -63,6 +96,8 @@ function renderAction() {
 describe("SolutionCritiqueAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(solutionCriticApi.getLatestTargetCompiledContext).mockResolvedValue(null);
+    vi.mocked(solutionCriticApi.getLatestTargetSolutionCritique).mockResolvedValue(null);
   });
 
   it("runs compile then critique for the selected target and shows the result", async () => {
@@ -96,8 +131,10 @@ describe("SolutionCritiqueAction", () => {
     });
 
     expect(await screen.findByText("Investigate")).toBeInTheDocument();
-    expect(screen.getByText("Unsupported")).toBeInTheDocument();
-    expect(screen.getByText("Inspect the worker diff.")).toBeInTheDocument();
+    expect(screen.getAllByText(/Unsupported/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Inspect the worker diff.").length).toBeGreaterThan(0);
+    expect(screen.getByText("Unsupported completion claims can lead to approving broken work.")).toBeInTheDocument();
+    expect(screen.getByText("from critique: risk")).toBeInTheDocument();
   });
 
   it("reopens the cached critique and reruns only from the explicit action", async () => {
@@ -117,25 +154,50 @@ describe("SolutionCritiqueAction", () => {
 
     renderAction();
     await userEvent.click(screen.getByRole("button", { name: "Critique this" }));
-    expect(await screen.findByText("Inspect the worker diff.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Inspect the worker diff.")).length).toBeGreaterThan(0);
     expect(solutionCriticApi.compileTargetContext).toHaveBeenCalledTimes(1);
     expect(solutionCriticApi.critiqueTarget).toHaveBeenCalledTimes(1);
 
     await userEvent.keyboard("{Escape}");
     await waitFor(() => {
-      expect(screen.queryByText("Inspect the worker diff.")).not.toBeInTheDocument();
+      expect(screen.queryAllByText("Inspect the worker diff.")).toHaveLength(0);
     });
 
-    await userEvent.click(screen.getByRole("button", { name: "Critique this" }));
-    expect(await screen.findByText("Inspect the worker diff.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Run again" })).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("solution-critique-action"));
+    expect((await screen.findAllByText("Inspect the worker diff.")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Refresh critique" })).toBeInTheDocument();
     expect(solutionCriticApi.compileTargetContext).toHaveBeenCalledTimes(1);
     expect(solutionCriticApi.critiqueTarget).toHaveBeenCalledTimes(1);
 
-    await userEvent.click(screen.getByRole("button", { name: "Run again" }));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh critique" }));
     await waitFor(() => {
       expect(solutionCriticApi.compileTargetContext).toHaveBeenCalledTimes(2);
       expect(solutionCriticApi.critiqueTarget).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("opens a persisted target critique without starting a new model run", async () => {
+    vi.mocked(solutionCriticApi.getLatestTargetCompiledContext).mockResolvedValue({
+      artifactId: "context-1",
+      compiledContext: {
+        id: "context-1",
+        target: { targetType: "chat_message", id: "message-1", label: "Assistant message" },
+        sources: [],
+        claims: [],
+        openQuestions: [],
+        staleAssumptions: [],
+        generatedAt: "2026-04-30T12:00:00Z",
+      },
+    });
+    vi.mocked(solutionCriticApi.getLatestTargetSolutionCritique).mockResolvedValue(critiqueResponse);
+
+    renderAction();
+
+    expect(await screen.findByRole("button", { name: "Open critique: Investigate" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open critique: Investigate" }));
+
+    expect(await screen.findByText("Unsupported completion claim.")).toBeInTheDocument();
+    expect(solutionCriticApi.compileTargetContext).not.toHaveBeenCalled();
+    expect(solutionCriticApi.critiqueTarget).not.toHaveBeenCalled();
   });
 });

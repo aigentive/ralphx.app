@@ -215,6 +215,10 @@ function targetToApi(target: SolutionCritiqueTargetInput): Record<string, unknow
   };
 }
 
+function targetPath(target: SolutionCritiqueTargetInput): string {
+  return `${encodeURIComponent(target.targetType)}/${encodeURIComponent(target.id)}`;
+}
+
 export const solutionCriticApi = {
   getLatestCompiledContext: (sessionId: string): Promise<CompiledContextReadResponse | null> =>
     solutionCriticFetch(
@@ -222,6 +226,17 @@ export const solutionCriticApi = {
       {},
       CompiledContextReadResponseSchema.nullable(),
       "Failed to get latest compiled context"
+    ),
+
+  getLatestTargetCompiledContext: (
+    sessionId: string,
+    target: SolutionCritiqueTargetInput
+  ): Promise<CompiledContextReadResponse | null> =>
+    solutionCriticFetch(
+      `${API_BASE}/ideation/sessions/${encodeURIComponent(sessionId)}/compiled-context/target/${targetPath(target)}`,
+      {},
+      CompiledContextReadResponseSchema.nullable(),
+      "Failed to get latest target compiled context"
     ),
 
   getCompiledContext: (
@@ -271,6 +286,17 @@ export const solutionCriticApi = {
       {},
       SolutionCritiqueReadResponseSchema.nullable(),
       "Failed to get latest solution critique"
+    ),
+
+  getLatestTargetSolutionCritique: (
+    sessionId: string,
+    target: SolutionCritiqueTargetInput
+  ): Promise<SolutionCritiqueReadResponse | null> =>
+    solutionCriticFetch(
+      `${API_BASE}/ideation/sessions/${encodeURIComponent(sessionId)}/solution-critique/target/${targetPath(target)}`,
+      {},
+      SolutionCritiqueReadResponseSchema.nullable(),
+      "Failed to get latest target solution critique"
     ),
 
   getSolutionCritique: (

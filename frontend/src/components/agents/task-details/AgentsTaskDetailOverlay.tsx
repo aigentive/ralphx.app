@@ -18,6 +18,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
 import { AgentsTaskDetailPanel } from "./AgentsTaskDetailPanel";
 import { TaskEditForm } from "./TaskEditForm";
 import { StatusDropdown } from "./StatusDropdown";
@@ -593,6 +594,18 @@ export function AgentsTaskDetailOverlay({
             {/* Action buttons */}
             <TooltipProvider delayDuration={250}>
               <div className="absolute top-4 right-4 flex items-center gap-2">
+                {task.ideationSessionId && (
+                  <SolutionCritiqueAction
+                    sessionId={task.ideationSessionId}
+                    target={{
+                      targetType: "task_execution",
+                      id: task.id,
+                      label: `Task execution: ${task.title}`,
+                    }}
+                    label="Critique"
+                    size="xs"
+                  />
+                )}
                 {/* StatusDropdown - only for user-controlled statuses */}
                 {canEdit && (
                   <StatusDropdown

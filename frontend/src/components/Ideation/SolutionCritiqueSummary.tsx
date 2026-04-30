@@ -6,6 +6,11 @@ import {
   type CompiledContextReadResponse,
   type SolutionCritiqueReadResponse,
 } from "@/api/solution-critic";
+import {
+  buildCritiqueDigest,
+  critiqueGapOriginLabel,
+  formatCritiqueEnum,
+} from "@/components/solution-critic/critiqueDigest";
 import type { VerificationGap } from "@/types/ideation";
 
 interface SolutionCritiqueSummaryProps {
@@ -40,14 +45,6 @@ const solutionCriticKeys = {
 
 function formatCount(count: number, singular: string): string {
   return `${count} ${count === 1 ? singular : `${singular}s`}`;
-}
-
-function formatEnum(value: string): string {
-  return value
-    .split("_")
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
 }
 
 function verdictLabel(verdict: string | undefined): string {
@@ -103,7 +100,7 @@ function contextItems(context: CompiledContext | undefined): SummaryItem[] {
   return [
     ...context.claims.map((claim) => ({
       id: `claim-${claim.id}`,
-      label: formatEnum(claim.classification),
+      label: formatCritiqueEnum(claim.classification),
       text: claim.text,
     })),
     ...context.openQuestions.map((question) => ({
@@ -126,28 +123,28 @@ function critiqueItems(critique: SolutionCritique | undefined): SummaryItem[] {
       .filter((claim) => claim.status !== "supported")
       .map((claim) => ({
         id: `claim-${claim.id}`,
-        label: formatEnum(claim.status),
+        label: formatCritiqueEnum(claim.status),
         text: claim.claim,
       })),
     ...critique.recommendations
       .filter((recommendation) => recommendation.status !== "accept")
       .map((recommendation) => ({
         id: `recommendation-${recommendation.id}`,
-        label: formatEnum(recommendation.status),
+        label: formatCritiqueEnum(recommendation.status),
         text: recommendation.recommendation,
       })),
     ...critique.risks
       .filter((risk) => risk.severity !== "low")
       .map((risk) => ({
         id: `risk-${risk.id}`,
-        label: `${formatEnum(risk.severity)} Risk`,
+        label: `${formatCritiqueEnum(risk.severity)} Risk`,
         text: risk.risk,
       })),
     ...critique.verificationPlan
       .filter((requirement) => requirement.priority !== "low")
       .map((requirement) => ({
         id: `verification-${requirement.id}`,
-        label: `${formatEnum(requirement.priority)} Verification`,
+        label: `${formatCritiqueEnum(requirement.priority)} Verification`,
         text: requirement.requirement,
       })),
   ].slice(0, 5);
@@ -184,6 +181,12 @@ export function SolutionCritiqueSummary({
   const visibleGaps = useMemo(() => topProjectedGaps(projectedGaps), [projectedGaps]);
   const hasCritique = Boolean(critique);
   const targetScope = targetScopeLabel(context?.target.targetType);
+  const digest = buildCritiqueDigest({
+    context: contextData ?? null,
+    result: critiqueData ?? null,
+    isLoading: false,
+    error: null,
+  });
 
   if (!context && !critique) return null;
 
@@ -205,7 +208,7 @@ export function SolutionCritiqueSummary({
             className="mt-1 text-[13px] font-semibold truncate"
             style={{ color: "var(--text-primary)" }}
           >
-            {hasCritique ? verdictLabel(critique?.verdict) : `Compiled ${targetScope.toLowerCase()} context ready`}
+          {hasCritique ? verdictLabel(critique?.verdict) : `Compiled ${targetScope.toLowerCase()} context ready`}
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -235,6 +238,44 @@ export function SolutionCritiqueSummary({
           )}
         </div>
       </div>
+
+      {hasCritique && (
+        <div
+          className="rounded-md px-2.5 py-2"
+          style={{
+            background: "var(--overlay-weak)",
+            border: "1px solid var(--overlay-faint)",
+          }}
+        >
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="font-semibold" style={{ color: "var(--text-primary)" }}>
+              {digest.verdictLabel}
+            </span>
+            {digest.confidenceLabel && (
+              <span style={{ color: "var(--text-secondary)" }}>
+                {digest.confidenceLabel} confidence
+              </span>
+            )}
+            {digest.isStale && (
+              <span
+                className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase"
+                style={{
+                  background: "var(--status-warning-muted)",
+                  color: "var(--status-warning)",
+                  border: "1px solid var(--status-warning-border)",
+                }}
+              >
+                stale
+              </span>
+            )}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <span>{formatCount(digest.flaggedClaimCount, "flagged claim")}</span>
+            <span>{formatCount(digest.riskCount, "risk")}</span>
+            <span>{formatCount(digest.projectedGapCount, "gap")}</span>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-2 sm:grid-cols-3">
         <SummaryMetric
@@ -301,8 +342,20 @@ export function SolutionCritiqueSummary({
                   {gap.severity}
                 </span>
                 <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                  {gap.category.replace(/_/g, " ")}
+                  {formatCritiqueEnum(gap.category)}
                 </span>
+                {critiqueGapOriginLabel(gap.category) && (
+                  <span
+                    className="rounded-md px-1.5 py-0.5 text-[10px]"
+                    style={{
+                      color: "var(--text-muted)",
+                      background: "var(--overlay-faint)",
+                      border: "1px solid var(--overlay-faint)",
+                    }}
+                  >
+                    {critiqueGapOriginLabel(gap.category)}
+                  </span>
+                )}
               </div>
               <div className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--text-primary)" }}>
                 {gap.description}

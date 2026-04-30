@@ -208,6 +208,24 @@ impl SolutionCritiqueService {
         let Some(target_artifact_id) = self.current_plan_artifact_id(&session).await? else {
             return Ok(None);
         };
+        self.get_latest_compiled_context_for_target(
+            session_id,
+            ContextTargetRequest {
+                target_type: ContextTargetType::PlanArtifact,
+                id: target_artifact_id.as_str().to_string(),
+                label: None,
+            },
+        )
+        .await
+    }
+
+    pub async fn get_latest_compiled_context_for_target(
+        &self,
+        session_id: &str,
+        target_request: ContextTargetRequest,
+    ) -> AppResult<Option<CompiledContextReadResult>> {
+        let session = self.load_session(session_id).await?;
+        let target = self.resolve_target(&session, target_request).await?.target;
         let artifacts = self
             .artifact_repo
             .get_by_type(ArtifactType::Context)
@@ -220,9 +238,7 @@ impl SolutionCritiqueService {
             let Ok(compiled_context) = parse_inline_artifact::<CompiledContext>(&artifact) else {
                 continue;
             };
-            if compiled_context.target.target_type == ContextTargetType::PlanArtifact
-                && compiled_context.target.id == target_artifact_id.as_str()
-            {
+            if same_target(&compiled_context.target, &target) {
                 matches.push((
                     artifact.metadata.created_at,
                     artifact.id.as_str().to_string(),
@@ -352,6 +368,24 @@ impl SolutionCritiqueService {
         let Some(target_artifact_id) = self.current_plan_artifact_id(&session).await? else {
             return Ok(None);
         };
+        self.get_latest_solution_critique_for_target(
+            session_id,
+            ContextTargetRequest {
+                target_type: ContextTargetType::PlanArtifact,
+                id: target_artifact_id.as_str().to_string(),
+                label: None,
+            },
+        )
+        .await
+    }
+
+    pub async fn get_latest_solution_critique_for_target(
+        &self,
+        session_id: &str,
+        target_request: ContextTargetRequest,
+    ) -> AppResult<Option<SolutionCritiqueReadResult>> {
+        let session = self.load_session(session_id).await?;
+        let target = self.resolve_target(&session, target_request).await?.target;
         let artifacts = self
             .artifact_repo
             .get_by_type(ArtifactType::Findings)
@@ -364,9 +398,6 @@ impl SolutionCritiqueService {
             let Ok(solution_critique) = parse_inline_artifact::<SolutionCritique>(&artifact) else {
                 continue;
             };
-            if solution_critique.artifact_id != target_artifact_id.as_str() {
-                continue;
-            }
             let Ok(context_artifact) = self
                 .load_artifact(&solution_critique.context_artifact_id)
                 .await
@@ -376,9 +407,7 @@ impl SolutionCritiqueService {
             let Ok(context) = parse_inline_artifact::<CompiledContext>(&context_artifact) else {
                 continue;
             };
-            if context.target.target_type == ContextTargetType::PlanArtifact
-                && context.target.id == target_artifact_id.as_str()
-            {
+            if same_target(&context.target, &target) && solution_critique.artifact_id == target.id {
                 matches.push((
                     artifact.metadata.created_at,
                     artifact.id.as_str().to_string(),
@@ -1182,4 +1211,8 @@ fn dedupe_sort_sources(sources: &mut Vec<ContextSourceRef>) {
     sort_sources(sources);
     let mut seen = HashSet::new();
     sources.retain(|source| seen.insert(source.id.clone()));
+}
+
+fn same_target(left: &ContextTargetRef, right: &ContextTargetRef) -> bool {
+    left.target_type == right.target_type && left.id == right.id
 }

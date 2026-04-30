@@ -149,6 +149,43 @@ describe("solutionCriticApi", () => {
     await expect(solutionCriticApi.getLatestSolutionCritique("session-1")).resolves.toBeNull();
   });
 
+  it("fetches the latest compiled context for a typed target", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(compiledContextRaw),
+    });
+
+    const result = await solutionCriticApi.getLatestTargetCompiledContext("session-1", {
+      targetType: "chat_message",
+      id: "message 1",
+      label: "Assistant message",
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:3847/api/ideation/sessions/session-1/compiled-context/target/chat_message/message%201",
+      {}
+    );
+    expect(result?.artifactId).toBe("context-1");
+  });
+
+  it("fetches the latest solution critique for a typed target", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(solutionCritiqueRaw),
+    });
+
+    const result = await solutionCriticApi.getLatestTargetSolutionCritique("session-1", {
+      targetType: "task_execution",
+      id: "task-1",
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:3847/api/ideation/sessions/session-1/solution-critique/target/task_execution/task-1",
+      {}
+    );
+    expect(result?.artifactId).toBe("critique-1");
+  });
+
   it("posts compile context requests with snake_case source limits", async () => {
     mockFetch.mockResolvedValue({
       ok: true,

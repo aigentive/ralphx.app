@@ -44,6 +44,7 @@ import { withAlpha } from "@/lib/theme-colors";
 import type { Commit } from "@/components/diff";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
+import { ReviewCritiquePreflightBanner } from "@/components/solution-critic/ReviewCritiquePreflightBanner";
 
 interface ReviewDetailModalProps {
   taskId: string;
@@ -647,6 +648,22 @@ export function ReviewDetailModal({
             />
           </div>
         </div>
+
+        {showActions && task?.ideationSessionId && (
+          <div
+            className="border-t px-4 py-3"
+            style={{
+              borderColor: "var(--overlay-weak)",
+              background: "var(--bg-surface)",
+            }}
+          >
+            <ReviewCritiquePreflightBanner
+              sessionId={task.ideationSessionId}
+              taskId={task.id}
+              taskTitle={task.title}
+            />
+          </div>
+        )}
 
         {/* Footer: Action Buttons */}
         {showActions && (

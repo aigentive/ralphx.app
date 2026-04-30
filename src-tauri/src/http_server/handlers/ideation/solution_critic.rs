@@ -6,11 +6,11 @@ use axum::{
 use tracing::error;
 
 use crate::application::solution_critic::{
-    CompileContextRequest, CompileContextResult, CompiledContextReadResult,
+    CompileContextRequest, CompileContextResult, CompiledContextReadResult, ContextTargetRequest,
     CritiqueArtifactRequest, CritiqueArtifactResult, SolutionCritiqueReadResult,
 };
 use crate::application::SolutionCritiqueService;
-use crate::domain::entities::IdeationSessionId;
+use crate::domain::entities::{ContextTargetType, IdeationSessionId};
 use crate::error::AppError;
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 use crate::http_server::types::HttpServerState;
@@ -63,6 +63,29 @@ pub async fn get_latest_compiled_context(
         .map_err(map_solution_critic_error)
 }
 
+/// GET /api/ideation/sessions/:id/compiled-context/target/:target_type/:target_id
+pub async fn get_latest_compiled_context_for_target(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Path((session_id, target_type, target_id)): Path<(String, String, String)>,
+) -> Result<Json<Option<CompiledContextReadResult>>, JsonError> {
+    assert_session_scope(&state, &scope, &session_id).await?;
+    let target_type = parse_target_type(&target_type)?;
+    let service = SolutionCritiqueService::from_app_state(&state.app_state);
+    service
+        .get_latest_compiled_context_for_target(
+            &session_id,
+            ContextTargetRequest {
+                target_type,
+                id: target_id,
+                label: None,
+            },
+        )
+        .await
+        .map(Json)
+        .map_err(map_solution_critic_error)
+}
+
 /// POST /api/ideation/sessions/:id/solution-critique
 pub async fn post_solution_critique(
     State(state): State<HttpServerState>,
@@ -94,6 +117,29 @@ pub async fn get_latest_solution_critique(
         .map_err(map_solution_critic_error)
 }
 
+/// GET /api/ideation/sessions/:id/solution-critique/target/:target_type/:target_id
+pub async fn get_latest_solution_critique_for_target(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Path((session_id, target_type, target_id)): Path<(String, String, String)>,
+) -> Result<Json<Option<SolutionCritiqueReadResult>>, JsonError> {
+    assert_session_scope(&state, &scope, &session_id).await?;
+    let target_type = parse_target_type(&target_type)?;
+    let service = SolutionCritiqueService::from_app_state(&state.app_state);
+    service
+        .get_latest_solution_critique_for_target(
+            &session_id,
+            ContextTargetRequest {
+                target_type,
+                id: target_id,
+                label: None,
+            },
+        )
+        .await
+        .map(Json)
+        .map_err(map_solution_critic_error)
+}
+
 /// GET /api/ideation/sessions/:id/solution-critique/:artifact_id
 pub async fn get_solution_critique_artifact(
     State(state): State<HttpServerState>,
@@ -107,6 +153,15 @@ pub async fn get_solution_critique_artifact(
         .await
         .map(Json)
         .map_err(map_solution_critic_error)
+}
+
+fn parse_target_type(value: &str) -> Result<ContextTargetType, JsonError> {
+    serde_json::from_value(serde_json::Value::String(value.to_string())).map_err(|_| {
+        json_error(
+            StatusCode::BAD_REQUEST,
+            "Invalid solution critique target type",
+        )
+    })
 }
 
 async fn assert_session_scope(

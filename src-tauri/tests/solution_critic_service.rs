@@ -494,6 +494,24 @@ async fn compile_context_supports_chat_message_targets_without_artifact_relation
         .await
         .unwrap();
     assert_eq!(read.compiled_context.target.id, message_id.as_str());
+
+    let latest = service
+        .get_latest_compiled_context_for_target(
+            session_id.as_str(),
+            ContextTargetRequest {
+                target_type: ContextTargetType::ChatMessage,
+                id: message_id.as_str().to_string(),
+                label: None,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.artifact_id, result.artifact_id);
+    assert_eq!(
+        latest.compiled_context.target.target_type,
+        ContextTargetType::ChatMessage
+    );
 }
 
 #[tokio::test]
@@ -679,6 +697,21 @@ async fn task_execution_targets_collect_diff_transcript_and_review_context() {
         .await
         .unwrap();
     assert_eq!(read.solution_critique.artifact_id, task_id.as_str());
+
+    let latest = service
+        .get_latest_solution_critique_for_target(
+            session_id.as_str(),
+            ContextTargetRequest {
+                target_type: ContextTargetType::TaskExecution,
+                id: task_id.as_str().to_string(),
+                label: None,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.artifact_id, critique.artifact_id);
+    assert_eq!(latest.solution_critique.artifact_id, task_id.as_str());
 }
 
 #[tokio::test]

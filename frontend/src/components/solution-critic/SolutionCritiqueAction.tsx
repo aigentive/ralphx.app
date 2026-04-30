@@ -1,18 +1,22 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, RefreshCw, SearchCheck } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, SearchCheck } from "lucide-react";
 import {
   solutionCriticApi,
+  type CompiledContextReadResponse,
   type SolutionCritiqueReadResponse,
   type SolutionCritiqueTargetInput,
 } from "@/api/solution-critic";
 import { Button } from "@/components/ui/button";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { buildCritiqueDigest, formatCritiqueEnum } from "./critiqueDigest";
+import { SolutionCritiqueDetails } from "./SolutionCritiqueDetails";
 
 interface SolutionCritiqueActionProps {
   sessionId: string | null | undefined;
@@ -30,21 +34,18 @@ function humanize(value: string): string {
     .join(" ");
 }
 
-function critiqueItems(result: SolutionCritiqueReadResponse | null) {
-  if (!result) return [];
-  const critique = result.solutionCritique;
-  const flagged = critique.claims.filter((claim) =>
-    ["unsupported", "contradicted", "unclear"].includes(claim.status)
-  );
-  if (flagged.length > 0) return flagged.slice(0, 3);
-  return critique.claims.slice(0, 3);
-}
-
 function targetCritiqueKey(
   sessionId: string | null | undefined,
   target: SolutionCritiqueTargetInput,
 ) {
   return ["solutionCritic", sessionId ?? "none", "target", target.targetType, target.id] as const;
+}
+
+function targetContextKey(
+  sessionId: string | null | undefined,
+  target: SolutionCritiqueTargetInput,
+) {
+  return ["solutionCritic", sessionId ?? "none", "targetContext", target.targetType, target.id] as const;
 }
 
 export function SolutionCritiqueAction({
@@ -57,26 +58,45 @@ export function SolutionCritiqueAction({
 }: SolutionCritiqueActionProps) {
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<SolutionCritiqueReadResponse | null>(null);
+  const [context, setContext] = useState<CompiledContextReadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const targetQueryKey = useMemo(() => targetCritiqueKey(sessionId, target), [sessionId, target]);
-  const items = useMemo(() => critiqueItems(result), [result]);
+  const targetContextQueryKey = useMemo(() => targetContextKey(sessionId, target), [sessionId, target]);
+
+  const latestContextQuery = useQuery({
+    queryKey: targetContextQueryKey,
+    queryFn: () => solutionCriticApi.getLatestTargetCompiledContext(sessionId!, target),
+    enabled: Boolean(sessionId),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const latestCritiqueQuery = useQuery({
+    queryKey: targetQueryKey,
+    queryFn: () => solutionCriticApi.getLatestTargetSolutionCritique(sessionId!, target),
+    enabled: Boolean(sessionId),
+    staleTime: 30_000,
+    retry: false,
+  });
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!sessionId) {
         throw new Error("No ideation session is available for this critique target.");
       }
-      const context = await solutionCriticApi.compileTargetContext(sessionId, target);
-      return solutionCriticApi.critiqueTarget(sessionId, target, context.artifactId);
+      const compiledContext = await solutionCriticApi.compileTargetContext(sessionId, target);
+      const critique = await solutionCriticApi.critiqueTarget(sessionId, target, compiledContext.artifactId);
+      return { compiledContext, critique };
     },
     onMutate: () => {
       setError(null);
       setOpen(true);
     },
     onSuccess: (response) => {
-      setResult(response);
-      queryClient.setQueryData(targetQueryKey, response);
+      setContext(response.compiledContext);
+      setResult(response.critique);
+      queryClient.setQueryData(targetContextQueryKey, response.compiledContext);
+      queryClient.setQueryData(targetQueryKey, response.critique);
       void queryClient.invalidateQueries({ queryKey: ["solutionCritic", sessionId] });
     },
     onError: (err) => {
@@ -87,144 +107,97 @@ export function SolutionCritiqueAction({
   if (!sessionId) return null;
 
   const isCompact = size === "xs";
-  const critique = result?.solutionCritique;
+  const activeContext = context ?? latestContextQuery.data ?? null;
+  const activeResult = result ?? latestCritiqueQuery.data ?? null;
+  const latestError =
+    latestContextQuery.error instanceof Error
+      ? latestContextQuery.error.message
+      : latestCritiqueQuery.error instanceof Error
+        ? latestCritiqueQuery.error.message
+        : null;
+  const activeError = error ?? latestError;
+  const isLoading = mutation.isPending;
+  const digest = buildCritiqueDigest({
+    context: activeContext,
+    result: activeResult,
+    isLoading,
+    error: activeError,
+  });
+  const targetLabel = target.label ?? humanize(target.targetType);
+  const buttonLabel = isLoading ? "Critiquing" : activeResult ? digest.pillLabel : label;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "gap-1.5 rounded-md text-text-primary/55 hover:bg-[var(--overlay-moderate)] hover:text-text-primary/85",
-            isCompact && "h-6 px-1.5 py-0 text-[10px]",
-            className,
-          )}
-          onClick={(event) => {
-            event.stopPropagation();
-            const cachedResult =
-              result ??
-              queryClient.getQueryData<SolutionCritiqueReadResponse>(targetQueryKey) ??
-              null;
-            if (cachedResult) {
-              setError(null);
-              setResult(cachedResult);
-              setOpen(true);
-              return;
-            }
-            mutation.mutate();
-          }}
-          disabled={mutation.isPending}
-          data-testid="solution-critique-action"
-          aria-label={label}
-        >
-          {mutation.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <SearchCheck className="h-3.5 w-3.5" />
-          )}
-          <span>{mutation.isPending ? "Critiquing" : label}</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align={align}
-        className="w-[360px] border-[var(--border-subtle)] bg-[var(--bg-surface)] p-0 text-text-primary shadow-xl"
-        onClick={(event) => event.stopPropagation()}
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={cn(
+          "gap-1.5 rounded-md text-text-primary/55 hover:bg-[var(--overlay-moderate)] hover:text-text-primary/85",
+          activeResult && "border border-[var(--overlay-weak)] bg-[var(--overlay-faint)]",
+          isCompact && "h-6 px-1.5 py-0 text-[10px]",
+          className,
+        )}
+        onClick={(event) => {
+          event.stopPropagation();
+          const cachedResult =
+            activeResult ??
+            queryClient.getQueryData<SolutionCritiqueReadResponse>(targetQueryKey) ??
+            null;
+          const cachedContext =
+            activeContext ??
+            queryClient.getQueryData<CompiledContextReadResponse>(targetContextQueryKey) ??
+            null;
+          setError(null);
+          if (cachedResult) {
+            setResult(cachedResult);
+            setContext(cachedContext);
+            setOpen(true);
+            return;
+          }
+          setOpen(true);
+          mutation.mutate();
+        }}
+        disabled={mutation.isPending}
+        data-testid="solution-critique-action"
+        aria-label={
+          activeResult
+            ? `Open critique: ${formatCritiqueEnum(activeResult.solutionCritique.verdict)}`
+            : label
+        }
       >
-        <div className="border-b border-[var(--overlay-weak)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-text-primary/40">
-            Solution Critique
-          </div>
-          <div className="mt-0.5 truncate text-[13px] font-medium text-text-primary/85">
-            {target.label ?? humanize(target.targetType)}
-          </div>
-        </div>
+        {mutation.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <SearchCheck className="h-3.5 w-3.5" />
+        )}
+        <span>{buttonLabel}</span>
+      </Button>
 
-        <div className="space-y-3 px-3 py-3">
-          {mutation.isPending && (
-            <div className="flex items-center gap-2 text-[12px] text-text-primary/55">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Running critique
-            </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          hideCloseButton={false}
+          className={cn(
+            "left-auto right-4 top-4 h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-[min(560px,calc(100vw-2rem))] max-w-none translate-x-0 translate-y-0 overflow-hidden p-0",
+            align === "start" && "right-auto left-4",
           )}
-
-          {error && (
-            <div className="flex items-start gap-2 rounded-md border border-[var(--status-error-border)] bg-[var(--status-error-muted)] p-2 text-[12px] text-[var(--status-error)]">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {critique && (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-md bg-[var(--overlay-faint)] px-2 py-1 text-[11px] font-medium text-text-primary/70">
-                  {humanize(critique.verdict)}
-                </span>
-                <span className="text-[11px] text-text-primary/40">
-                  {humanize(critique.confidence)} confidence
-                </span>
-                <span className="text-[11px] text-text-primary/40">
-                  {result.projectedGaps.length} projected gap{result.projectedGaps.length === 1 ? "" : "s"}
-                </span>
-              </div>
-
-              {items.length > 0 && (
-                <div className="space-y-1.5">
-                  {items.map((item) => (
-                    <div key={item.id} className="rounded-md bg-[var(--overlay-faint)] p-2">
-                      <div className="text-[11px] font-medium uppercase tracking-wide text-text-primary/40">
-                        {humanize(item.status)}
-                      </div>
-                      <div className="mt-1 text-[12px] leading-snug text-text-primary/75">
-                        {item.claim}
-                      </div>
-                      {item.notes && (
-                        <div className="mt-1 text-[11px] leading-snug text-text-primary/45">
-                          {item.notes}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {critique.safeNextAction && (
-                <div className="rounded-md border border-[var(--overlay-weak)] p-2">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-text-primary/40">
-                    Safe Next Action
-                  </div>
-                  <div className="mt-1 text-[12px] leading-snug text-text-primary/70">
-                    {critique.safeNextAction}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-end border-t border-[var(--overlay-weak)] pt-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1.5 rounded-md px-2 text-[11px] text-text-primary/60 hover:bg-[var(--overlay-moderate)] hover:text-text-primary/85"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    mutation.mutate();
-                  }}
-                  disabled={mutation.isPending}
-                >
-                  {mutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
-                  <span>{mutation.isPending ? "Running" : "Run again"}</span>
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
+          onClick={(event) => event.stopPropagation()}
+        >
+          <DialogTitle className="sr-only">Solution critique</DialogTitle>
+          <DialogDescription className="sr-only">
+            Evidence, risks, verification plan, and safe next action for the selected target.
+          </DialogDescription>
+          <SolutionCritiqueDetails
+            targetLabel={targetLabel}
+            context={activeContext}
+            result={activeResult}
+            digest={digest}
+            isLoading={isLoading}
+            error={activeError}
+            onRefresh={() => mutation.mutate()}
+          />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

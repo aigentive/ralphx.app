@@ -15,8 +15,10 @@ use ralphx_lib::domain::entities::{
     VerificationStatus,
 };
 use ralphx_lib::http_server::handlers::{
-    get_compiled_context_artifact, get_latest_compiled_context, get_latest_solution_critique,
-    get_solution_critique_artifact, post_compiled_context, post_solution_critique,
+    get_compiled_context_artifact, get_latest_compiled_context,
+    get_latest_compiled_context_for_target, get_latest_solution_critique,
+    get_latest_solution_critique_for_target, get_solution_critique_artifact, post_compiled_context,
+    post_solution_critique,
 };
 use ralphx_lib::http_server::types::HttpServerState;
 use ralphx_lib::infrastructure::MockAgenticClient;
@@ -30,12 +32,20 @@ fn solution_critic_app(state: HttpServerState) -> Router {
             get(get_latest_compiled_context).post(post_compiled_context),
         )
         .route(
+            "/api/ideation/sessions/:id/compiled-context/target/:target_type/:target_id",
+            get(get_latest_compiled_context_for_target),
+        )
+        .route(
             "/api/ideation/sessions/:id/compiled-context/:artifact_id",
             get(get_compiled_context_artifact),
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique",
             get(get_latest_solution_critique).post(post_solution_critique),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/target/:target_type/:target_id",
+            get(get_latest_solution_critique_for_target),
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique/:artifact_id",
@@ -212,6 +222,28 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
         Some(context_artifact_id.as_str())
     );
 
+    let latest_target_context_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/compiled-context/target/plan_artifact/{}",
+                    session_id.as_str(),
+                    plan_artifact_id.as_str()
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(latest_target_context_response.status(), StatusCode::OK);
+    let latest_target_context_json = response_json(latest_target_context_response).await;
+    assert_eq!(
+        latest_target_context_json["artifact_id"].as_str(),
+        Some(context_artifact_id.as_str())
+    );
+
     let context_read_response = app
         .clone()
         .oneshot(
@@ -280,6 +312,28 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
     let latest_critique_json = response_json(latest_critique_response).await;
     assert_eq!(
         latest_critique_json["artifact_id"].as_str(),
+        Some(critique_artifact_id)
+    );
+
+    let latest_target_critique_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/solution-critique/target/plan_artifact/{}",
+                    session_id.as_str(),
+                    plan_artifact_id.as_str()
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(latest_target_critique_response.status(), StatusCode::OK);
+    let latest_target_critique_json = response_json(latest_target_critique_response).await;
+    assert_eq!(
+        latest_target_critique_json["artifact_id"].as_str(),
         Some(critique_artifact_id)
     );
 

@@ -171,12 +171,20 @@ pub async fn start_http_server(
             get(get_latest_compiled_context).post(post_compiled_context),
         )
         .route(
+            "/api/ideation/sessions/:id/compiled-context/target/:target_type/:target_id",
+            get(get_latest_compiled_context_for_target),
+        )
+        .route(
             "/api/ideation/sessions/:id/compiled-context/:artifact_id",
             get(get_compiled_context_artifact),
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique",
             get(get_latest_solution_critique).post(post_solution_critique),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/target/:target_type/:target_id",
+            get(get_latest_solution_critique_for_target),
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique/:artifact_id",

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Code, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ReviewCritiquePreflightBanner } from "@/components/solution-critic/ReviewCritiquePreflightBanner";
 import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
@@ -151,6 +152,16 @@ export function ChangeReviewSection({
             {isPlanMerge ? "Review Diff" : "Review Code"}
           </Button>
         </div>
+        {planBranch?.sessionId && (
+          <div className="mb-3">
+            <ReviewCritiquePreflightBanner
+              sessionId={planBranch.sessionId}
+              taskId={taskId}
+              taskTitle="Review changes"
+              compact
+            />
+          </div>
+        )}
         {isLoadingPlanReviews ? (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="w-5 h-5 animate-spin text-text-primary/30" />
