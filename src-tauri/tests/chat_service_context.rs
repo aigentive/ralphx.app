@@ -2565,6 +2565,53 @@ async fn resolve_working_directory_ideation_rejects_missing_session_workspace() 
     );
 }
 
+#[tokio::test]
+async fn resolve_working_directory_verification_child_falls_back_when_inherited_workspace_missing()
+{
+    let parent = tempfile::TempDir::new().unwrap();
+    let project_dir = parent.path().join("main-repo");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let missing_workspace = parent.path().join("missing-inherited-workspace");
+
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let ideation_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::from_string("proj-verification-child".to_string());
+    let mut project = Project::new(
+        "test".to_string(),
+        project_dir.to_string_lossy().to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut parent_session = IdeationSession::new(project_id.clone());
+    parent_session.analysis.workspace_kind = IdeationAnalysisWorkspaceKind::IdeationWorktree;
+    parent_session.analysis.workspace_path = Some(missing_workspace.to_string_lossy().to_string());
+    let parent_id = parent_session.id.clone();
+    ideation_repo.create(parent_session.clone()).await.unwrap();
+
+    let mut child = IdeationSession::new(project_id);
+    child.parent_session_id = Some(parent_id);
+    child.session_purpose = SessionPurpose::Verification;
+    child.analysis = parent_session.analysis;
+    let child_id = child.id.clone();
+    ideation_repo.create(child).await.unwrap();
+
+    let result = resolve_working_directory(
+        ChatContextType::Ideation,
+        child_id.as_str(),
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        ideation_repo,
+        empty_delegated_session_repo(),
+        std::path::Path::new("/tmp/default"),
+    )
+    .await
+    .expect("verification child should not fail on stale inherited workspace");
+
+    assert_eq!(result, project_dir);
+}
+
 // --- Verifier subagent cap injection tests ---
 //
 // These tests verify that build_command correctly resolves CLAUDE_CODE_SUBAGENT_MODEL

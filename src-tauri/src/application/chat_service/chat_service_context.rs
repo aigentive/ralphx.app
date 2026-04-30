@@ -1426,6 +1426,48 @@ pub async fn resolve_working_directory(
                 .await
             {
                 if let Ok(Some(project)) = project_repo.get_by_id(&session.project_id).await {
+                    if session.session_purpose == SessionPurpose::Verification {
+                        match resolve_ideation_workspace_path(&session, &project) {
+                            Ok(path) => return Ok(path),
+                            Err(child_error)
+                                if child_error.contains("analysis workspace is missing") =>
+                            {
+                                if let Some(parent_session_id) = session.parent_session_id.as_ref()
+                                {
+                                    if let Ok(Some(parent_session)) =
+                                        ideation_session_repo.get_by_id(parent_session_id).await
+                                    {
+                                        match resolve_ideation_workspace_path(
+                                            &parent_session,
+                                            &project,
+                                        ) {
+                                            Ok(path) => return Ok(path),
+                                            Err(parent_error)
+                                                if parent_error
+                                                    .contains("analysis workspace is missing") =>
+                                            {
+                                                tracing::warn!(
+                                                    child_session_id = context_id,
+                                                    parent_session_id =
+                                                        parent_session_id.as_str(),
+                                                    child_error = %child_error,
+                                                    parent_error = %parent_error,
+                                                    fallback = %project.working_directory,
+                                                    "Verification child inherited a missing analysis workspace; falling back to project root"
+                                                );
+                                                return Ok(PathBuf::from(
+                                                    &project.working_directory,
+                                                ));
+                                            }
+                                            Err(parent_error) => return Err(parent_error),
+                                        }
+                                    }
+                                }
+                                return Err(child_error);
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    }
                     return resolve_ideation_workspace_path(&session, &project);
                 }
             }

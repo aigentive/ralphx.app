@@ -429,7 +429,10 @@ fn truncate_for_prompt(value: &str, limit: usize) -> String {
 
 fn extract_json_object(response: &str) -> AppResult<String> {
     let trimmed = strip_code_fence(response.trim());
-    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+    if serde_json::from_str::<serde_json::Value>(trimmed)
+        .ok()
+        .is_some_and(|value| value.is_object())
+    {
         return Ok(trimmed.to_string());
     }
 
@@ -620,5 +623,21 @@ mod tests {
         assert_eq!(prompts.len(), 1);
         assert!(prompts[0].contains("Return strict JSON only"));
         assert!(prompts[0].contains("plan_artifact:plan-1"));
+    }
+
+    #[test]
+    fn extract_json_object_ignores_trailing_second_object() {
+        let response = r#"{
+  "claims": [],
+  "open_questions": [],
+  "stale_assumptions": []
+}
+{"extra": "trailing object"}"#;
+
+        let json = extract_json_object(response).unwrap();
+
+        assert!(json.contains("\"claims\""));
+        assert!(!json.contains("trailing object"));
+        serde_json::from_str::<CompiledContextCandidate>(&json).unwrap();
     }
 }
