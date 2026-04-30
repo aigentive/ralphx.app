@@ -172,6 +172,7 @@ const CROSS_HARNESS_GENERAL_AGENTS: &[(&str, &str, &str)] = &[
         "general_worker",
         "ralphx-general-worker",
     ),
+    ("ralphx-design-agent", "design_agent", "ralphx-design-agent"),
     (
         "ralphx-agent-workspace-repair",
         "agent_workspace_repair",
@@ -200,6 +201,7 @@ const CROSS_HARNESS_READONLY_IDEATION_AGENTS: &[(&str, &str, &str)] = &[(
 const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
     "ralphx-general-explorer",
     "ralphx-general-worker",
+    "ralphx-design-agent",
     "ralphx-agent-workspace-repair",
     "ralphx-ideation",
     "ralphx-ideation-readonly",
@@ -238,6 +240,7 @@ const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
 
 const CANONICAL_CODEX_RUNTIME_FEATURE_OWNED_AGENTS: &[&str] = &[
     "ralphx-general-explorer",
+    "ralphx-design-agent",
     "ralphx-plan-verifier",
     "ralphx-plan-critic-completeness",
     "ralphx-plan-critic-implementation-feasibility",
@@ -326,6 +329,7 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
 const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
     "ralphx-general-explorer",
     "ralphx-general-worker",
+    "ralphx-design-agent",
     "ralphx-agent-workspace-repair",
     "ralphx-execution-worker",
     "ralphx-execution-coder",
@@ -365,6 +369,7 @@ const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
 
 const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-general-worker", "acceptEdits"),
+    ("ralphx-design-agent", "acceptEdits"),
     ("ralphx-agent-workspace-repair", "acceptEdits"),
     ("ralphx-execution-worker", "acceptEdits"),
     ("ralphx-execution-coder", "acceptEdits"),
@@ -378,6 +383,7 @@ const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
 const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-general-explorer", "sonnet"),
     ("ralphx-general-worker", "sonnet"),
+    ("ralphx-design-agent", "opus"),
     ("ralphx-agent-workspace-repair", "opus"),
     ("ralphx-utility-session-namer", "sonnet"),
     ("ralphx-chat-task", "sonnet"),
@@ -421,6 +427,12 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
     ("ralphx-general-explorer", "readonly_tools", &[], false),
     (
         "ralphx-general-worker",
+        "readonly_tools",
+        &["Write", "Edit", "Bash", "LSP"],
+        false,
+    ),
+    (
+        "ralphx-design-agent",
         "readonly_tools",
         &["Write", "Edit", "Bash", "LSP"],
         false,

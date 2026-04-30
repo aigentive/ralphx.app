@@ -165,6 +165,7 @@ Full process details: `agents/ralphx-ideation-team-lead/claude/prompt.md` (Phase
 
 ## Design System
 `specs/design/styleguide.md` (tokens, components, layout rules — initial spec, grows with app) | `specs/DESIGN.md` | Accent: `#ff6b35` (warm orange) ❌ purple/blue | Font: SF Pro ❌ Inter | **INVOKE `/tailwind-v4-shadcn` before UI work**
+Design agent: canonical contract `agents/ralphx-design-agent/shared/prompt.md`; Claude native wrapper `.claude/agents/ralphx-design-agent.md`; Claude skill `.claude/skills/ralphx-design/SKILL.md`.
 
 Input outline removal:
 ```tsx
