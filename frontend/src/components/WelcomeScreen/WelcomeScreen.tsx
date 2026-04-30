@@ -28,6 +28,25 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
     return () => clearTimeout(idleTimer);
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement?.hasAttribute("contenteditable")
+      ) {
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "n") {
+        event.preventDefault();
+        onCreateProject();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onCreateProject]);
+
   return (
     <div
       className="flex-1 flex flex-col items-center justify-center relative overflow-hidden"
