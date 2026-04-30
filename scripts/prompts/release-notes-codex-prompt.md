@@ -49,8 +49,9 @@ One short summary sentence.
 - Do not claim a change is user-visible unless the facts support that.
 - Prefer grouping by capability area rather than by file.
 - Never include raw commit subjects such as `feat: ...` or `fix: ...` in the final release notes.
-- Include inline traceability on bullets using short SHA references like `42b26250` when the supporting commit is known.
-- For broad squash or merge ranges, repeating the same short SHA across multiple bullets is acceptable.
+- Include inline traceability on bullets using exact Markdown commit links from the `Commit references` section, for example `[42b26250](https://github.com/owner/repo/commit/<full-sha>)`.
+- Do not put commit links or short SHAs in backticks; the traceability reference should be a clickable Markdown link.
+- For broad squash or merge ranges, repeating the same commit link across multiple bullets is acceptable.
 - Prefer `improves`, `expands`, `reworks`, `upgrades`, `fixes`, `stabilizes`, or `defaults` unless the evidence clearly supports `adds` or `introduces`.
 - When the evidence packet provides a strong concrete example, fold that example into the bullet instead of staying abstract.
 - Keep bullets denser than marketing copy: one capability claim plus one concrete example is ideal.

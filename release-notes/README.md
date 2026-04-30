@@ -20,11 +20,13 @@ Daily scheduled releases:
 - The scheduled workflow uses Codex CLI for both the version proposal and release-note generation, so the repository needs a `CODEX_API_KEY` secret.
 - Protected-main setups may also need `RELEASE_AUTOMATION_TOKEN` with `contents:write` and `actions:write` so the workflow can push the release-prep commit/tag and dispatch `Release Build`.
 - Manual `Daily Release` dispatch supports `dry_run=true` to verify generation without committing, tagging, pushing, or dispatching `Release Build`.
+- Maintenance-only commits can avoid scheduled release prep when every commit after the latest tag includes `[skip daily-release]`, `[skip release]`, `[no daily-release]`, or `[no release]`.
 
 Notes:
 
 - Release proposals default to `.artifacts/release-notes/proposal-from-v<current-version>.md`
 - Accepted release versions are stored in `.artifacts/release-notes/.version` (local/gitignored)
 - `./scripts/propose-release.sh`, `./scripts/bump-version.sh`, and `./scripts/generate-release-notes.sh` still work as standalone lower-level steps
+- Generated drafts should keep commit traceability as clickable Markdown links
 - Codex generation logs are written to `.artifacts/release-notes/logs/`
 - The full release sequence lives in `docs/release-process.md`

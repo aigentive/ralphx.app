@@ -24,7 +24,7 @@ One short summary sentence.
 - Confidence: <high|medium|low>
 
 ## Why This Bump
-- 2-5 bullets tying the recommendation to concrete shipped changes, with short SHA citations when the evidence is known
+- 2-5 bullets tying the recommendation to concrete shipped changes, with clickable commit links when the evidence is known
 
 ## Human Review
 - 1-3 bullets for what a human should sanity-check before accepting, or when they should override up/down
@@ -47,7 +47,8 @@ One short summary sentence.
 - Use `minor` when the evidence supports a meaningful new or expanded shipped surface.
 - Use `patch` when the evidence is primarily fixes, polish, internal maintenance, dependency churn, or limited incremental expansion.
 - Keep the recommendation grounded in shipped behavior and release surface, not in repository churn.
-- Use inline traceability on Why This Bump bullets with short SHA references like `42b26250` when the supporting commit is known.
+- Use inline traceability on Why This Bump bullets with exact Markdown commit links from the `Commit references` section, for example `[42b26250](https://github.com/owner/repo/commit/<full-sha>)`.
+- Do not put commit links or short SHAs in backticks; the traceability reference should be a clickable Markdown link.
 - Make the Human Review section practical: mention ambiguity, scope boundaries, or reasons a human might override the recommendation.
 - Do not write like a changelog or full release notes; this is a version recommendation memo.
 - Avoid generic wording like `several improvements`, `various updates`, or `mixed changes`.

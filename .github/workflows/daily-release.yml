@@ -110,8 +110,22 @@ jobs:
             exit 0
           fi
 
+          release_worthy_count=0
+          while IFS= read -r sha; do
+            message="$(git show -s --format=%B "${sha}")"
+            if ! grep -Eiq '\[(skip daily-release|skip release|no daily-release|no release)\]' <<< "${message}"; then
+              release_worthy_count=$((release_worthy_count + 1))
+            fi
+          done < <(git rev-list "${latest_tag}..HEAD")
+
+          if [[ "${release_worthy_count}" -eq 0 ]]; then
+            echo "should_release=false" >> "${GITHUB_OUTPUT}"
+            echo "Only daily-release-skipped commits found after ${latest_tag}; skipping daily release." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
           echo "should_release=true" >> "${GITHUB_OUTPUT}"
-          echo "Preparing release from ${latest_tag}..HEAD (${commit_count} commits)." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Preparing release from ${latest_tag}..HEAD (${release_worthy_count} release-worthy commits, ${commit_count} total)." >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Generate Codex release prep
         id: release_prep
