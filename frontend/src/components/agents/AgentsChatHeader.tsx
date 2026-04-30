@@ -293,11 +293,13 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
   const showIdeationArtifacts =
     conversationMode === "ideation" && visibleHeaderArtifactTabs.length > 0;
   const showArtifactToggle = conversationMode === "ideation" || artifactOpen;
-  const publishPaneOpen = artifactOpen && activeArtifactTab === "publish";
+  // Hide the publish shortcut whenever any artifact pane is open — the user
+  // can already reach Commit & Publish via the artifact tab bar, so the
+  // header CTA is redundant (and visually crowds the Update-from-base label).
   const showPublishShortcut = Boolean(
     conversation &&
       shouldShowAgentWorkspacePublishSurface(workspace) &&
-      !publishPaneOpen,
+      !artifactOpen,
   );
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
