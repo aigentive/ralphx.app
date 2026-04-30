@@ -347,6 +347,9 @@ export async function runVerificationRoundPass(
     return {
       session_id: args.sessionId,
       round: args.round,
+      plan_snapshot: {
+        artifact_id: plan.artifact_id,
+      },
       created_after: requiredRound.created_after,
       classification: requiredRound.settlement.classification,
       required_delegates: requiredRound.required_delegates,
@@ -393,6 +396,9 @@ export async function runVerificationRoundPass(
     return {
       session_id: args.sessionId,
       round: args.round,
+      plan_snapshot: {
+        artifact_id: plan.artifact_id,
+      },
       created_after: requiredRound.created_after,
       classification: "infra_failure" as const,
       required_delegates: requiredRound.required_delegates,
@@ -443,6 +449,9 @@ export async function runVerificationRoundPass(
   return {
     session_id: args.sessionId,
     round: args.round,
+    plan_snapshot: {
+      artifact_id: plan.artifact_id,
+    },
     created_after: requiredRound.created_after,
     classification: "complete" as const,
     required_delegates: requiredRound.required_delegates,

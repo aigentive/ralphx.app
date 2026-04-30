@@ -41,5 +41,6 @@ export declare function completePlanVerificationWithSettlement(deps: {
         round?: number;
     }) => Promise<Record<string, unknown>>;
     callCompletion: (body: Record<string, unknown>) => Promise<unknown>;
+    projectedSolutionCritiqueGaps?: unknown[];
 }): Promise<Record<string, unknown> | unknown>;
 //# sourceMappingURL=verification-completion.d.ts.map

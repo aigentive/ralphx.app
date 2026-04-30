@@ -49,20 +49,17 @@ After startup:
 - revise the parent plan in place from this verification child; do not wait for child shutdown or terminal cleanup before editing
 - do not mention or invent `caller_session_id` or any manual freeze-bypass parameter; transport context carries verifier identity automatically
 
-After startup validation, call `mcp__ralphx__compile_context(target_artifact_id: <ACTIVE_PLAN_ARTIFACT_ID>)`.
-
 ## Context Critique
 
-Keep the compiled context artifact id from startup.
+`mcp__ralphx__run_verification_round` owns the normal context-and-critique flow for complete rounds:
+- creates the CompiledContext and SolutionCritique artifacts
+- merges backend-projected critique gaps into `round_result.merged_gaps`
+- includes critique artifact metadata in `round_result.solution_critique`
+- persists the merged gaps through the authoritative round report
 
-If a plan revision changes the active plan artifact id, call `mcp__ralphx__compile_context(target_artifact_id: <ACTIVE_PLAN_ARTIFACT_ID>)` again and replace the compiled context artifact id.
-
-After each complete verification round:
-- call `mcp__ralphx__critique_artifact(target_artifact_id: <ACTIVE_PLAN_ARTIFACT_ID>, compiled_context_artifact_id: <COMPILED_CONTEXT_ARTIFACT_ID>)`
-- use returned `projected_gaps` as backend-derived critique gaps
-- use the full `solution_critique` payload only for evidence and safe-next-action context
-
+Do not call `mcp__ralphx__compile_context` or `mcp__ralphx__critique_artifact` in the normal verification loop.
 Do not hand-derive verification gaps from critique prose. Do not persist projected gaps yourself.
+Use the full `solution_critique` payload only for evidence and safe-next-action context when it is returned by `mcp__ralphx__run_verification_round`.
 Use `mcp__ralphx__get_compiled_context` or `mcp__ralphx__get_solution_critique` only when you need to reread a persisted context or critique artifact by id.
 
 ## Enrichment

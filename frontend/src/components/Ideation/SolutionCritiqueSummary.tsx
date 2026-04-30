@@ -143,11 +143,15 @@ export function SolutionCritiqueSummary({
     staleTime: 30_000,
     retry: false,
   });
+  const hasCompiledContext = Boolean(contextData?.compiledContext);
   const { data: critiqueData } = useQuery({
     queryKey: solutionCriticKeys.latestSolutionCritique(sessionId),
     queryFn: () => solutionCriticApi.getLatestSolutionCritique(sessionId),
     enabled,
     staleTime: 30_000,
+    refetchInterval: hasCompiledContext
+      ? (query) => (query.state.data ? false : 1_000)
+      : false,
     retry: false,
   });
 

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { solutionCriticApi } from "@/api/solution-critic";
 import { SolutionCritiqueSummary } from "./SolutionCritiqueSummary";
 
@@ -27,6 +27,10 @@ function renderSummary() {
 describe("SolutionCritiqueSummary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders nothing when no persisted context or critique exists", async () => {
@@ -193,5 +197,56 @@ describe("SolutionCritiqueSummary", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("No LLM critique persisted yet.")).toBeInTheDocument();
     expect(screen.queryByText("No critique")).not.toBeInTheDocument();
+  });
+
+  it("polls for the model critique while compiled context is waiting", async () => {
+    vi.mocked(solutionCriticApi.getLatestCompiledContext).mockResolvedValue({
+      artifactId: "context-1",
+      compiledContext: {
+        id: "context-1",
+        target: { targetType: "plan_artifact", id: "plan-1", label: "Plan" },
+        sources: [
+          { sourceType: "plan_artifact", id: "plan_artifact:plan-1", label: "Plan" },
+        ],
+        claims: [
+          {
+            id: "claim-1",
+            text: "The selected target is the plan.",
+            classification: "fact",
+            confidence: "high",
+            evidence: [],
+          },
+        ],
+        openQuestions: [],
+        staleAssumptions: [],
+        generatedAt: "2026-04-29T12:00:00Z",
+      },
+    });
+    vi.mocked(solutionCriticApi.getLatestSolutionCritique)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({
+        artifactId: "critique-1",
+        solutionCritique: {
+          id: "critique-1",
+          artifactId: "plan-1",
+          contextArtifactId: "context-1",
+          verdict: "investigate",
+          confidence: "high",
+          claims: [],
+          recommendations: [],
+          risks: [],
+          verificationPlan: [],
+          safeNextAction: "Review the critique.",
+          generatedAt: "2026-04-29T12:30:00Z",
+        },
+        projectedGaps: [],
+      });
+
+    renderSummary();
+
+    expect(await screen.findByText("Compiled context ready")).toBeInTheDocument();
+    expect(await screen.findByText("Investigate", {}, { timeout: 2_500 })).toBeInTheDocument();
+    expect(screen.getByText("Review the critique.")).toBeInTheDocument();
+    expect(solutionCriticApi.getLatestSolutionCritique).toHaveBeenCalledTimes(2);
   });
 });

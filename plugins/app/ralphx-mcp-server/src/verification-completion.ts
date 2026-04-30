@@ -4,6 +4,10 @@ import {
   type VerificationFindingSummary,
   type VerificationRoundDelegateInput,
 } from "./verification-round-assessment.js";
+import {
+  hasBlockingVerificationGaps,
+  mergeVerificationGaps,
+} from "./verification-gaps.js";
 
 export type VerificationTerminalBody = {
   status: string;
@@ -59,6 +63,7 @@ export async function completePlanVerificationWithSettlement(
       round?: number;
     }) => Promise<Record<string, unknown>>;
     callCompletion: (body: Record<string, unknown>) => Promise<unknown>;
+    projectedSolutionCritiqueGaps?: unknown[];
   }
 ): Promise<Record<string, unknown> | unknown> {
   const settledRound = await deps.awaitVerificationRoundSettlement({
@@ -131,18 +136,22 @@ export async function completePlanVerificationWithSettlement(
           .join(", ")}.`
       );
     }
-    const { merged_gaps, gap_counts } = aggregateVerificationGaps(parsedRequiredFindings);
+    const { merged_gaps } = aggregateVerificationGaps(parsedRequiredFindings);
+    const finalMergedGaps = mergeVerificationGaps(
+      merged_gaps,
+      deps.projectedSolutionCritiqueGaps ?? []
+    );
     if (
       deps.body.status === "verified" &&
-      (gap_counts.critical > 0 || gap_counts.high > 0 || gap_counts.medium > 0)
+      hasBlockingVerificationGaps(finalMergedGaps)
     ) {
       throw new Error(
-        "Cannot complete verification as verified while required findings still contain blocking gaps."
+        "Cannot complete verification as verified while verification findings or solution critique still contain blocking gaps."
       );
     }
     completionBody = {
       ...completionBody,
-      gaps: merged_gaps,
+      gaps: finalMergedGaps,
     };
   }
 

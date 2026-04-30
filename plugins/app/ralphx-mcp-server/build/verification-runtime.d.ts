@@ -45,6 +45,12 @@ type CachedVerificationRoundState = {
     createdAfter: string;
     requiredDelegates: VerificationRoundDelegateInput[];
     mergedGaps: unknown[];
+    solutionCritique?: SolutionCritiqueRoundProjection;
+};
+type SolutionCritiqueRoundProjection = {
+    compiled_context_artifact_id: string;
+    critique_artifact_id: string;
+    projected_gaps: unknown[];
 };
 type VerificationRuntimeDeps = {
     callTauri: (endpoint: string, payload: Record<string, unknown>) => Promise<unknown>;
