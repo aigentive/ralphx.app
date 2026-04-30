@@ -256,7 +256,8 @@ describe("VerificationPanel — page-load hydration", () => {
     });
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
     expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Previous verification");
-    expect(screen.getByTestId("verification-status-card")).toHaveTextContent("Plan verified");
+    // Terminal status banner is gone; the gap card + history cover that.
+    expect(screen.queryByTestId("verification-status-card")).not.toBeInTheDocument();
     expect(screen.getByTestId("verification-history")).toBeInTheDocument();
     await waitFor(() => {
       expect(onDisplayedVerificationChildChange).toHaveBeenCalledWith("child-verifier-1");
