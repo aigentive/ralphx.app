@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, SearchCheck } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, SearchCheck } from "lucide-react";
 import {
   solutionCriticApi,
   type SolutionCritiqueReadResponse,
@@ -40,6 +40,13 @@ function critiqueItems(result: SolutionCritiqueReadResponse | null) {
   return critique.claims.slice(0, 3);
 }
 
+function targetCritiqueKey(
+  sessionId: string | null | undefined,
+  target: SolutionCritiqueTargetInput,
+) {
+  return ["solutionCritic", sessionId ?? "none", "target", target.targetType, target.id] as const;
+}
+
 export function SolutionCritiqueAction({
   sessionId,
   target,
@@ -52,6 +59,7 @@ export function SolutionCritiqueAction({
   const [result, setResult] = useState<SolutionCritiqueReadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const targetQueryKey = useMemo(() => targetCritiqueKey(sessionId, target), [sessionId, target]);
   const items = useMemo(() => critiqueItems(result), [result]);
 
   const mutation = useMutation({
@@ -64,11 +72,11 @@ export function SolutionCritiqueAction({
     },
     onMutate: () => {
       setError(null);
-      setResult(null);
       setOpen(true);
     },
     onSuccess: (response) => {
       setResult(response);
+      queryClient.setQueryData(targetQueryKey, response);
       void queryClient.invalidateQueries({ queryKey: ["solutionCritic", sessionId] });
     },
     onError: (err) => {
@@ -95,6 +103,16 @@ export function SolutionCritiqueAction({
           )}
           onClick={(event) => {
             event.stopPropagation();
+            const cachedResult =
+              result ??
+              queryClient.getQueryData<SolutionCritiqueReadResponse>(targetQueryKey) ??
+              null;
+            if (cachedResult) {
+              setError(null);
+              setResult(cachedResult);
+              setOpen(true);
+              return;
+            }
             mutation.mutate();
           }}
           disabled={mutation.isPending}
@@ -182,6 +200,27 @@ export function SolutionCritiqueAction({
                   </div>
                 </div>
               )}
+
+              <div className="flex justify-end border-t border-[var(--overlay-weak)] pt-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 rounded-md px-2 text-[11px] text-text-primary/60 hover:bg-[var(--overlay-moderate)] hover:text-text-primary/85"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    mutation.mutate();
+                  }}
+                  disabled={mutation.isPending}
+                >
+                  {mutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  <span>{mutation.isPending ? "Running" : "Run again"}</span>
+                </Button>
+              </div>
             </>
           )}
         </div>
