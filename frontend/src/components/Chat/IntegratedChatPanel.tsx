@@ -88,6 +88,8 @@ import { TimeoutWarning } from "./TimeoutWarning";
 import { ChildSessionNavigationContext } from "./tool-widgets/ChildSessionNavigationContext";
 import { ChildSessionTranscriptModal } from "./ChildSessionTranscriptModal";
 import { cn } from "@/lib/utils";
+import { isProviderRole } from "@/lib/chat/provider-role";
+import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -870,6 +872,10 @@ export function IntegratedChatPanel({
     }
   }, [attachments, handleSendBase, clearAttachments, showTeamUi, sendTarget]);
 
+  const handleSendCritiqueToChat = useCallback(async (message: string) => {
+    await handleSendBase(message);
+  }, [handleSendBase]);
+
   // Wrapper for handleEditLastQueued that provides the queued messages
   const handleEditLastQueuedWrapper = () => {
     handleEditLastQueued(queuedMessages);
@@ -1037,6 +1043,24 @@ export function IntegratedChatPanel({
         return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
       });
   }, [messagesData, shouldDeferTranscriptHydration]);
+  const latestCritiqueTargetId = useMemo(() => {
+    if (currentContextType !== "ideation" || !ideationSessionId || isHistoryMode) {
+      return null;
+    }
+
+    for (let index = sortedMessages.length - 1; index >= 0; index -= 1) {
+      const message = sortedMessages[index];
+      if (!message || !isProviderRole(message.role)) continue;
+      const hasTargetContent =
+        message.content.trim().length > 0 ||
+        (message.contentBlocks?.length ?? 0) > 0 ||
+        (message.toolCalls?.length ?? 0) > 0;
+      if (!hasTargetContent) continue;
+      return message.id;
+    }
+
+    return null;
+  }, [currentContextType, ideationSessionId, isHistoryMode, sortedMessages]);
 
   // Status badge helpers - disabled in history mode (no live agent)
   // isAgentActive: only true when actively generating (not waiting_for_input)
@@ -1258,6 +1282,7 @@ export function IntegratedChatPanel({
               providerHarness={activeConversationMeta?.providerHarness ?? null}
               providerSessionId={activeConversationMeta?.providerSessionId ?? null}
               solutionCritiqueSessionId={ideationSessionId ?? null}
+              onSendCritiqueToChat={handleSendCritiqueToChat}
               contentWidthClassName={contentWidthClassName}
               topInsetClassName={transcriptTopInsetClassName}
               hasOlderMessages={
@@ -1356,6 +1381,35 @@ export function IntegratedChatPanel({
                   activeFilter={teamFilter}
                   onFilterChange={setTeamFilter}
                 />
+              </div>
+            </div>
+          )}
+
+          {latestCritiqueTargetId && ideationSessionId && (
+            <div className="px-3 pb-2">
+              <div className={conversationContentShellClassName}>
+                <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--overlay-weak)] bg-[var(--overlay-faint)] px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase text-text-primary/40">
+                      Solution critique
+                    </div>
+                    <div className="truncate text-[12px] text-text-primary/60">
+                      Latest assistant response
+                    </div>
+                  </div>
+                  <SolutionCritiqueAction
+                    sessionId={ideationSessionId}
+                    target={{
+                      targetType: "chat_message",
+                      id: latestCritiqueTargetId,
+                      label: "Latest assistant response",
+                    }}
+                    label="Critique latest"
+                    size="sm"
+                    align="end"
+                    onSendToChat={handleSendCritiqueToChat}
+                  />
+                </div>
               </div>
             </div>
           )}

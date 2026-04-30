@@ -87,6 +87,7 @@ export interface MessageItemProps {
   cacheCreationTokens?: number | null | undefined;
   cacheReadTokens?: number | null | undefined;
   estimatedUsd?: number | null | undefined;
+  onSendCritiqueToChat?: ((message: string) => void | Promise<void>) | undefined;
 }
 
 // ============================================================================
@@ -118,6 +119,7 @@ export const MessageItem = React.memo(function MessageItem({
   cacheCreationTokens,
   cacheReadTokens,
   estimatedUsd,
+  onSendCritiqueToChat,
 }: MessageItemProps) {
   const isUser = role === "user";
   const [copied, setCopied] = useState(false);
@@ -370,6 +372,7 @@ export const MessageItem = React.memo(function MessageItem({
               }}
               label="Critique"
               size="xs"
+              onSendToChat={onSendCritiqueToChat}
             />
           )}
         </div>
@@ -402,5 +405,6 @@ export const MessageItem = React.memo(function MessageItem({
     && prev.outputTokens === next.outputTokens
     && prev.cacheCreationTokens === next.cacheCreationTokens
     && prev.cacheReadTokens === next.cacheReadTokens
-    && prev.estimatedUsd === next.estimatedUsd;
+    && prev.estimatedUsd === next.estimatedUsd
+    && prev.onSendCritiqueToChat === next.onSendCritiqueToChat;
 });

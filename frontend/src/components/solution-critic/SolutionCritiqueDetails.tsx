@@ -1,7 +1,8 @@
-import { AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Send, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   CompiledContextReadResponse,
+  ProjectedCritiqueGap,
   SolutionCritiqueReadResponse,
 } from "@/api/solution-critic";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,8 @@ import {
 
 type SolutionCritique = SolutionCritiqueReadResponse["solutionCritique"];
 type EvidenceRef = SolutionCritique["claims"][number]["evidence"][number];
+type GapActionKind = "promoted" | "deferred" | "covered" | "reopened";
+type LegacyProjectedGap = SolutionCritiqueReadResponse["projectedGaps"][number];
 
 interface SolutionCritiqueDetailsProps {
   targetLabel: string;
@@ -23,6 +26,10 @@ interface SolutionCritiqueDetailsProps {
   isLoading: boolean;
   error: string | null;
   onRefresh?: () => void;
+  onGapAction?: (gap: ProjectedCritiqueGap, action: GapActionKind) => void;
+  pendingGapActionId?: string | null;
+  onSendToChat?: (() => void) | undefined;
+  isSendingToChat?: boolean;
   readOnly?: boolean;
 }
 
@@ -42,9 +49,30 @@ export function SolutionCritiqueDetails({
   isLoading,
   error,
   onRefresh,
+  onGapAction,
+  pendingGapActionId,
+  onSendToChat,
+  isSendingToChat = false,
   readOnly = false,
 }: SolutionCritiqueDetailsProps) {
   const critique = result?.solutionCritique;
+  const claims = critique ? orderedClaims(critique) : [];
+  const risks = critique ? uniqueBy(critique.risks, (risk) => `${risk.id}:${risk.risk}`) : [];
+  const recommendations = critique
+    ? uniqueBy(
+      critique.recommendations,
+      (recommendation) => `${recommendation.id}:${recommendation.recommendation}`,
+    )
+    : [];
+  const verificationPlan = critique
+    ? uniqueBy(
+      critique.verificationPlan,
+      (requirement) => `${requirement.id}:${requirement.requirement}`,
+    )
+    : [];
+  const projectedGapItems = uniqueBy(result?.projectedGapItems ?? [], (gap) => gap.id);
+  const projectedGaps = uniqueLegacyProjectedGaps(result?.projectedGaps ?? []);
+  const projectedGapCount = projectedGapItems.length || projectedGaps.length;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -84,9 +112,9 @@ export function SolutionCritiqueDetails({
                 </SignalBlock>
               )}
 
-              <SignalBlock title={`Claims (${critique.claims.length})`}>
+              <SignalBlock title={`Claims (${claims.length})`}>
                 <div className="space-y-2">
-                  {orderedClaims(critique).map((claim) => (
+                  {claims.map((claim) => (
                     <SignalCard
                       key={claim.id}
                       label={`${formatCritiqueEnum(claim.status)} - ${formatCritiqueEnum(claim.confidence)}`}
@@ -99,10 +127,10 @@ export function SolutionCritiqueDetails({
                 </div>
               </SignalBlock>
 
-              <SignalBlock title={`Risks (${critique.risks.length})`}>
-                {critique.risks.length > 0 ? (
+              <SignalBlock title={`Risks (${risks.length})`}>
+                {risks.length > 0 ? (
                   <div className="space-y-2">
-                    {critique.risks.map((risk) => (
+                    {risks.map((risk) => (
                       <SignalCard
                         key={risk.id}
                         label={`${formatCritiqueEnum(risk.severity)} risk`}
@@ -118,10 +146,10 @@ export function SolutionCritiqueDetails({
                 )}
               </SignalBlock>
 
-              <SignalBlock title={`Recommendations (${critique.recommendations.length})`}>
-                {critique.recommendations.length > 0 ? (
+              <SignalBlock title={`Recommendations (${recommendations.length})`}>
+                {recommendations.length > 0 ? (
                   <div className="space-y-2">
-                    {critique.recommendations.map((recommendation) => (
+                    {recommendations.map((recommendation) => (
                       <SignalCard
                         key={recommendation.id}
                         label={formatCritiqueEnum(recommendation.status)}
@@ -137,10 +165,10 @@ export function SolutionCritiqueDetails({
                 )}
               </SignalBlock>
 
-              <SignalBlock title={`Verification Plan (${critique.verificationPlan.length})`}>
-                {critique.verificationPlan.length > 0 ? (
+              <SignalBlock title={`Verification Plan (${verificationPlan.length})`}>
+                {verificationPlan.length > 0 ? (
                   <div className="space-y-2">
-                    {critique.verificationPlan.map((requirement) => (
+                    {verificationPlan.map((requirement) => (
                       <SignalCard
                         key={requirement.id}
                         label={`${formatCritiqueEnum(requirement.priority)} priority`}
@@ -156,10 +184,22 @@ export function SolutionCritiqueDetails({
                 )}
               </SignalBlock>
 
-              <SignalBlock title={`Projected Gaps (${result.projectedGaps.length})`}>
-                {result.projectedGaps.length > 0 ? (
+              <SignalBlock title={`Projected Gaps (${projectedGapCount})`}>
+                {projectedGapItems.length > 0 ? (
                   <div className="space-y-2">
-                    {result.projectedGaps.map((gap, index) => (
+                    {projectedGapItems.map((gap) => (
+                      <ProjectedGapCard
+                        key={gap.id}
+                        gap={gap}
+                        readOnly={readOnly}
+                        onGapAction={onGapAction}
+                        isPending={pendingGapActionId === gap.id}
+                      />
+                    ))}
+                  </div>
+                ) : projectedGaps.length > 0 ? (
+                  <div className="space-y-2">
+                    {projectedGaps.map((gap, index) => (
                       <div
                         key={`${gap.category}-${gap.severity}-${index}`}
                         className="rounded-md border border-[var(--overlay-weak)] bg-[var(--overlay-faint)] p-2.5"
@@ -212,6 +252,19 @@ export function SolutionCritiqueDetails({
 
       {!readOnly && (
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--overlay-weak)] px-4 py-3">
+          {critique && onSendToChat && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onSendToChat}
+              disabled={isLoading || isSendingToChat}
+              className="h-8 rounded-md text-[12px]"
+            >
+              <Send className="h-3.5 w-3.5" />
+              Send to chat
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -222,6 +275,104 @@ export function SolutionCritiqueDetails({
           >
             {critique ? "Refresh critique" : "Run critique"}
           </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectedGapCard({
+  gap,
+  readOnly,
+  onGapAction,
+  isPending,
+}: {
+  gap: ProjectedCritiqueGap;
+  readOnly: boolean;
+  onGapAction: ((gap: ProjectedCritiqueGap, action: GapActionKind) => void) | undefined;
+  isPending: boolean;
+}) {
+  const verificationGap = gap.verificationGap;
+  const canAct = !readOnly && Boolean(onGapAction);
+  return (
+    <div className="rounded-md border border-[var(--overlay-weak)] bg-[var(--overlay-faint)] p-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase text-[var(--status-warning)]">
+          {verificationGap.severity}
+        </span>
+        <span className="text-[10px] text-text-primary/45">
+          {formatCritiqueEnum(verificationGap.category)}
+        </span>
+        <span className="rounded-md border border-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px] text-text-primary/45">
+          {formatCritiqueEnum(gap.origin.kind)}
+        </span>
+        <span className="rounded-md border border-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px] text-text-primary/55">
+          {formatCritiqueEnum(gap.status)}
+        </span>
+      </div>
+      <div className="mt-1 text-[12px] leading-relaxed text-text-primary/75">
+        {verificationGap.description}
+      </div>
+      {verificationGap.whyItMatters && (
+        <div className="mt-1 text-[11px] leading-relaxed text-text-primary/45">
+          {verificationGap.whyItMatters}
+        </div>
+      )}
+      {verificationGap.source && (
+        <div className="mt-1 truncate text-[10px] text-text-primary/35">
+          {verificationGap.source}
+        </div>
+      )}
+      {canAct && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {gap.status !== "promoted" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-6 rounded-md px-2 text-[10px]"
+              disabled={isPending}
+              onClick={() => onGapAction?.(gap, "promoted")}
+            >
+              Promote
+            </Button>
+          )}
+          {gap.status === "open" && (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 rounded-md px-2 text-[10px] text-text-primary/55"
+                disabled={isPending}
+                onClick={() => onGapAction?.(gap, "deferred")}
+              >
+                Defer
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 rounded-md px-2 text-[10px] text-text-primary/55"
+                disabled={isPending}
+                onClick={() => onGapAction?.(gap, "covered")}
+              >
+                Covered
+              </Button>
+            </>
+          )}
+          {(gap.status === "deferred" || gap.status === "covered") && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 rounded-md px-2 text-[10px] text-text-primary/55"
+              disabled={isPending}
+              onClick={() => onGapAction?.(gap, "reopened")}
+            >
+              Reopen
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -311,6 +462,23 @@ function EmptyLine({ children }: { children: ReactNode }) {
   return <div className="text-[12px] text-text-primary/45">{children}</div>;
 }
 
+function uniqueBy<T>(items: T[], keyFor: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = keyFor(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function uniqueLegacyProjectedGaps(gaps: LegacyProjectedGap[]): LegacyProjectedGap[] {
+  return uniqueBy(
+    gaps,
+    (gap) => `${gap.severity}:${gap.category}:${gap.description}:${gap.whyItMatters ?? ""}`,
+  );
+}
+
 function orderedClaims(critique: SolutionCritique) {
   const order: Record<string, number> = {
     contradicted: 0,
@@ -318,7 +486,7 @@ function orderedClaims(critique: SolutionCritique) {
     unclear: 2,
     supported: 3,
   };
-  return [...critique.claims].sort(
+  return uniqueBy(critique.claims, (claim) => `${claim.id}:${claim.claim}`).sort(
     (left, right) =>
       (order[left.status] ?? 9) - (order[right.status] ?? 9) ||
       left.claim.localeCompare(right.claim),

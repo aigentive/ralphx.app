@@ -117,8 +117,10 @@ pub use review_issue::{
 pub use solution_critique::{
     ClaimReview, ClaimReviewStatus, CompiledContext, ContextAssumption, ContextClaim,
     ContextClaimKind, ContextQuestion, ContextSourceRef, ContextSourceType, ContextTargetRef,
-    ContextTargetType, CritiqueConfidence, CritiqueSeverity, RecommendationReview,
-    RecommendationStatus, RiskAssessment, SolutionCritique, SolutionCritiqueVerdict,
+    ContextTargetType, CritiqueConfidence, CritiqueSeverity, ProjectedCritiqueGap,
+    ProjectedCritiqueGapOrigin, ProjectedCritiqueGapOriginKind, ProjectedCritiqueGapStatus,
+    RecommendationReview, RecommendationStatus, RiskAssessment, SolutionCritique,
+    SolutionCritiqueGapAction, SolutionCritiqueGapActionKind, SolutionCritiqueVerdict,
     VerificationRequirement,
 };
 pub use status::{InternalStatus, ParseInternalStatusError};

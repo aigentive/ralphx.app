@@ -175,6 +175,10 @@ pub async fn start_http_server(
             get(get_latest_compiled_context_for_target),
         )
         .route(
+            "/api/ideation/sessions/:id/compiled-context/target/:target_type/:target_id/history",
+            get(get_compiled_context_history_for_target),
+        )
+        .route(
             "/api/ideation/sessions/:id/compiled-context/:artifact_id",
             get(get_compiled_context_artifact),
         )
@@ -185,6 +189,22 @@ pub async fn start_http_server(
         .route(
             "/api/ideation/sessions/:id/solution-critique/target/:target_type/:target_id",
             get(get_latest_solution_critique_for_target),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/target/:target_type/:target_id/history",
+            get(get_solution_critique_history_for_target),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/rollup",
+            get(get_solution_critique_rollup),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/:artifact_id/projected-gaps",
+            get(get_solution_critique_projected_gaps),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/:artifact_id/projected-gaps/:gap_id/actions",
+            post(post_solution_critique_projected_gap_action),
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique/:artifact_id",

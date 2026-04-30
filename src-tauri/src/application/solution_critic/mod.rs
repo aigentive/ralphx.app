@@ -11,8 +11,10 @@ pub use generator::{
 pub use service::SolutionCritiqueService;
 pub use review_preparer::SolutionCritiqueReviewPreparer;
 pub use types::{
-    CompileContextRequest, CompileContextResult, CompiledContextCandidate,
-    CompiledContextReadResult, ContextTargetRequest, CritiqueArtifactRequest,
-    CritiqueArtifactResult, EvidenceRef, RawContextBundle, SolutionCritiqueCandidate,
-    SolutionCritiqueReadResult, SourceLimits,
+    ApplyProjectedGapActionRequest, CompileContextRequest, CompileContextResult,
+    CompiledContextCandidate, CompiledContextHistoryItem, CompiledContextReadResult,
+    ContextTargetRequest, CritiqueArtifactRequest, CritiqueArtifactResult, EvidenceRef,
+    ProjectedCritiqueGapActionResult, RawContextBundle, SolutionCritiqueCandidate,
+    SolutionCritiqueGapActionSummary, SolutionCritiqueHistoryItem, SolutionCritiqueReadResult,
+    SolutionCritiqueSessionRollup, SolutionCritiqueTargetRollupItem, SourceLimits,
 };

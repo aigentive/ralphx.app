@@ -35,9 +35,10 @@ use crate::domain::repositories::{
     MemoryArchiveRepository, MemoryEntryRepository, MemoryEventRepository, MethodologyRepository,
     PlanBranchRepository, PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
-    SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
-    TaskRepository, TaskStepRepository, TeamMessageRepository, TeamSessionRepository,
-    WebhookRegistrationRepository, WorkflowRepository,
+    SessionLinkRepository, SolutionCritiqueGapActionRepository, TaskDependencyRepository,
+    TaskProposalRepository, TaskQARepository, TaskRepository, TaskStepRepository,
+    TeamMessageRepository, TeamSessionRepository, WebhookRegistrationRepository,
+    WorkflowRepository,
 };
 use crate::domain::services::{
     GithubServiceTrait, MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry,
@@ -58,8 +59,9 @@ use crate::infrastructure::memory::{
     MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository, MemoryProcessRepository,
     MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryQuestionRepository,
     MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
-    MemorySessionLinkRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
-    MemoryTaskQARepository, MemoryTaskRepository, MemoryTaskStepRepository,
+    MemorySessionLinkRepository, MemorySolutionCritiqueGapActionRepository,
+    MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
+    MemoryTaskRepository, MemoryTaskStepRepository,
     MemoryTeamMessageRepository, MemoryTeamSessionRepository, MemoryWebhookRegistrationRepository,
     MemoryWorkflowRepository,
 };
@@ -81,9 +83,10 @@ use crate::infrastructure::sqlite::{
     SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
     SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
     SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository,
-    SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
-    SqliteTaskStepRepository, SqliteTeamMessageRepository, SqliteTeamSessionRepository,
-    SqliteWebhookRegistrationRepository, SqliteWorkflowRepository,
+    SqliteSolutionCritiqueGapActionRepository, SqliteTaskProposalRepository,
+    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
+    SqliteTeamMessageRepository, SqliteTeamSessionRepository, SqliteWebhookRegistrationRepository,
+    SqliteWorkflowRepository,
 };
 use crate::infrastructure::GhCliGithubService;
 
@@ -140,6 +143,8 @@ pub struct AppState {
     pub agent_lane_settings_repo: Arc<dyn AgentLaneSettingsRepository>,
     /// Session link repository for managing parent-child session relationships
     pub session_link_repo: Arc<dyn SessionLinkRepository>,
+    /// Append-only audit trail for solution critique projected-gap actions
+    pub solution_critique_gap_action_repo: Arc<dyn SolutionCritiqueGapActionRepository>,
     /// Task proposal repository
     pub task_proposal_repo: Arc<dyn TaskProposalRepository>,
     /// Proposal dependency repository
@@ -468,6 +473,9 @@ impl AppState {
             session_link_repo: Arc::new(SqliteSessionLinkRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            solution_critique_gap_action_repo: Arc::new(
+                SqliteSolutionCritiqueGapActionRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
             task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(SqliteProposalDependencyRepository::from_shared(
                 Arc::clone(&shared_conn),
@@ -644,6 +652,9 @@ impl AppState {
             ideation_model_settings_repo: Arc::new(MemoryIdeationModelSettingsRepository::new()),
             agent_lane_settings_repo: Arc::new(MemoryAgentLaneSettingsRepository::new()),
             session_link_repo: Arc::new(MemorySessionLinkRepository::new()),
+            solution_critique_gap_action_repo: Arc::new(
+                SqliteSolutionCritiqueGapActionRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
             task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -752,6 +763,9 @@ impl AppState {
             ideation_model_settings_repo: Arc::new(MemoryIdeationModelSettingsRepository::new()),
             agent_lane_settings_repo: Arc::new(MemoryAgentLaneSettingsRepository::new()),
             session_link_repo: Arc::new(MemorySessionLinkRepository::new()),
+            solution_critique_gap_action_repo: Arc::new(
+                SqliteSolutionCritiqueGapActionRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
             task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -870,6 +884,9 @@ impl AppState {
             ideation_model_settings_repo: Arc::new(MemoryIdeationModelSettingsRepository::new()),
             agent_lane_settings_repo: Arc::new(MemoryAgentLaneSettingsRepository::new()),
             session_link_repo: Arc::new(MemorySessionLinkRepository::new()),
+            solution_critique_gap_action_repo: Arc::new(
+                MemorySolutionCritiqueGapActionRepository::new(),
+            ),
             task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -978,6 +995,9 @@ impl AppState {
             ideation_model_settings_repo: Arc::new(MemoryIdeationModelSettingsRepository::new()),
             agent_lane_settings_repo: Arc::new(MemoryAgentLaneSettingsRepository::new()),
             session_link_repo: Arc::new(MemorySessionLinkRepository::new()),
+            solution_critique_gap_action_repo: Arc::new(
+                MemorySolutionCritiqueGapActionRepository::new(),
+            ),
             task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),

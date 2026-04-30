@@ -1257,6 +1257,8 @@ impl<R: Runtime> AppChatService<R> {
         context_type: ChatContextType,
         context_id: &str,
     ) -> Result<PathBuf, String> {
+        let agent_conversation_workspace_repo =
+            self.agent_conversation_workspace_repo.lock().unwrap().clone();
         chat_service_context::resolve_working_directory(
             context_type,
             context_id,
@@ -1264,6 +1266,7 @@ impl<R: Runtime> AppChatService<R> {
             Arc::clone(&self.task_repo),
             Arc::clone(&self.ideation_session_repo),
             Arc::clone(&self.delegated_session_repo),
+            agent_conversation_workspace_repo,
             &self.default_working_directory,
         )
         .await

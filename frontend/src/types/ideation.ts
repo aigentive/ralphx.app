@@ -27,6 +27,7 @@ export const VerificationGapSchema = z.object({
   category: z.string(),
   description: z.string(),
   whyItMatters: z.string().optional(),
+  source: z.string().optional(),
 });
 
 export type VerificationGap = z.infer<typeof VerificationGapSchema>;

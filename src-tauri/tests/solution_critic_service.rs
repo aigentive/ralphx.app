@@ -4,8 +4,9 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use futures::stream;
 use ralphx_lib::application::solution_critic::{
-    CompileContextRequest, ContextTargetRequest, CritiqueArtifactRequest, RawContextBundle,
-    SolutionCritiqueGenerator, SolutionCritiqueService, SourceLimits,
+    ApplyProjectedGapActionRequest, CompileContextRequest, ContextTargetRequest,
+    CritiqueArtifactRequest, RawContextBundle, SolutionCritiqueGenerator, SolutionCritiqueService,
+    SourceLimits,
 };
 use ralphx_lib::domain::agents::{
     AgentConfig, AgentHandle, AgentOutput, AgentResponse, AgentResult, AgenticClient,
@@ -14,9 +15,9 @@ use ralphx_lib::domain::agents::{
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactId, ArtifactRelationType, ArtifactType, ChatMessage, ChatMessageId,
     CompiledContext, ContextSourceType, ContextTargetType, IdeationSession, IdeationSessionId,
-    IssueSeverity, Project, ProjectId, ProposalCategory, Review, ReviewIssueEntity, ReviewNote,
-    ReviewOutcome, ReviewerType, Task, TaskId, TaskProposal, TaskProposalId, TeamArtifactMetadata,
-    VerificationStatus,
+    IssueSeverity, Project, ProjectId, ProjectedCritiqueGapStatus, ProposalCategory, Review,
+    ReviewIssueEntity, ReviewNote, ReviewOutcome, ReviewerType, SolutionCritiqueGapActionKind,
+    Task, TaskId, TaskProposal, TaskProposalId, TeamArtifactMetadata, VerificationStatus,
 };
 use ralphx_lib::{AppResult, AppState};
 use tokio::sync::Mutex;
@@ -793,6 +794,213 @@ async fn critique_artifact_persists_findings_artifact_and_relations() {
         .unwrap();
     assert_eq!(latest.artifact_id, result.artifact_id);
     assert_eq!(latest.projected_gaps.len(), 1);
+}
+
+#[tokio::test]
+async fn promote_projected_gap_updates_verification_snapshot_once_and_records_action() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id,
+    } = setup_fixture().await;
+    let service = SolutionCritiqueService::from_app_state_with_generator(
+        &state,
+        generator(
+            compile_json(&plan_artifact_id),
+            critique_json(&plan_artifact_id),
+        ),
+    );
+    let context = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
+        )
+        .await
+        .unwrap();
+    let critique = service
+        .critique_artifact(
+            session_id.as_str(),
+            CritiqueArtifactRequest::for_plan_artifact(
+                plan_artifact_id.as_str(),
+                context.artifact_id,
+            ),
+        )
+        .await
+        .unwrap();
+    let gap = critique.projected_gap_items[0].clone();
+
+    let result = service
+        .apply_projected_gap_action(
+            session_id.as_str(),
+            &critique.artifact_id,
+            &gap.id,
+            ApplyProjectedGapActionRequest {
+                action: SolutionCritiqueGapActionKind::Promoted,
+                note: Some("Needs verifier follow-up".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(result.verification_updated);
+    assert_eq!(result.gap.status, ProjectedCritiqueGapStatus::Promoted);
+    assert_eq!(
+        result.action.verification_generation,
+        Some(result.verification_generation.unwrap())
+    );
+
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        session.verification_status,
+        VerificationStatus::NeedsRevision
+    );
+    assert_eq!(session.verification_gap_count, 1);
+    assert_eq!(session.verification_gap_score, Some(1));
+    let snapshot = state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id, session.verification_generation)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(snapshot.current_gaps.len(), 1);
+    assert_eq!(
+        snapshot.current_gaps[0].source.as_deref(),
+        gap.verification_gap.source.as_deref()
+    );
+
+    let repeated = service
+        .apply_projected_gap_action(
+            session_id.as_str(),
+            &critique.artifact_id,
+            &gap.id,
+            ApplyProjectedGapActionRequest {
+                action: SolutionCritiqueGapActionKind::Promoted,
+                note: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!repeated.verification_updated);
+    let snapshot = state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id, session.verification_generation)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(snapshot.current_gaps.len(), 1);
+
+    let read = service
+        .get_solution_critique(session_id.as_str(), &critique.artifact_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        read.projected_gap_items[0].status,
+        ProjectedCritiqueGapStatus::Promoted
+    );
+    assert!(read.projected_gap_items[0].latest_action.is_some());
+}
+
+#[tokio::test]
+async fn defer_and_cover_projected_gap_record_actions_without_verification_mutation() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id,
+    } = setup_fixture().await;
+    let before = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let service = SolutionCritiqueService::from_app_state_with_generator(
+        &state,
+        generator(
+            compile_json(&plan_artifact_id),
+            critique_json(&plan_artifact_id),
+        ),
+    );
+    let context = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
+        )
+        .await
+        .unwrap();
+    let critique = service
+        .critique_artifact(
+            session_id.as_str(),
+            CritiqueArtifactRequest::for_plan_artifact(
+                plan_artifact_id.as_str(),
+                context.artifact_id,
+            ),
+        )
+        .await
+        .unwrap();
+    let gap_id = critique.projected_gap_items[0].id.clone();
+
+    let deferred = service
+        .apply_projected_gap_action(
+            session_id.as_str(),
+            &critique.artifact_id,
+            &gap_id,
+            ApplyProjectedGapActionRequest {
+                action: SolutionCritiqueGapActionKind::Deferred,
+                note: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!deferred.verification_updated);
+    assert_eq!(deferred.gap.status, ProjectedCritiqueGapStatus::Deferred);
+
+    let covered = service
+        .apply_projected_gap_action(
+            session_id.as_str(),
+            &critique.artifact_id,
+            &gap_id,
+            ApplyProjectedGapActionRequest {
+                action: SolutionCritiqueGapActionKind::Covered,
+                note: Some("Covered by manual inspection".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!covered.verification_updated);
+    assert_eq!(covered.gap.status, ProjectedCritiqueGapStatus::Covered);
+
+    let after = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.verification_status, before.verification_status);
+    assert_eq!(after.verification_gap_count, before.verification_gap_count);
+    assert_eq!(after.verification_gap_score, before.verification_gap_score);
+
+    let history = service
+        .get_solution_critique_history_for_target(
+            session_id.as_str(),
+            ContextTargetRequest {
+                target_type: ContextTargetType::PlanArtifact,
+                id: plan_artifact_id.as_str().to_string(),
+                label: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].latest_gap_actions.len(), 1);
+    assert_eq!(
+        history[0].latest_gap_actions[0].action,
+        SolutionCritiqueGapActionKind::Covered
+    );
 }
 
 #[tokio::test]

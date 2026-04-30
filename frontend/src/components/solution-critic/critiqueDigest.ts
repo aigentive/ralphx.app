@@ -102,10 +102,23 @@ export function buildCritiqueDigest({
     flaggedClaimCount,
     riskCount: critique.risks.length,
     highestRiskSeverity,
-    projectedGapCount: result.projectedGaps.length,
+    projectedGapCount: projectedGapCount(result),
     generatedAt: critique.generatedAt,
     isStale,
   };
+}
+
+function projectedGapCount(result: SolutionCritiqueReadResponse): number {
+  const projectedGapItems = result.projectedGapItems ?? [];
+  if (projectedGapItems.length > 0) {
+    return new Set(projectedGapItems.map((gap) => gap.id)).size;
+  }
+  const projectedGaps = result.projectedGaps ?? [];
+  return new Set(
+    projectedGaps.map(
+      (gap) => `${gap.severity}:${gap.category}:${gap.description}:${gap.whyItMatters ?? ""}`,
+    ),
+  ).size;
 }
 
 function emptyDigest(

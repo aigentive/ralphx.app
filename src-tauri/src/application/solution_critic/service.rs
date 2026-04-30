@@ -1,19 +1,26 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+
+use chrono::Utc;
 
 use crate::application::AppState;
 use crate::domain::entities::{
     AgentRunId, Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation,
     ArtifactType, ChatContextType, ChatConversationId, ChatMessage, ChatMessageId, CompiledContext,
-    ContextSourceRef, ContextSourceType, ContextTargetRef, ContextTargetType, IdeationSession,
-    Project, Review, ReviewId, SolutionCritique, Task, TaskId,
+    ContextSourceRef, ContextSourceType, ContextTargetRef, ContextTargetType, CritiqueSeverity,
+    IdeationSession, Project, ProjectedCritiqueGap, ProjectedCritiqueGapStatus, Review, ReviewId,
+    SolutionCritique, SolutionCritiqueGapAction, SolutionCritiqueGapActionKind,
+    SolutionCritiqueVerdict, Task, TaskId, VerificationGap, VerificationStatus,
 };
 use crate::domain::repositories::{
     AgentRunRepository, ArtifactRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, ReviewRepository, TaskProposalRepository,
-    TaskRepository,
+    IdeationSessionRepository, ProjectRepository, ReviewRepository,
+    SolutionCritiqueGapActionRepository, TaskProposalRepository, TaskRepository,
 };
-use crate::domain::services::project_solution_critique_gaps;
+use crate::domain::services::{
+    gap_fingerprint, load_current_verification_snapshot_or_default,
+    project_solution_critique_gap_items, project_solution_critique_gaps,
+};
 use crate::error::{AppError, AppResult};
 
 use super::generator::{AgentSolutionCritiqueGenerator, SolutionCritiqueGenerator};
@@ -26,10 +33,12 @@ use super::support::{
     SOURCE_EXCERPT_LIMIT,
 };
 use super::types::{
-    CompileContextRequest, CompileContextResult, CompiledContextCandidate,
-    CompiledContextReadResult, ContextTargetRequest, CritiqueArtifactRequest,
-    CritiqueArtifactResult, EffectiveSourceLimits, RawContextBundle, SolutionCritiqueCandidate,
-    SolutionCritiqueReadResult, SourceLimits,
+    ApplyProjectedGapActionRequest, CompileContextRequest, CompileContextResult,
+    CompiledContextCandidate, CompiledContextHistoryItem, CompiledContextReadResult,
+    ContextTargetRequest, CritiqueArtifactRequest, CritiqueArtifactResult, EffectiveSourceLimits,
+    ProjectedCritiqueGapActionResult, RawContextBundle, SolutionCritiqueCandidate,
+    SolutionCritiqueGapActionSummary, SolutionCritiqueHistoryItem, SolutionCritiqueReadResult,
+    SolutionCritiqueSessionRollup, SolutionCritiqueTargetRollupItem, SourceLimits,
 };
 use crate::infrastructure::sqlite::ReviewIssueRepository;
 
@@ -58,6 +67,7 @@ pub struct SolutionCritiqueService {
     task_repo: Arc<dyn TaskRepository>,
     review_repo: Arc<dyn ReviewRepository>,
     review_issue_repo: Arc<dyn ReviewIssueRepository>,
+    gap_action_repo: Arc<dyn SolutionCritiqueGapActionRepository>,
     generator: Arc<dyn SolutionCritiqueGenerator>,
 }
 
@@ -86,6 +96,7 @@ impl SolutionCritiqueService {
             task_repo: Arc::clone(&app_state.task_repo),
             review_repo: Arc::clone(&app_state.review_repo),
             review_issue_repo: Arc::clone(&app_state.review_issue_repo),
+            gap_action_repo: Arc::clone(&app_state.solution_critique_gap_action_repo),
             generator,
         }
     }
@@ -333,6 +344,11 @@ impl SolutionCritiqueService {
 
         Ok(CritiqueArtifactResult {
             artifact_id: artifact.id.as_str().to_string(),
+            projected_gap_items: project_solution_critique_gap_items(
+                &critique,
+                artifact.id.as_str(),
+                &[],
+            ),
             projected_gaps: project_solution_critique_gaps(&critique),
             solution_critique: critique,
         })
@@ -353,8 +369,17 @@ impl SolutionCritiqueService {
         let solution_critique: SolutionCritique = parse_inline_artifact(&artifact)?;
         self.validate_critique_scope(&session, &solution_critique)
             .await?;
+        let actions = self
+            .gap_action_repo
+            .list_for_critique(&ArtifactId::from_string(artifact_id))
+            .await?;
         Ok(SolutionCritiqueReadResult {
             artifact_id: artifact_id.to_string(),
+            projected_gap_items: project_solution_critique_gap_items(
+                &solution_critique,
+                artifact_id,
+                &actions,
+            ),
             projected_gaps: project_solution_critique_gaps(&solution_critique),
             solution_critique,
         })
@@ -418,16 +443,384 @@ impl SolutionCritiqueService {
 
         matches.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
 
-        Ok(matches
+        let Some((_, artifact_id, solution_critique)) = matches.into_iter().next() else {
+            return Ok(None);
+        };
+        let actions = self
+            .gap_action_repo
+            .list_for_critique(&ArtifactId::from_string(&artifact_id))
+            .await?;
+        Ok(Some(SolutionCritiqueReadResult {
+            artifact_id: artifact_id.clone(),
+            projected_gap_items: project_solution_critique_gap_items(
+                &solution_critique,
+                &artifact_id,
+                &actions,
+            ),
+            projected_gaps: project_solution_critique_gaps(&solution_critique),
+            solution_critique,
+        }))
+    }
+
+    pub async fn get_projected_critique_gaps(
+        &self,
+        session_id: &str,
+        critique_artifact_id: &str,
+    ) -> AppResult<Vec<ProjectedCritiqueGap>> {
+        Ok(self
+            .get_solution_critique(session_id, critique_artifact_id)
+            .await?
+            .projected_gap_items)
+    }
+
+    pub async fn apply_projected_gap_action(
+        &self,
+        session_id: &str,
+        critique_artifact_id: &str,
+        gap_id: &str,
+        request: ApplyProjectedGapActionRequest,
+    ) -> AppResult<ProjectedCritiqueGapActionResult> {
+        let session = self.load_session(session_id).await?;
+        let (_artifact, critique, context) = self
+            .load_solution_critique_with_context(&session, critique_artifact_id)
+            .await?;
+        let actions = self
+            .gap_action_repo
+            .list_for_critique(&ArtifactId::from_string(critique_artifact_id))
+            .await?;
+        let projected_items =
+            project_solution_critique_gap_items(&critique, critique_artifact_id, &actions);
+        let gap = projected_items
             .into_iter()
-            .next()
-            .map(
-                |(_, artifact_id, solution_critique)| SolutionCritiqueReadResult {
-                    artifact_id,
-                    projected_gaps: project_solution_critique_gaps(&solution_critique),
-                    solution_critique,
-                },
-            ))
+            .find(|gap| gap.id == gap_id)
+            .ok_or_else(|| {
+                AppError::NotFound(format!(
+                    "Projected solution critique gap {gap_id} not found"
+                ))
+            })?;
+
+        let mut verification_updated = false;
+        let mut verification_generation = None;
+        let mut promoted_round = None;
+
+        if request.action == SolutionCritiqueGapActionKind::Promoted {
+            let mut snapshot = load_current_verification_snapshot_or_default(
+                self.ideation_session_repo.as_ref(),
+                &session,
+                session.verification_status,
+                session.verification_in_progress,
+            )
+            .await?;
+            let already_present = snapshot
+                .current_gaps
+                .iter()
+                .any(|existing| gap_fingerprint(&existing.description) == gap.fingerprint);
+            if !already_present {
+                snapshot.current_gaps.push(gap.verification_gap.clone());
+                sort_verification_gaps(&mut snapshot.current_gaps);
+                verification_updated = true;
+            }
+            if !session.verification_in_progress
+                && is_actionable_gap_severity(&gap.verification_gap.severity)
+                && snapshot.status != VerificationStatus::NeedsRevision
+            {
+                snapshot.status = VerificationStatus::NeedsRevision;
+                snapshot.in_progress = false;
+                verification_updated = true;
+            }
+            verification_generation = Some(snapshot.generation);
+            promoted_round = (snapshot.current_round > 0).then_some(snapshot.current_round);
+            if verification_updated {
+                self.ideation_session_repo
+                    .save_verification_run_snapshot(&session.id, &snapshot)
+                    .await?;
+            }
+        }
+
+        let action = SolutionCritiqueGapAction {
+            id: uuid::Uuid::new_v4().to_string(),
+            session_id: session.id.as_str().to_string(),
+            project_id: session.project_id.as_str().to_string(),
+            target_type: context.target.target_type,
+            target_id: context.target.id.clone(),
+            critique_artifact_id: critique_artifact_id.to_string(),
+            context_artifact_id: critique.context_artifact_id.clone(),
+            gap_id: gap.id.clone(),
+            gap_fingerprint: gap.fingerprint.clone(),
+            action: request.action,
+            note: request
+                .note
+                .map(|note| note.trim().to_string())
+                .filter(|note| !note.is_empty()),
+            actor_kind: "human".to_string(),
+            verification_generation,
+            promoted_round,
+            created_at: Utc::now(),
+        };
+        self.gap_action_repo.append(action.clone()).await?;
+
+        let mut updated_gap = gap;
+        updated_gap.status = match action.action {
+            SolutionCritiqueGapActionKind::Promoted => ProjectedCritiqueGapStatus::Promoted,
+            SolutionCritiqueGapActionKind::Deferred => ProjectedCritiqueGapStatus::Deferred,
+            SolutionCritiqueGapActionKind::Covered => ProjectedCritiqueGapStatus::Covered,
+            SolutionCritiqueGapActionKind::Reopened => ProjectedCritiqueGapStatus::Open,
+        };
+        updated_gap.latest_action = Some(action.clone());
+
+        Ok(ProjectedCritiqueGapActionResult {
+            gap: updated_gap,
+            action,
+            verification_updated,
+            verification_generation,
+        })
+    }
+
+    pub async fn get_compiled_context_history_for_target(
+        &self,
+        session_id: &str,
+        target_request: ContextTargetRequest,
+    ) -> AppResult<Vec<CompiledContextHistoryItem>> {
+        let session = self.load_session(session_id).await?;
+        let target = self.resolve_target(&session, target_request).await?.target;
+        let artifacts = self
+            .artifact_repo
+            .get_by_type(ArtifactType::Context)
+            .await?;
+        let mut history = Vec::new();
+        for artifact in artifacts {
+            if artifact.archived_at.is_some() {
+                continue;
+            }
+            let Ok(context) = parse_inline_artifact::<CompiledContext>(&artifact) else {
+                continue;
+            };
+            if !same_target(&context.target, &target) {
+                continue;
+            }
+            history.push(CompiledContextHistoryItem {
+                artifact_id: artifact.id.as_str().to_string(),
+                target: context.target.clone(),
+                generated_at: context.generated_at,
+                source_count: context.sources.len(),
+                claim_count: context.claims.len(),
+                open_question_count: context.open_questions.len(),
+                stale_assumption_count: context.stale_assumptions.len(),
+            });
+        }
+        history.sort_by(|left, right| {
+            right
+                .generated_at
+                .cmp(&left.generated_at)
+                .then_with(|| right.artifact_id.cmp(&left.artifact_id))
+        });
+        Ok(history)
+    }
+
+    pub async fn get_solution_critique_history_for_target(
+        &self,
+        session_id: &str,
+        target_request: ContextTargetRequest,
+    ) -> AppResult<Vec<SolutionCritiqueHistoryItem>> {
+        let session = self.load_session(session_id).await?;
+        let target = self.resolve_target(&session, target_request).await?.target;
+        let artifacts = self
+            .artifact_repo
+            .get_by_type(ArtifactType::Findings)
+            .await?;
+        let mut history = Vec::new();
+        for artifact in artifacts {
+            if artifact.archived_at.is_some() {
+                continue;
+            }
+            let Ok(critique) = parse_inline_artifact::<SolutionCritique>(&artifact) else {
+                continue;
+            };
+            let Ok(context_artifact) = self.load_artifact(&critique.context_artifact_id).await
+            else {
+                continue;
+            };
+            let Ok(context) = parse_inline_artifact::<CompiledContext>(&context_artifact) else {
+                continue;
+            };
+            if !same_target(&context.target, &target) || critique.artifact_id != target.id {
+                continue;
+            }
+            history.push(
+                self.solution_critique_history_item(&artifact.id, &critique, &context)
+                    .await?,
+            );
+        }
+        history.sort_by(|left, right| {
+            right
+                .generated_at
+                .cmp(&left.generated_at)
+                .then_with(|| right.artifact_id.cmp(&left.artifact_id))
+        });
+        Ok(history)
+    }
+
+    pub async fn get_solution_critique_rollup(
+        &self,
+        session_id: &str,
+    ) -> AppResult<SolutionCritiqueSessionRollup> {
+        let session = self.load_session(session_id).await?;
+        let artifacts = self
+            .artifact_repo
+            .get_by_type(ArtifactType::Findings)
+            .await?;
+        let mut critique_count = 0usize;
+        let mut latest_by_target: HashMap<String, (ArtifactId, SolutionCritique, CompiledContext)> =
+            HashMap::new();
+
+        for artifact in artifacts {
+            if artifact.archived_at.is_some() {
+                continue;
+            }
+            let Ok(critique) = parse_inline_artifact::<SolutionCritique>(&artifact) else {
+                continue;
+            };
+            let Ok(context_artifact) = self.load_artifact(&critique.context_artifact_id).await
+            else {
+                continue;
+            };
+            let Ok(context) = parse_inline_artifact::<CompiledContext>(&context_artifact) else {
+                continue;
+            };
+            if critique.artifact_id != context.target.id {
+                continue;
+            }
+            if self
+                .validate_context_target_scope(&session, &context.target)
+                .await
+                .is_err()
+            {
+                continue;
+            }
+
+            critique_count += 1;
+            let key = target_key(&context.target);
+            let replace = latest_by_target
+                .get(&key)
+                .map(|(existing_artifact_id, existing, _)| {
+                    critique.generated_at > existing.generated_at
+                        || (critique.generated_at == existing.generated_at
+                            && artifact.id.as_str() > existing_artifact_id.as_str())
+                })
+                .unwrap_or(true);
+            if replace {
+                latest_by_target.insert(key, (artifact.id, critique, context));
+            }
+        }
+
+        let mut targets = Vec::new();
+        let mut worst_verdict = None;
+        let mut highest_risk = None;
+        let mut stale_count = 0usize;
+        let mut promoted_gap_count = 0usize;
+        let mut deferred_gap_count = 0usize;
+        let mut covered_gap_count = 0usize;
+
+        for (artifact_id, critique, context) in latest_by_target.into_values() {
+            let actions = self
+                .gap_action_repo
+                .list_for_target(&session.id, &context.target)
+                .await?;
+            let projected_items =
+                project_solution_critique_gap_items(&critique, artifact_id.as_str(), &actions);
+            let counts = projected_status_counts(&projected_items);
+            let stale = critique_is_stale(&critique, &context);
+            if stale {
+                stale_count += 1;
+            }
+            promoted_gap_count += counts.promoted;
+            deferred_gap_count += counts.deferred;
+            covered_gap_count += counts.covered;
+            worst_verdict = rank_worst_verdict(worst_verdict, Some(critique.verdict));
+            highest_risk = rank_highest_risk(
+                highest_risk,
+                critique.risks.iter().map(|risk| risk.severity),
+            );
+
+            targets.push(SolutionCritiqueTargetRollupItem {
+                target: context.target.clone(),
+                artifact_id: artifact_id.as_str().to_string(),
+                context_artifact_id: critique.context_artifact_id.clone(),
+                verdict: critique.verdict,
+                confidence: critique.confidence,
+                generated_at: critique.generated_at,
+                stale,
+                risk_count: critique.risks.len(),
+                projected_gap_count: projected_items.len(),
+                promoted_gap_count: counts.promoted,
+                deferred_gap_count: counts.deferred,
+                covered_gap_count: counts.covered,
+            });
+        }
+
+        targets.sort_by(|left, right| {
+            right
+                .generated_at
+                .cmp(&left.generated_at)
+                .then_with(|| target_key(&left.target).cmp(&target_key(&right.target)))
+        });
+
+        Ok(SolutionCritiqueSessionRollup {
+            session_id: session.id.as_str().to_string(),
+            generated_at: Utc::now(),
+            target_count: targets.len(),
+            critique_count,
+            worst_verdict,
+            highest_risk,
+            stale_count,
+            promoted_gap_count,
+            deferred_gap_count,
+            covered_gap_count,
+            targets,
+        })
+    }
+
+    async fn load_solution_critique_with_context(
+        &self,
+        session: &IdeationSession,
+        critique_artifact_id: &str,
+    ) -> AppResult<(Artifact, SolutionCritique, CompiledContext)> {
+        let artifact = self.load_artifact(critique_artifact_id).await?;
+        if artifact.artifact_type != ArtifactType::Findings {
+            return Err(AppError::Validation(format!(
+                "Artifact {critique_artifact_id} is not a solution critique"
+            )));
+        }
+        let critique: SolutionCritique = parse_inline_artifact(&artifact)?;
+        self.validate_critique_scope(session, &critique).await?;
+        let context_artifact = self.load_artifact(&critique.context_artifact_id).await?;
+        let context: CompiledContext = parse_inline_artifact(&context_artifact)?;
+        Ok((artifact, critique, context))
+    }
+
+    async fn solution_critique_history_item(
+        &self,
+        artifact_id: &ArtifactId,
+        critique: &SolutionCritique,
+        context: &CompiledContext,
+    ) -> AppResult<SolutionCritiqueHistoryItem> {
+        let actions = self.gap_action_repo.list_for_critique(artifact_id).await?;
+        let projected_items =
+            project_solution_critique_gap_items(critique, artifact_id.as_str(), &actions);
+        Ok(SolutionCritiqueHistoryItem {
+            artifact_id: artifact_id.as_str().to_string(),
+            context_artifact_id: critique.context_artifact_id.clone(),
+            target: context.target.clone(),
+            verdict: critique.verdict,
+            confidence: critique.confidence,
+            generated_at: critique.generated_at,
+            source_count: context.sources.len(),
+            claim_count: critique.claims.len(),
+            risk_count: critique.risks.len(),
+            projected_gap_count: projected_items.len(),
+            stale: critique_is_stale(critique, context),
+            latest_gap_actions: latest_gap_action_summaries(&actions),
+        })
     }
 
     async fn resolve_target(
@@ -1215,4 +1608,148 @@ fn dedupe_sort_sources(sources: &mut Vec<ContextSourceRef>) {
 
 fn same_target(left: &ContextTargetRef, right: &ContextTargetRef) -> bool {
     left.target_type == right.target_type && left.id == right.id
+}
+
+fn target_key(target: &ContextTargetRef) -> String {
+    format!("{:?}:{}", target.target_type, target.id)
+}
+
+fn sort_verification_gaps(gaps: &mut [VerificationGap]) {
+    gaps.sort_by(|left, right| {
+        severity_rank(&left.severity)
+            .cmp(&severity_rank(&right.severity))
+            .then_with(|| left.category.cmp(&right.category))
+            .then_with(|| left.description.cmp(&right.description))
+    });
+}
+
+fn is_actionable_gap_severity(severity: &str) -> bool {
+    matches!(severity, "critical" | "high" | "medium")
+}
+
+fn critique_is_stale(critique: &SolutionCritique, context: &CompiledContext) -> bool {
+    let newest_context_time = context
+        .sources
+        .iter()
+        .filter_map(|source| source.created_at)
+        .max()
+        .map(|source_time| source_time.max(context.generated_at))
+        .unwrap_or(context.generated_at);
+    newest_context_time > critique.generated_at
+}
+
+fn latest_gap_action_summaries(
+    actions: &[SolutionCritiqueGapAction],
+) -> Vec<SolutionCritiqueGapActionSummary> {
+    let mut latest_by_gap: HashMap<&str, &SolutionCritiqueGapAction> = HashMap::new();
+    for action in actions {
+        let replace = latest_by_gap
+            .get(action.gap_id.as_str())
+            .map(|existing| {
+                action.created_at > existing.created_at
+                    || (action.created_at == existing.created_at && action.id > existing.id)
+            })
+            .unwrap_or(true);
+        if replace {
+            latest_by_gap.insert(action.gap_id.as_str(), action);
+        }
+    }
+    let mut summaries = latest_by_gap
+        .into_values()
+        .map(|action| SolutionCritiqueGapActionSummary {
+            gap_id: action.gap_id.clone(),
+            gap_fingerprint: action.gap_fingerprint.clone(),
+            action: action.action,
+            note: action.note.clone(),
+            verification_generation: action.verification_generation,
+            created_at: action.created_at,
+        })
+        .collect::<Vec<_>>();
+    summaries.sort_by(|left, right| {
+        right
+            .created_at
+            .cmp(&left.created_at)
+            .then_with(|| right.gap_id.cmp(&left.gap_id))
+    });
+    summaries
+}
+
+struct ProjectedStatusCounts {
+    promoted: usize,
+    deferred: usize,
+    covered: usize,
+}
+
+fn projected_status_counts(items: &[ProjectedCritiqueGap]) -> ProjectedStatusCounts {
+    items.iter().fold(
+        ProjectedStatusCounts {
+            promoted: 0,
+            deferred: 0,
+            covered: 0,
+        },
+        |mut counts, item| {
+            match item.status {
+                ProjectedCritiqueGapStatus::Promoted => counts.promoted += 1,
+                ProjectedCritiqueGapStatus::Deferred => counts.deferred += 1,
+                ProjectedCritiqueGapStatus::Covered => counts.covered += 1,
+                ProjectedCritiqueGapStatus::Open => {}
+            }
+            counts
+        },
+    )
+}
+
+fn rank_worst_verdict(
+    existing: Option<SolutionCritiqueVerdict>,
+    candidate: Option<SolutionCritiqueVerdict>,
+) -> Option<SolutionCritiqueVerdict> {
+    match (existing, candidate) {
+        (None, value) | (value, None) => value,
+        (Some(left), Some(right)) => {
+            if verdict_rank(right) > verdict_rank(left) {
+                Some(right)
+            } else {
+                Some(left)
+            }
+        }
+    }
+}
+
+fn rank_highest_risk<I>(
+    existing: Option<CritiqueSeverity>,
+    candidates: I,
+) -> Option<CritiqueSeverity>
+where
+    I: IntoIterator<Item = CritiqueSeverity>,
+{
+    candidates
+        .into_iter()
+        .fold(existing, |current, candidate| match current {
+            None => Some(candidate),
+            Some(existing) => {
+                if critique_severity_rank(candidate) > critique_severity_rank(existing) {
+                    Some(candidate)
+                } else {
+                    Some(existing)
+                }
+            }
+        })
+}
+
+fn verdict_rank(verdict: SolutionCritiqueVerdict) -> u8 {
+    match verdict {
+        SolutionCritiqueVerdict::Accept => 1,
+        SolutionCritiqueVerdict::Revise => 2,
+        SolutionCritiqueVerdict::Investigate => 3,
+        SolutionCritiqueVerdict::Reject => 4,
+    }
+}
+
+fn critique_severity_rank(severity: CritiqueSeverity) -> u8 {
+    match severity {
+        CritiqueSeverity::Low => 1,
+        CritiqueSeverity::Medium => 2,
+        CritiqueSeverity::High => 3,
+        CritiqueSeverity::Critical => 4,
+    }
 }

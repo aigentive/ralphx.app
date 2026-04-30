@@ -80,11 +80,13 @@ export const ApiVerificationGapSchema = z.object({
   category: z.string(),
   description: z.string(),
   why_it_matters: z.string().optional(),
+  source: z.string().optional(),
 }).transform((val): z.infer<typeof VerificationGapSchema> => ({
   severity: val.severity,
   category: val.category,
   description: val.description,
   ...(val.why_it_matters !== undefined && { whyItMatters: val.why_it_matters }),
+  ...(val.source !== undefined && { source: val.source }),
 }));
 
 /**

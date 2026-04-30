@@ -381,6 +381,7 @@ interface ChatMessageListProps {
   onLoadOlderMessages?: (() => void | Promise<void>) | undefined;
   initialPaintCoverKey?: string | null | undefined;
   onInitialPaintReady?: ((key: string) => void) | undefined;
+  onSendCritiqueToChat?: ((message: string) => void | Promise<void>) | undefined;
 }
 
 // ============================================================================
@@ -416,6 +417,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       onLoadOlderMessages,
       initialPaintCoverKey = null,
       onInitialPaintReady,
+      onSendCritiqueToChat,
     },
     ref
   ) {
@@ -1459,6 +1461,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               cacheCreationTokens={msg.cacheCreationTokens}
               cacheReadTokens={msg.cacheReadTokens}
               estimatedUsd={msg.estimatedUsd}
+              onSendCritiqueToChat={onSendCritiqueToChat}
             />
           </ContentShell>
         </div>
@@ -1470,6 +1473,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       handleFooterRef,
       providerHarness,
       providerSessionId,
+      onSendCritiqueToChat,
       solutionCritiqueSessionId,
       timeline.length,
     ]);
@@ -1595,6 +1599,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     cacheCreationTokens={msg.cacheCreationTokens}
                     cacheReadTokens={msg.cacheReadTokens}
                     estimatedUsd={msg.estimatedUsd}
+                    onSendCritiqueToChat={onSendCritiqueToChat}
                   />
                 </ContentShell>
               </div>

@@ -226,3 +226,70 @@ pub struct VerificationRequirement {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggested_test: Option<String>,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProjectedCritiqueGap {
+    pub id: String,
+    pub critique_artifact_id: String,
+    pub context_artifact_id: String,
+    pub origin: ProjectedCritiqueGapOrigin,
+    pub fingerprint: String,
+    pub status: ProjectedCritiqueGapStatus,
+    pub verification_gap: crate::domain::entities::VerificationGap,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_action: Option<SolutionCritiqueGapAction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectedCritiqueGapOrigin {
+    pub kind: ProjectedCritiqueGapOriginKind,
+    pub item_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectedCritiqueGapOriginKind {
+    Claim,
+    Risk,
+    Verification,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectedCritiqueGapStatus {
+    Open,
+    Promoted,
+    Deferred,
+    Covered,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SolutionCritiqueGapActionKind {
+    Promoted,
+    Deferred,
+    Covered,
+    Reopened,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolutionCritiqueGapAction {
+    pub id: String,
+    pub session_id: String,
+    pub project_id: String,
+    pub target_type: ContextTargetType,
+    pub target_id: String,
+    pub critique_artifact_id: String,
+    pub context_artifact_id: String,
+    pub gap_id: String,
+    pub gap_fingerprint: String,
+    pub action: SolutionCritiqueGapActionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    pub actor_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_generation: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub promoted_round: Option<u32>,
+    pub created_at: DateTime<Utc>,
+}

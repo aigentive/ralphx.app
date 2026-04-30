@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { solutionCriticApi } from "@/api/solution-critic";
+import { solutionCriticApi, solutionCriticQueryKeys } from "@/api/solution-critic";
 import { SolutionCritiqueAction } from "./SolutionCritiqueAction";
 
 vi.mock("@/api/solution-critic", async (importOriginal) => {
@@ -14,6 +14,7 @@ vi.mock("@/api/solution-critic", async (importOriginal) => {
       getLatestTargetSolutionCritique: vi.fn(),
       compileTargetContext: vi.fn(),
       critiqueTarget: vi.fn(),
+      applyProjectedGapAction: vi.fn(),
     },
   };
 });
@@ -74,27 +75,57 @@ const critiqueResponse = {
       whyItMatters: "Approval could merge broken work.",
     },
   ],
+  projectedGapItems: [],
 };
 
-function renderAction() {
+const critiqueResponseWithGapItems = {
+  ...critiqueResponse,
+  projectedGapItems: [
+    {
+      id: "projected-gap-1",
+      critiqueArtifactId: "critique-1",
+      contextArtifactId: "context-1",
+      origin: { kind: "risk", itemId: "risk-1" },
+      fingerprint: "fingerprint-1",
+      status: "open",
+      verificationGap: {
+        severity: "high",
+        category: "solution_critique_risk",
+        description: "Unsupported completion claim.",
+        whyItMatters: "Approval could merge broken work.",
+        source: "solution_critique:critique-1:projected-gap-1",
+      },
+    },
+  ],
+};
+
+function renderAction({
+  onSendToChat,
+}: {
+  onSendToChat?: (message: string) => void | Promise<void>;
+} = {}) {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
   });
-  return render(
-    <QueryClientProvider client={client}>
-      <SolutionCritiqueAction
-        sessionId="session-1"
-        target={{
-          targetType: "chat_message",
-          id: "message-1",
-          label: "Assistant message",
-        }}
-      />
-    </QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <SolutionCritiqueAction
+          sessionId="session-1"
+          target={{
+            targetType: "chat_message",
+            id: "message-1",
+            label: "Assistant message",
+          }}
+          onSendToChat={onSendToChat}
+        />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe("SolutionCritiqueAction", () => {
@@ -180,6 +211,53 @@ describe("SolutionCritiqueAction", () => {
     });
   });
 
+  it("prefers a newer cached critique over older local drawer state", async () => {
+    vi.mocked(solutionCriticApi.compileTargetContext).mockResolvedValue({
+      artifactId: "context-1",
+      compiledContext: {
+        id: "context-1",
+        target: { targetType: "chat_message", id: "message-1", label: "Assistant message" },
+        sources: [],
+        claims: [],
+        openQuestions: [],
+        staleAssumptions: [],
+        generatedAt: "2026-04-30T12:00:00Z",
+      },
+    });
+    vi.mocked(solutionCriticApi.critiqueTarget).mockResolvedValue(critiqueResponse);
+
+    const { client } = renderAction();
+    await userEvent.click(screen.getByRole("button", { name: "Critique this" }));
+    expect((await screen.findAllByText("Inspect the worker diff.")).length).toBeGreaterThan(0);
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryAllByText("Inspect the worker diff.")).toHaveLength(0);
+    });
+
+    client.setQueryData(
+      solutionCriticQueryKeys.targetCritique("session-1", {
+        targetType: "chat_message",
+        id: "message-1",
+      }),
+      {
+        ...critiqueResponse,
+        artifactId: "critique-2",
+        solutionCritique: {
+          ...critiqueResponse.solutionCritique,
+          id: "critique-2",
+          generatedAt: "2026-04-30T12:05:00Z",
+          safeNextAction: "Use the latest persisted critique.",
+        },
+      },
+    );
+
+    await userEvent.click(screen.getByTestId("solution-critique-action"));
+    expect(await screen.findByText("Use the latest persisted critique.")).toBeInTheDocument();
+    expect(solutionCriticApi.compileTargetContext).toHaveBeenCalledTimes(1);
+    expect(solutionCriticApi.critiqueTarget).toHaveBeenCalledTimes(1);
+  });
+
   it("opens a persisted target critique without starting a new model run", async () => {
     vi.mocked(solutionCriticApi.getLatestTargetCompiledContext).mockResolvedValue({
       artifactId: "context-1",
@@ -203,5 +281,142 @@ describe("SolutionCritiqueAction", () => {
     expect(await screen.findByText("Unsupported completion claim.")).toBeInTheDocument();
     expect(solutionCriticApi.compileTargetContext).not.toHaveBeenCalled();
     expect(solutionCriticApi.critiqueTarget).not.toHaveBeenCalled();
+  });
+
+  it("sends the active critique into chat without starting a new model run", async () => {
+    const onSendToChat = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(solutionCriticApi.getLatestTargetCompiledContext).mockResolvedValue({
+      artifactId: "context-1",
+      compiledContext: {
+        id: "context-1",
+        target: { targetType: "chat_message", id: "message-1", label: "Assistant message" },
+        sources: [],
+        claims: [],
+        openQuestions: [],
+        staleAssumptions: [],
+        generatedAt: "2026-04-30T12:00:00Z",
+      },
+    });
+    vi.mocked(solutionCriticApi.getLatestTargetSolutionCritique).mockResolvedValue(critiqueResponse);
+
+    renderAction({ onSendToChat });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open critique: Investigate" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Send to chat" }));
+
+    await waitFor(() => {
+      expect(onSendToChat).toHaveBeenCalledTimes(1);
+    });
+    const message = onSendToChat.mock.calls[0]?.[0] ?? "";
+    expect(message).toContain("Act on the latest solution critique for Assistant message.");
+    expect(message).toContain("Verdict: Investigate");
+    expect(message).toContain("Safe next action: Inspect the worker diff.");
+    expect(message).toContain("Unsupported completion claims can lead to approving broken work.");
+    expect(message).toContain("Update the plan, proposal, or implementation as needed.");
+    expect(solutionCriticApi.compileTargetContext).not.toHaveBeenCalled();
+    expect(solutionCriticApi.critiqueTarget).not.toHaveBeenCalled();
+  });
+
+  it("shows string backend errors when sending the critique to chat fails", async () => {
+    const onSendToChat = vi.fn().mockRejectedValue("project ideation capacity reached");
+    vi.mocked(solutionCriticApi.getLatestTargetCompiledContext).mockResolvedValue({
+      artifactId: "context-1",
+      compiledContext: {
+        id: "context-1",
+        target: { targetType: "chat_message", id: "message-1", label: "Assistant message" },
+        sources: [],
+        claims: [],
+        openQuestions: [],
+        staleAssumptions: [],
+        generatedAt: "2026-04-30T12:00:00Z",
+      },
+    });
+    vi.mocked(solutionCriticApi.getLatestTargetSolutionCritique).mockResolvedValue(critiqueResponse);
+
+    renderAction({ onSendToChat });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open critique: Investigate" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Send to chat" }));
+
+    expect(await screen.findByText("project ideation capacity reached")).toBeInTheDocument();
+  });
+
+  it("promotes a projected critique gap without rerunning critique", async () => {
+    vi.mocked(solutionCriticApi.getLatestTargetCompiledContext).mockResolvedValue({
+      artifactId: "context-1",
+      compiledContext: {
+        id: "context-1",
+        target: { targetType: "chat_message", id: "message-1", label: "Assistant message" },
+        sources: [],
+        claims: [],
+        openQuestions: [],
+        staleAssumptions: [],
+        generatedAt: "2026-04-30T12:00:00Z",
+      },
+    });
+    vi.mocked(solutionCriticApi.getLatestTargetSolutionCritique).mockResolvedValue({
+      ...critiqueResponseWithGapItems,
+      projectedGapItems: [
+        critiqueResponseWithGapItems.projectedGapItems[0],
+        critiqueResponseWithGapItems.projectedGapItems[0],
+      ],
+    });
+    vi.mocked(solutionCriticApi.applyProjectedGapAction).mockResolvedValue({
+      gap: {
+        ...critiqueResponseWithGapItems.projectedGapItems[0],
+        status: "promoted",
+        latestAction: {
+          id: "gap-action-1",
+          sessionId: "session-1",
+          projectId: "project-1",
+          targetType: "chat_message",
+          targetId: "message-1",
+          critiqueArtifactId: "critique-1",
+          contextArtifactId: "context-1",
+          gapId: "projected-gap-1",
+          gapFingerprint: "fingerprint-1",
+          action: "promoted",
+          actorKind: "human",
+          verificationGeneration: 7,
+          createdAt: "2026-04-30T12:01:00Z",
+        },
+      },
+      action: {
+        id: "gap-action-1",
+        sessionId: "session-1",
+        projectId: "project-1",
+        targetType: "chat_message",
+        targetId: "message-1",
+        critiqueArtifactId: "critique-1",
+        contextArtifactId: "context-1",
+        gapId: "projected-gap-1",
+        gapFingerprint: "fingerprint-1",
+        action: "promoted",
+        actorKind: "human",
+        verificationGeneration: 7,
+        createdAt: "2026-04-30T12:01:00Z",
+      },
+      verificationUpdated: true,
+      verificationGeneration: 7,
+    });
+
+    renderAction();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open critique: Investigate" }));
+    const promoteButtons = await screen.findAllByRole("button", { name: "Promote" });
+    expect(promoteButtons).toHaveLength(1);
+    await userEvent.click(promoteButtons[0]!);
+
+    await waitFor(() => {
+      expect(solutionCriticApi.applyProjectedGapAction).toHaveBeenCalledWith(
+        "session-1",
+        "critique-1",
+        "projected-gap-1",
+        "promoted",
+      );
+    });
+    expect(solutionCriticApi.compileTargetContext).not.toHaveBeenCalled();
+    expect(solutionCriticApi.critiqueTarget).not.toHaveBeenCalled();
+    expect(await screen.findByText("Promoted")).toBeInTheDocument();
   });
 });

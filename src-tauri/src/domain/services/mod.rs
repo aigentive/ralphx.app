@@ -36,7 +36,9 @@ pub use github_service::{
     GithubServiceTrait, PrMergeStateStatus, PrMergeableState, PrStatus, PrSyncState,
 };
 pub use index_rewriter::{IndexRewriter, RewriteResult};
-pub use solution_critique_projection::project_solution_critique_gaps;
+pub use solution_critique_projection::{
+    project_solution_critique_gap_items, project_solution_critique_gaps,
+};
 pub use verification_events::{
     build_verification_payload, build_verification_started_snapshot,
     emit_verification_pending_confirmation, emit_verification_started,

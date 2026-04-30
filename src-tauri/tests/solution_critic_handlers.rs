@@ -15,10 +15,12 @@ use ralphx_lib::domain::entities::{
     VerificationStatus,
 };
 use ralphx_lib::http_server::handlers::{
-    get_compiled_context_artifact, get_latest_compiled_context,
-    get_latest_compiled_context_for_target, get_latest_solution_critique,
-    get_latest_solution_critique_for_target, get_solution_critique_artifact, post_compiled_context,
-    post_solution_critique,
+    get_compiled_context_artifact, get_compiled_context_history_for_target,
+    get_latest_compiled_context, get_latest_compiled_context_for_target,
+    get_latest_solution_critique, get_latest_solution_critique_for_target,
+    get_solution_critique_artifact, get_solution_critique_history_for_target,
+    get_solution_critique_projected_gaps, get_solution_critique_rollup, post_compiled_context,
+    post_solution_critique, post_solution_critique_projected_gap_action,
 };
 use ralphx_lib::http_server::types::HttpServerState;
 use ralphx_lib::infrastructure::MockAgenticClient;
@@ -36,6 +38,10 @@ fn solution_critic_app(state: HttpServerState) -> Router {
             get(get_latest_compiled_context_for_target),
         )
         .route(
+            "/api/ideation/sessions/:id/compiled-context/target/:target_type/:target_id/history",
+            get(get_compiled_context_history_for_target),
+        )
+        .route(
             "/api/ideation/sessions/:id/compiled-context/:artifact_id",
             get(get_compiled_context_artifact),
         )
@@ -46,6 +52,22 @@ fn solution_critic_app(state: HttpServerState) -> Router {
         .route(
             "/api/ideation/sessions/:id/solution-critique/target/:target_type/:target_id",
             get(get_latest_solution_critique_for_target),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/target/:target_type/:target_id/history",
+            get(get_solution_critique_history_for_target),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/rollup",
+            get(get_solution_critique_rollup),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/:artifact_id/projected-gaps",
+            get(get_solution_critique_projected_gaps),
+        )
+        .route(
+            "/api/ideation/sessions/:id/solution-critique/:artifact_id/projected-gaps/:gap_id/actions",
+            axum::routing::post(post_solution_critique_projected_gap_action),
         )
         .route(
             "/api/ideation/sessions/:id/solution-critique/:artifact_id",
@@ -338,6 +360,7 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
     );
 
     let critique_read_response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
@@ -360,6 +383,123 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
             .len(),
         3
     );
+    assert_eq!(
+        critique_read_json["projected_gap_items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+
+    let projected_gaps_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/solution-critique/{}/projected-gaps",
+                    session_id.as_str(),
+                    critique_artifact_id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(projected_gaps_response.status(), StatusCode::OK);
+    let projected_gaps_json = response_json(projected_gaps_response).await;
+    let first_gap_id = projected_gaps_json[0]["id"].as_str().unwrap().to_string();
+    let expected_source = format!("solution_critique:{critique_artifact_id}:{first_gap_id}");
+    assert_eq!(
+        projected_gaps_json[0]["verification_gap"]["source"].as_str(),
+        Some(expected_source.as_str())
+    );
+
+    let action_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/solution-critique/{}/projected-gaps/{}/actions",
+                    session_id.as_str(),
+                    critique_artifact_id,
+                    first_gap_id
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"action":"deferred","note":"Later"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(action_response.status(), StatusCode::OK);
+    let action_json = response_json(action_response).await;
+    assert_eq!(action_json["gap"]["status"].as_str(), Some("deferred"));
+    assert_eq!(action_json["verification_updated"].as_bool(), Some(false));
+
+    let critique_history_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/solution-critique/target/plan_artifact/{}/history",
+                    session_id.as_str(),
+                    plan_artifact_id.as_str()
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(critique_history_response.status(), StatusCode::OK);
+    let critique_history_json = response_json(critique_history_response).await;
+    assert_eq!(critique_history_json.as_array().unwrap().len(), 1);
+    assert_eq!(
+        critique_history_json[0]["latest_gap_actions"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let context_history_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/compiled-context/target/plan_artifact/{}/history",
+                    session_id.as_str(),
+                    plan_artifact_id.as_str()
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(context_history_response.status(), StatusCode::OK);
+    let context_history_json = response_json(context_history_response).await;
+    assert_eq!(context_history_json.as_array().unwrap().len(), 1);
+
+    let rollup_response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/ideation/sessions/{}/solution-critique/rollup",
+                    session_id.as_str()
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rollup_response.status(), StatusCode::OK);
+    let rollup_json = response_json(rollup_response).await;
+    assert_eq!(rollup_json["target_count"].as_u64(), Some(1));
+    assert_eq!(rollup_json["critique_count"].as_u64(), Some(1));
+    assert_eq!(rollup_json["deferred_gap_count"].as_u64(), Some(1));
 }
 
 #[tokio::test]

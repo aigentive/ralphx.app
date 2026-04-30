@@ -1,32 +1,123 @@
 use std::collections::BTreeSet;
 
+use sha2::{Digest, Sha256};
+
 use crate::domain::entities::{
-    ClaimReview, ClaimReviewStatus, CritiqueSeverity, RiskAssessment, SolutionCritique,
+    ClaimReview, ClaimReviewStatus, CritiqueSeverity, ProjectedCritiqueGap,
+    ProjectedCritiqueGapOrigin, ProjectedCritiqueGapOriginKind, ProjectedCritiqueGapStatus,
+    RiskAssessment, SolutionCritique, SolutionCritiqueGapAction, SolutionCritiqueGapActionKind,
     VerificationGap, VerificationRequirement,
 };
 
 use super::gap_fingerprint::gap_fingerprint;
 
 pub fn project_solution_critique_gaps(critique: &SolutionCritique) -> Vec<VerificationGap> {
-    let mut gaps = Vec::new();
+    let gaps = gap_candidates(critique)
+        .into_iter()
+        .map(|candidate| candidate.gap)
+        .collect::<Vec<_>>();
+
+    dedupe_and_sort_gaps(gaps)
+}
+
+pub fn project_solution_critique_gap_items(
+    critique: &SolutionCritique,
+    critique_artifact_id: &str,
+    latest_actions: &[SolutionCritiqueGapAction],
+) -> Vec<ProjectedCritiqueGap> {
+    let mut items = gap_candidates(critique)
+        .into_iter()
+        .map(|candidate| {
+            let fingerprint = gap_fingerprint(&candidate.gap.description);
+            let id = projected_gap_id(
+                critique_artifact_id,
+                candidate.origin.kind,
+                &candidate.origin.item_id,
+                &fingerprint,
+            );
+            let latest_action = latest_action_for_gap(latest_actions, &id);
+            let status = latest_action
+                .as_ref()
+                .map(action_status)
+                .unwrap_or(ProjectedCritiqueGapStatus::Open);
+            let mut verification_gap = candidate.gap;
+            verification_gap.source =
+                Some(format!("solution_critique:{critique_artifact_id}:{id}"));
+
+            ProjectedCritiqueGap {
+                id,
+                critique_artifact_id: critique_artifact_id.to_string(),
+                context_artifact_id: critique.context_artifact_id.clone(),
+                origin: candidate.origin,
+                fingerprint,
+                status,
+                verification_gap,
+                latest_action,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    items.sort_by(|left, right| {
+        severity_rank(&left.verification_gap.severity)
+            .cmp(&severity_rank(&right.verification_gap.severity))
+            .then_with(|| {
+                left.verification_gap
+                    .category
+                    .cmp(&right.verification_gap.category)
+            })
+            .then_with(|| {
+                left.verification_gap
+                    .description
+                    .cmp(&right.verification_gap.description)
+            })
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    items
+}
+
+fn gap_candidates(critique: &SolutionCritique) -> Vec<GapCandidate> {
+    let mut candidates = Vec::new();
 
     for claim in &critique.claims {
         if let Some(gap) = project_claim_gap(claim) {
-            gaps.push(gap);
+            candidates.push(GapCandidate {
+                origin: ProjectedCritiqueGapOrigin {
+                    kind: ProjectedCritiqueGapOriginKind::Claim,
+                    item_id: claim.id.clone(),
+                },
+                gap,
+            });
         }
     }
     for risk in &critique.risks {
         if let Some(gap) = project_risk_gap(risk) {
-            gaps.push(gap);
+            candidates.push(GapCandidate {
+                origin: ProjectedCritiqueGapOrigin {
+                    kind: ProjectedCritiqueGapOriginKind::Risk,
+                    item_id: risk.id.clone(),
+                },
+                gap,
+            });
         }
     }
     for requirement in &critique.verification_plan {
         if let Some(gap) = project_verification_gap(requirement) {
-            gaps.push(gap);
+            candidates.push(GapCandidate {
+                origin: ProjectedCritiqueGapOrigin {
+                    kind: ProjectedCritiqueGapOriginKind::Verification,
+                    item_id: requirement.id.clone(),
+                },
+                gap,
+            });
         }
     }
 
-    dedupe_and_sort_gaps(gaps)
+    candidates
+}
+
+struct GapCandidate {
+    origin: ProjectedCritiqueGapOrigin,
+    gap: VerificationGap,
 }
 
 fn project_claim_gap(claim: &ClaimReview) -> Option<VerificationGap> {
@@ -118,6 +209,55 @@ fn severity_rank(severity: &str) -> u8 {
         "high" => 1,
         "medium" => 2,
         _ => 3,
+    }
+}
+
+fn projected_gap_id(
+    critique_artifact_id: &str,
+    origin_kind: ProjectedCritiqueGapOriginKind,
+    item_id: &str,
+    fingerprint: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(critique_artifact_id.as_bytes());
+    hasher.update(b":");
+    hasher.update(origin_kind_key(origin_kind).as_bytes());
+    hasher.update(b":");
+    hasher.update(item_id.as_bytes());
+    hasher.update(b":");
+    hasher.update(fingerprint.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn origin_kind_key(kind: ProjectedCritiqueGapOriginKind) -> &'static str {
+    match kind {
+        ProjectedCritiqueGapOriginKind::Claim => "claim",
+        ProjectedCritiqueGapOriginKind::Risk => "risk",
+        ProjectedCritiqueGapOriginKind::Verification => "verification",
+    }
+}
+
+fn latest_action_for_gap(
+    actions: &[SolutionCritiqueGapAction],
+    gap_id: &str,
+) -> Option<SolutionCritiqueGapAction> {
+    actions
+        .iter()
+        .filter(|action| action.gap_id == gap_id)
+        .max_by(|left, right| {
+            left.created_at
+                .cmp(&right.created_at)
+                .then_with(|| left.id.cmp(&right.id))
+        })
+        .cloned()
+}
+
+fn action_status(action: &SolutionCritiqueGapAction) -> ProjectedCritiqueGapStatus {
+    match action.action {
+        SolutionCritiqueGapActionKind::Promoted => ProjectedCritiqueGapStatus::Promoted,
+        SolutionCritiqueGapActionKind::Deferred => ProjectedCritiqueGapStatus::Deferred,
+        SolutionCritiqueGapActionKind::Covered => ProjectedCritiqueGapStatus::Covered,
+        SolutionCritiqueGapActionKind::Reopened => ProjectedCritiqueGapStatus::Open,
     }
 }
 

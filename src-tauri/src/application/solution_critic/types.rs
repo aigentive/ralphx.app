@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::entities::{
     ClaimReviewStatus, ContextClaimKind, ContextSourceRef, ContextTargetRef, ContextTargetType,
-    CritiqueConfidence, CritiqueSeverity, RecommendationStatus, SolutionCritiqueVerdict,
+    CritiqueConfidence, CritiqueSeverity, ProjectedCritiqueGap, RecommendationStatus,
+    SolutionCritiqueGapAction, SolutionCritiqueGapActionKind, SolutionCritiqueVerdict,
     VerificationGap,
 };
 
@@ -185,6 +186,7 @@ pub struct CritiqueArtifactResult {
     pub artifact_id: String,
     pub solution_critique: crate::domain::entities::SolutionCritique,
     pub projected_gaps: Vec<VerificationGap>,
+    pub projected_gap_items: Vec<ProjectedCritiqueGap>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -192,6 +194,95 @@ pub struct SolutionCritiqueReadResult {
     pub artifact_id: String,
     pub solution_critique: crate::domain::entities::SolutionCritique,
     pub projected_gaps: Vec<VerificationGap>,
+    pub projected_gap_items: Vec<ProjectedCritiqueGap>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApplyProjectedGapActionRequest {
+    pub action: SolutionCritiqueGapActionKind,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectedCritiqueGapActionResult {
+    pub gap: ProjectedCritiqueGap,
+    pub action: SolutionCritiqueGapAction,
+    pub verification_updated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_generation: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SolutionCritiqueGapActionSummary {
+    pub gap_id: String,
+    pub gap_fingerprint: String,
+    pub action: SolutionCritiqueGapActionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_generation: Option<i32>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SolutionCritiqueHistoryItem {
+    pub artifact_id: String,
+    pub context_artifact_id: String,
+    pub target: ContextTargetRef,
+    pub verdict: SolutionCritiqueVerdict,
+    pub confidence: CritiqueConfidence,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+    pub source_count: usize,
+    pub claim_count: usize,
+    pub risk_count: usize,
+    pub projected_gap_count: usize,
+    pub stale: bool,
+    pub latest_gap_actions: Vec<SolutionCritiqueGapActionSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CompiledContextHistoryItem {
+    pub artifact_id: String,
+    pub target: ContextTargetRef,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+    pub source_count: usize,
+    pub claim_count: usize,
+    pub open_question_count: usize,
+    pub stale_assumption_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SolutionCritiqueSessionRollup {
+    pub session_id: String,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+    pub target_count: usize,
+    pub critique_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worst_verdict: Option<SolutionCritiqueVerdict>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub highest_risk: Option<CritiqueSeverity>,
+    pub stale_count: usize,
+    pub promoted_gap_count: usize,
+    pub deferred_gap_count: usize,
+    pub covered_gap_count: usize,
+    pub targets: Vec<SolutionCritiqueTargetRollupItem>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SolutionCritiqueTargetRollupItem {
+    pub target: ContextTargetRef,
+    pub artifact_id: String,
+    pub context_artifact_id: String,
+    pub verdict: SolutionCritiqueVerdict,
+    pub confidence: CritiqueConfidence,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+    pub stale: bool,
+    pub risk_count: usize,
+    pub projected_gap_count: usize,
+    pub promoted_gap_count: usize,
+    pub deferred_gap_count: usize,
+    pub covered_gap_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
