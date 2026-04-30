@@ -796,7 +796,7 @@ function AppContent() {
           <div className="flex items-center gap-6">
             {/* App Branding */}
             <h1
-              className="flex items-center gap-2 text-xl font-bold tracking-tight select-none"
+              className="flex items-center gap-2 text-xl font-semibold tracking-normal select-none"
               style={{ color: "var(--text-primary)" }}
             >
               <img
@@ -806,17 +806,7 @@ function AppContent() {
                 className="h-8 w-8 rounded-md object-contain"
                 data-testid="app-logo-mark"
               />
-              <span>
-                Ralph
-                <span
-                  style={{
-                    color: "var(--accent-primary)",
-                    textShadow: "0 0 12px color-mix(in srgb, var(--accent-primary) 50%, transparent)",
-                  }}
-                >
-                  X
-                </span>
-              </span>
+              <span className="leading-none">RalphX</span>
             </h1>
 
             {/* View Navigation */}
