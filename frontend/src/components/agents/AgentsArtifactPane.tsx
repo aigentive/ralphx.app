@@ -362,7 +362,7 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
       className="h-full w-full min-w-0 flex flex-col overflow-hidden border-l"
       style={{
         background: "var(--bg-surface)",
-        borderColor: "var(--border-subtle)",
+        borderColor: "var(--overlay-faint)",
       }}
       data-testid="agents-artifact-pane"
     >
@@ -373,7 +373,7 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
           background: withAlpha("var(--bg-surface)", 60),
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
-          borderColor: "var(--border-subtle)",
+          borderColor: "var(--overlay-faint)",
         }}
       >
         <div className="flex h-full items-stretch gap-0 min-w-0 self-stretch">

@@ -403,7 +403,7 @@ export function AgentComposerSurface({
         className="overflow-hidden rounded-[22px] border transition-colors"
         style={{
           background: "var(--bg-surface)",
-          borderColor: isFocused ? "var(--accent-border)" : "var(--overlay-weak)",
+          borderColor: isFocused ? "var(--accent-border)" : "var(--form-border)",
           boxShadow: "var(--shadow-sm)",
         }}
       >
@@ -576,7 +576,7 @@ function ComposerActionMenu({
           style={{
             background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
             color: "var(--text-secondary)",
-            border: "1px solid var(--overlay-weak)",
+            border: "1px solid var(--form-border)",
             boxShadow: "none",
           }}
           aria-label="Open composer actions"
@@ -652,7 +652,7 @@ function ComposerModeChip({
       className="inline-flex h-10 shrink-0 items-center gap-2 rounded-[12px] border px-3 transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
       style={{
         background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
-        borderColor: "var(--overlay-weak)",
+        borderColor: "var(--form-border)",
       }}
     >
       <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
@@ -673,12 +673,12 @@ function ComposerChatFocusPill({ chatFocus }: { chatFocus: ChatFocusFieldConfig 
   const triggerStyle = activeOption?.toneColor
     ? {
         background: activeOption.toneBackground ?? "var(--bg-surface)",
-        borderColor: activeOption.toneBorder ?? "var(--overlay-weak)",
+        borderColor: activeOption.toneBorder ?? "var(--form-border)",
         color: activeOption.toneColor,
       }
     : {
         background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
-        borderColor: "var(--overlay-weak)",
+        borderColor: "var(--form-border)",
         color: "var(--text-primary)",
       };
   return (
@@ -854,7 +854,7 @@ function ComposerRuntimePill({
           )}
           style={{
             background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
-            borderColor: "var(--overlay-weak)",
+            borderColor: "var(--form-border)",
           }}
         >
           <Cpu className="h-3.5 w-3.5 text-[var(--text-secondary)]" />

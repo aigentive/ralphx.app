@@ -411,7 +411,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
           paddingTop: "8px",
           scrollSnapAlign: "start",
           transition: "width 200ms ease, min-width 200ms ease, max-width 200ms ease",
-          ...(!isLast && { borderRight: "1px solid var(--border-subtle)" }),
+          ...(!isLast && { borderRight: "1px solid var(--overlay-weak)" }),
           // Drop zone highlight when dragging over collapsed column
           ...(isOver && !isInvalid && {
             background: "var(--status-info-muted)",

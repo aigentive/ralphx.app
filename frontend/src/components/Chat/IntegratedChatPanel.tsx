@@ -1111,7 +1111,7 @@ export function IntegratedChatPanel({
             className="flex items-center justify-between h-11 px-3 shrink-0 gap-3"
             style={{
               backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--overlay-faint)",
             }}
           >
             {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} isMergeMode={isMergeMode} />}
