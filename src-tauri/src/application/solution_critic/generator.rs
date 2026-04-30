@@ -164,13 +164,51 @@ impl AgentSolutionCritiqueGenerator {
         let response = self.client.send_prompt(&handle, &prompt).await?;
         extract_json_object(&response.content)
     }
+
+    async fn run_schema_validated_json_prompt<T, F>(
+        &self,
+        prompt: String,
+        schema_name: &'static str,
+        repair_prompt: F,
+    ) -> AppResult<String>
+    where
+        T: serde::de::DeserializeOwned,
+        F: FnOnce(&str, &str) -> AppResult<String>,
+    {
+        let json = self.run_json_prompt(prompt).await?;
+        match serde_json::from_str::<T>(&json) {
+            Ok(_) => Ok(json),
+            Err(error) => {
+                tracing::warn!(
+                    schema = schema_name,
+                    error = %error,
+                    "Solution critic model returned invalid schema; attempting repair"
+                );
+                let repaired_json = self
+                    .run_json_prompt(repair_prompt(&json, &error.to_string())?)
+                    .await?;
+                serde_json::from_str::<T>(&repaired_json).map_err(|repair_error| {
+                    AppError::Validation(format!(
+                        "Invalid solution critique JSON after {schema_name} repair: {repair_error}"
+                    ))
+                })?;
+                Ok(repaired_json)
+            }
+        }
+    }
 }
 
 #[async_trait]
 impl SolutionCritiqueGenerator for AgentSolutionCritiqueGenerator {
     async fn compile_context_candidate(&self, bundle: &RawContextBundle) -> AppResult<String> {
-        self.run_json_prompt(build_context_compiler_prompt(bundle)?)
-            .await
+        self.run_schema_validated_json_prompt::<CompiledContextCandidate, _>(
+            build_context_compiler_prompt(bundle)?,
+            "compiled_context",
+            |invalid_json, validation_error| {
+                build_context_compiler_repair_prompt(bundle, invalid_json, validation_error)
+            },
+        )
+        .await
     }
 
     async fn critique_candidate(
@@ -178,8 +216,19 @@ impl SolutionCritiqueGenerator for AgentSolutionCritiqueGenerator {
         bundle: &RawContextBundle,
         context: &CompiledContext,
     ) -> AppResult<String> {
-        self.run_json_prompt(build_solution_critique_prompt(bundle, context)?)
-            .await
+        self.run_schema_validated_json_prompt::<SolutionCritiqueCandidate, _>(
+            build_solution_critique_prompt(bundle, context)?,
+            "solution_critique",
+            |invalid_json, validation_error| {
+                build_solution_critique_repair_prompt(
+                    bundle,
+                    context,
+                    invalid_json,
+                    validation_error,
+                )
+            },
+        )
+        .await
     }
 }
 
@@ -245,6 +294,75 @@ Input:
     ))
 }
 
+fn build_context_compiler_repair_prompt(
+    bundle: &RawContextBundle,
+    invalid_json: &str,
+    validation_error: &str,
+) -> AppResult<String> {
+    let payload = json!({
+        "raw_context": prompt_bundle_payload(bundle),
+        "validation_error": validation_error,
+        "invalid_response": truncate_for_prompt(invalid_json, PROMPT_TARGET_LIMIT),
+    });
+    let payload_json = serde_json::to_string_pretty(&payload).map_err(|error| {
+        AppError::Validation(format!(
+            "Failed to serialize solution critic repair prompt: {error}"
+        ))
+    })?;
+
+    Ok(format!(
+        r#"You are RalphX's solution context compiler.
+
+Your previous response did not match the compiled context schema.
+
+Repair task:
+- Return one valid JSON object only.
+- Use the raw context and source ids below.
+- Copy evidence ids exactly from allowed_source_ids.
+- Do not invent source ids or facts.
+- Do not return a solution critique schema.
+
+Required root fields:
+- claims
+- open_questions
+- stale_assumptions
+
+Allowed enum values:
+- classification: "fact", "inference", "assumption", "speculation"
+- confidence: "low", "medium", "high"
+
+Required JSON shape:
+{{
+  "claims": [
+    {{
+      "id": "short_stable_id",
+      "text": "claim text",
+      "classification": "fact|inference|assumption|speculation",
+      "confidence": "low|medium|high",
+      "evidence": [{{ "id": "source-id-from-input" }}]
+    }}
+  ],
+  "open_questions": [
+    {{
+      "id": "short_stable_id",
+      "question": "question text",
+      "evidence": [{{ "id": "source-id-from-input" }}]
+    }}
+  ],
+  "stale_assumptions": [
+    {{
+      "id": "short_stable_id",
+      "text": "assumption text",
+      "evidence": [{{ "id": "source-id-from-input" }}]
+    }}
+  ]
+}}
+
+Input:
+{payload_json}"#
+    ))
+}
+
 fn build_solution_critique_prompt(
     bundle: &RawContextBundle,
     context: &CompiledContext,
@@ -273,6 +391,102 @@ Task:
 - Choose a safe next action that a human developer can take immediately.
 
 Return strict JSON only. Do not wrap it in markdown.
+
+Allowed enum values:
+- verdict: "accept", "revise", "investigate", "reject"
+- confidence: "low", "medium", "high"
+- claim status: "supported", "unsupported", "contradicted", "unclear"
+- recommendation status: "accept", "revise", "investigate", "reject"
+- risk severity / verification priority: "critical", "high", "medium", "low"
+
+Required JSON shape:
+{{
+  "verdict": "accept|revise|investigate|reject",
+  "confidence": "low|medium|high",
+  "claims": [
+    {{
+      "id": "short_stable_id",
+      "claim": "claim under review",
+      "status": "supported|unsupported|contradicted|unclear",
+      "confidence": "low|medium|high",
+      "evidence": [{{ "id": "source-id-from-input" }}],
+      "notes": "why this status is correct"
+    }}
+  ],
+  "recommendations": [
+    {{
+      "id": "short_stable_id",
+      "recommendation": "recommended change or decision",
+      "status": "accept|revise|investigate|reject",
+      "evidence": [{{ "id": "source-id-from-input" }}],
+      "rationale": "reasoning"
+    }}
+  ],
+  "risks": [
+    {{
+      "id": "short_stable_id",
+      "risk": "risk text",
+      "severity": "critical|high|medium|low",
+      "evidence": [{{ "id": "source-id-from-input" }}],
+      "mitigation": "mitigation text"
+    }}
+  ],
+  "verification_plan": [
+    {{
+      "id": "short_stable_id",
+      "requirement": "verification requirement",
+      "priority": "critical|high|medium|low",
+      "evidence": [{{ "id": "source-id-from-input" }}],
+      "suggested_test": "specific test or inspection"
+    }}
+  ],
+  "safe_next_action": "one concise action"
+}}
+
+Input:
+{payload_json}"#
+    ))
+}
+
+fn build_solution_critique_repair_prompt(
+    bundle: &RawContextBundle,
+    context: &CompiledContext,
+    invalid_json: &str,
+    validation_error: &str,
+) -> AppResult<String> {
+    let payload = json!({
+        "raw_context": prompt_bundle_payload(bundle),
+        "compiled_context": prompt_compiled_context_payload(context),
+        "validation_error": validation_error,
+        "invalid_response": truncate_for_prompt(invalid_json, PROMPT_TARGET_LIMIT),
+    });
+    let payload_json = serde_json::to_string_pretty(&payload).map_err(|error| {
+        AppError::Validation(format!(
+            "Failed to serialize solution critic repair prompt: {error}"
+        ))
+    })?;
+
+    Ok(format!(
+        r#"You are RalphX's solution critic.
+
+Your previous response did not match the solution critique schema.
+
+Repair task:
+- Return one valid JSON object only.
+- Give an honest evidence-backed critique of the target.
+- Use the compiled context and collected sources below.
+- Copy evidence ids exactly from allowed_source_ids.
+- Do not invent source ids, tests that were already run, or proof that is not present.
+- Do not return the context compiler schema. If the invalid response has root fields like claims/open_questions/stale_assumptions, treat it only as context and produce a solution critique object now.
+
+Required root fields:
+- verdict
+- confidence
+- claims
+- recommendations
+- risks
+- verification_plan
+- safe_next_action
 
 Allowed enum values:
 - verdict: "accept", "revise", "investigate", "reject"

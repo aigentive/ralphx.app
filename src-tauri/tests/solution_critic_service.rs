@@ -786,6 +786,62 @@ async fn default_service_uses_agent_client_for_context_and_critique() {
 }
 
 #[tokio::test]
+async fn default_service_repairs_critique_schema_before_persisting() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id,
+    } = setup_fixture().await;
+    let agent_client = Arc::new(RecordingAgentClient::new(vec![
+        model_compile_response(&plan_artifact_id),
+        model_compile_response(&plan_artifact_id),
+        model_critique_response(&plan_artifact_id),
+    ]));
+    let state = state.with_agent_client(agent_client.clone());
+    let service = SolutionCritiqueService::from_app_state(&state);
+
+    let context = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
+        )
+        .await
+        .unwrap();
+    let critique = service
+        .critique_artifact(
+            session_id.as_str(),
+            CritiqueArtifactRequest::for_plan_artifact(
+                plan_artifact_id.as_str(),
+                context.artifact_id.clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        critique.solution_critique.safe_next_action.as_deref(),
+        Some("Run the targeted solution critic service test before trusting the plan.")
+    );
+    assert_eq!(
+        state
+            .artifact_repo
+            .get_by_type(ArtifactType::Findings)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let prompts = agent_client.prompts().await;
+    assert_eq!(prompts.len(), 3);
+    assert!(prompts[1].contains("solution critic"));
+    assert!(prompts[2].contains("did not match the solution critique schema"));
+    assert!(prompts[2].contains("Do not return the context compiler schema"));
+    assert!(prompts[2].contains("missing field"));
+    assert!(prompts[2].contains("verdict"));
+}
+
+#[tokio::test]
 async fn latest_reads_return_none_before_context_or_critique_exists() {
     let Fixture {
         state, session_id, ..
