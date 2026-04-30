@@ -147,6 +147,7 @@ describe("SolutionCritiqueSummary", () => {
     renderSummary();
 
     expect(await screen.findByTestId("solution-critique-summary")).toBeInTheDocument();
+    expect(screen.getByText("Plan Solution Critique")).toBeInTheDocument();
     expect(screen.getByText("Investigate")).toBeInTheDocument();
     expect(screen.getByText("2 sources")).toBeInTheDocument();
     expect(screen.getByText("1 claim")).toBeInTheDocument();
@@ -190,8 +191,8 @@ describe("SolutionCritiqueSummary", () => {
     renderSummary();
 
     expect(await screen.findByTestId("solution-critique-summary")).toBeInTheDocument();
-    expect(screen.getByText("Critique Pending")).toBeInTheDocument();
-    expect(screen.getByText("Compiled context ready")).toBeInTheDocument();
+    expect(screen.getByText("Plan Critique Pending")).toBeInTheDocument();
+    expect(screen.getByText("Compiled plan context ready")).toBeInTheDocument();
     expect(
       screen.getByText("Model critique has not been persisted for this context yet.")
     ).toBeInTheDocument();
@@ -244,7 +245,7 @@ describe("SolutionCritiqueSummary", () => {
 
     renderSummary();
 
-    expect(await screen.findByText("Compiled context ready")).toBeInTheDocument();
+    expect(await screen.findByText("Compiled plan context ready")).toBeInTheDocument();
     expect(await screen.findByText("Investigate", {}, { timeout: 2_500 })).toBeInTheDocument();
     expect(screen.getByText("Review the critique.")).toBeInTheDocument();
     expect(solutionCriticApi.getLatestSolutionCritique).toHaveBeenCalledTimes(2);

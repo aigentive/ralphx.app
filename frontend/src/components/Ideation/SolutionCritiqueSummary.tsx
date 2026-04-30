@@ -65,6 +65,27 @@ function verdictLabel(verdict: string | undefined): string {
   }
 }
 
+function targetScopeLabel(targetType: string | undefined): string {
+  switch (targetType) {
+    case "plan_artifact":
+      return "Plan";
+    case "chat_message":
+      return "Message";
+    case "task_execution":
+      return "Task Execution";
+    case "review_report":
+      return "Review";
+    case "agent_run":
+      return "Agent Run";
+    case "task":
+      return "Task";
+    case "artifact":
+      return "Artifact";
+    default:
+      return "Target";
+  }
+}
+
 function topProjectedGaps(gaps: VerificationGap[]): VerificationGap[] {
   return [...gaps]
     .sort((left, right) => {
@@ -162,6 +183,7 @@ export function SolutionCritiqueSummary({
   const critiqueSignals = useMemo(() => critiqueItems(critique), [critique]);
   const visibleGaps = useMemo(() => topProjectedGaps(projectedGaps), [projectedGaps]);
   const hasCritique = Boolean(critique);
+  const targetScope = targetScopeLabel(context?.target.targetType);
 
   if (!context && !critique) return null;
 
@@ -177,13 +199,13 @@ export function SolutionCritiqueSummary({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
-            {hasCritique ? "Solution Critique" : "Critique Pending"}
+            {hasCritique ? `${targetScope} Solution Critique` : `${targetScope} Critique Pending`}
           </div>
           <div
             className="mt-1 text-[13px] font-semibold truncate"
             style={{ color: "var(--text-primary)" }}
           >
-            {hasCritique ? verdictLabel(critique?.verdict) : "Compiled context ready"}
+            {hasCritique ? verdictLabel(critique?.verdict) : `Compiled ${targetScope.toLowerCase()} context ready`}
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
