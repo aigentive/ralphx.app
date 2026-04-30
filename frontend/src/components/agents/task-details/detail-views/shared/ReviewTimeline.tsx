@@ -182,7 +182,7 @@ function TimelineItem({
 
   return (
     <div
-      className="flex gap-3 px-3 py-3"
+      className="flex gap-3 py-3 first:pt-0 last:pb-0"
       style={
         !isLast
           ? { borderBottom: "1px solid var(--border-subtle)" }

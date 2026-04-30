@@ -30,7 +30,6 @@ import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import type { Task, InternalStatus } from "@/types/task";
 import {
-  X,
   Pencil,
   Archive,
   RotateCcw,
@@ -38,6 +37,8 @@ import {
   Lightbulb,
   History,
   ScrollText,
+  ChevronLeft,
+  Tag,
 } from "lucide-react";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
@@ -205,10 +206,31 @@ function PriorityBadge({ priority }: { priority: number }) {
   return (
     <span
       data-testid="task-overlay-priority"
-      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium"
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-tight"
       style={{ backgroundColor: colors.bg, color: colors.text }}
+      title={`Priority P${priority}`}
     >
+      <span
+        aria-hidden
+        className="w-1.5 h-1.5 rounded-full bg-current opacity-70"
+      />
       P{priority}
+    </span>
+  );
+}
+
+function CategoryBadge({ label }: { label: string }) {
+  return (
+    <span
+      data-testid="task-overlay-category"
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
+      style={{
+        backgroundColor: "var(--overlay-faint)",
+        color: "var(--text-secondary)",
+      }}
+    >
+      <Tag className="w-3 h-3 opacity-70" />
+      {label}
     </span>
   );
 }
@@ -269,6 +291,10 @@ export interface AgentsTaskDetailOverlayProps {
   selectedTaskIdOverride?: string | null;
   /** Optional host-owned close handler for embedded task surfaces. */
   onCloseOverride?: () => void;
+  /** When provided, renders a back row above the title (e.g., "Back to Kanban"). */
+  backLabel?: string;
+  /** Click handler for the back button. Defaults to onCloseOverride when not given. */
+  onBack?: () => void;
 }
 
 export function AgentsTaskDetailOverlay({
@@ -277,6 +303,8 @@ export function AgentsTaskDetailOverlay({
   constrainContent = false,
   selectedTaskIdOverride,
   onCloseOverride,
+  backLabel,
+  onBack,
 }: AgentsTaskDetailOverlayProps) {
   const globalSelectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setGlobalSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
@@ -514,6 +542,19 @@ export function AgentsTaskDetailOverlay({
               borderBottom: "1px solid var(--overlay-weak)",
             }}
           >
+            {/* Back to source view (Kanban / Graph) */}
+            {backLabel && (onBack || onCloseOverride) && (
+              <button
+                type="button"
+                data-testid="task-overlay-back"
+                onClick={onBack ?? onCloseOverride}
+                className="mb-2 inline-flex items-center gap-1 -ml-1 px-1.5 py-0.5 rounded-md text-[12px] font-medium transition-colors hover:bg-[var(--overlay-faint)]"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                {backLabel}
+              </button>
+            )}
             {/* Archived Badge */}
             {isArchived && (
               <div
@@ -542,18 +583,10 @@ export function AgentsTaskDetailOverlay({
               </h2>
               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                 <PriorityBadge priority={task.priority} />
-                <span
-                  data-testid="task-overlay-category"
-                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                  style={{
-                    backgroundColor: "var(--overlay-weak)",
-                    border: "1px solid var(--overlay-moderate)",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  {categoryLabel}
-                </span>
-                <StatusBadge status={task.internalStatus} />
+                <CategoryBadge label={categoryLabel} />
+                {task.internalStatus !== "waiting_on_pr" && (
+                  <StatusBadge status={task.internalStatus} />
+                )}
               </div>
             </div>
 
@@ -647,17 +680,7 @@ export function AgentsTaskDetailOverlay({
                 >
                   <ScrollText className="w-4 h-4" />
                 </HeaderIconButton>
-                {/* Close button */}
-                <HeaderIconButton
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleClose}
-                  data-testid="task-overlay-close"
-                  aria-label="Close"
-                  tooltip="Close task details"
-                >
-                  <X className="w-4 h-4" />
-                </HeaderIconButton>
+                {/* No standalone close — Back button (or ESC) closes the detail. */}
               </div>
             </TooltipProvider>
           </div>

@@ -5,7 +5,7 @@
  * the current/final gaps with severity breakdown.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   TrendingDown,
   TrendingUp,
@@ -90,7 +90,15 @@ function buildRoundLineageEntries(roundDetails: VerificationRoundDetail[]): Roun
 // Sub-components
 // ============================================================================
 
-function RoundTimeline({ rounds }: { rounds: RoundSummary[] }) {
+function RoundTimeline({
+  rounds,
+  selectedRound,
+  onSelectRound,
+}: {
+  rounds: RoundSummary[];
+  selectedRound: number | null;
+  onSelectRound: (round: number) => void;
+}) {
   if (rounds.length === 0) return null;
 
   const maxScore = Math.max(...rounds.map((r) => r.gapScore), 1);
@@ -108,19 +116,29 @@ function RoundTimeline({ rounds }: { rounds: RoundSummary[] }) {
           const prevScore = idx > 0 ? rounds[idx - 1]!.gapScore : round.gapScore;
           const delta = round.gapScore - prevScore;
           const barHeight = Math.max(4, Math.round((round.gapScore / maxScore) * 48));
-          const isLast = idx === rounds.length - 1;
+          const isSelected = selectedRound === round.round;
 
-          // Select semantic token per state. Light variants for normal, heavy for "isLast".
+          // Select semantic token per state. Light variants for normal, heavy for the selected bar.
           let barToken = "var(--accent-primary)";
           if (round.gapScore === 0) barToken = "var(--status-success)";
           else if (delta < 0) barToken = "var(--status-success)";
           else if (delta > 0) barToken = "var(--status-error)";
 
-          const barBg = withAlpha(barToken, isLast ? 80 : 50);
-          const barBorder = isLast ? `1px solid ${withAlpha(barToken, 90)}` : "1px solid transparent";
+          const barBg = withAlpha(barToken, isSelected ? 80 : 40);
+          const barBorder = isSelected
+            ? `1px solid ${withAlpha(barToken, 90)}`
+            : "1px solid transparent";
 
           return (
-            <div key={round.round} className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
+            <button
+              key={round.round}
+              type="button"
+              onClick={() => onSelectRound(round.round)}
+              aria-pressed={isSelected}
+              aria-label={`Round ${round.round} — gap score ${round.gapScore}`}
+              data-testid={`verification-round-bar-${round.round}`}
+              className="flex flex-col items-center gap-1.5 flex-1 min-w-0 rounded-md p-1 -mx-1 transition-colors hover:bg-[var(--overlay-faint)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+            >
               {/* Trend arrow */}
               <div className="h-4 flex items-center">
                 {idx === 0 || delta === 0 ? (
@@ -135,7 +153,7 @@ function RoundTimeline({ rounds }: { rounds: RoundSummary[] }) {
               <div className="w-full flex flex-col items-center gap-1">
                 <span
                   className="text-[10px] font-medium tabular-nums"
-                  style={{ color: isLast ? "var(--text-secondary)" : "var(--text-muted)" }}
+                  style={{ color: isSelected ? "var(--text-primary)" : "var(--text-muted)" }}
                 >
                   {round.gapScore}
                 </span>
@@ -151,11 +169,11 @@ function RoundTimeline({ rounds }: { rounds: RoundSummary[] }) {
               {/* Round label */}
               <span
                 className="text-[10px]"
-                style={{ color: isLast ? "var(--text-secondary)" : "var(--text-muted)" }}
+                style={{ color: isSelected ? "var(--text-secondary)" : "var(--text-muted)" }}
               >
                 R{round.round}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -289,9 +307,21 @@ function AddressedGaps({
   );
 }
 
-function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[] }) {
+function RoundLineage({
+  roundDetails,
+  selectedRound,
+}: {
+  roundDetails: VerificationRoundDetail[];
+  selectedRound: number | null;
+}) {
   const entries = useMemo(() => buildRoundLineageEntries(roundDetails), [roundDetails]);
-  const [expandedRound, setExpandedRound] = useState<number | null>(null);
+  const visibleEntries = useMemo(
+    () =>
+      selectedRound == null
+        ? entries
+        : entries.filter((entry) => entry.round.round === selectedRound),
+    [entries, selectedRound],
+  );
 
   return (
     <div>
@@ -302,27 +332,14 @@ function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[
         Round Lineage
       </div>
       <div className="relative">
-        {entries.length > 1 && (
-          <div
-            className="absolute w-px"
-            style={{
-              left: 5,
-              top: 12,
-              bottom: 12,
-              background: "var(--overlay-moderate)",
-            }}
-          />
-        )}
-        {entries.map(({ round, previousRound, resolved, isLatest }, entryIdx) => {
-          const nextEntry = entryIdx < entries.length - 1 ? entries[entryIdx + 1] : undefined;
-          const prevScore = nextEntry ? nextEntry.round.gapScore : round.gapScore;
+        {visibleEntries.map(({ round, previousRound, resolved, isLatest }, entryIdx) => {
+          const fullIdx = entries.findIndex((e) => e.round.round === round.round);
+          const nextFullEntry =
+            fullIdx >= 0 && fullIdx < entries.length - 1 ? entries[fullIdx + 1] : undefined;
+          const prevScore = nextFullEntry ? nextFullEntry.round.gapScore : round.gapScore;
           const delta = round.gapScore - prevScore;
-          const hasDelta = entryIdx < entries.length - 1;
-          const isExpanded = expandedRound === round.round;
-          const isOldest = entryIdx === entries.length - 1;
-          const toggleRound = () => {
-            setExpandedRound((current) => current === round.round ? null : round.round);
-          };
+          const hasDelta = fullIdx >= 0 && fullIdx < entries.length - 1;
+          const isOldest = entryIdx === visibleEntries.length - 1;
 
           let dotColor = "var(--text-muted)";
           if (isLatest && round.gapScore === 0) dotColor = "var(--status-success)";
@@ -346,68 +363,52 @@ function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[
                 }}
               />
 
-              {/* Round header */}
-              <button
-                type="button"
-                aria-expanded={isExpanded}
-                aria-controls={`verification-round-panel-${round.round}`}
-                aria-label={`Round ${round.round} summary`}
-                onClick={toggleRound}
-                className="w-full text-left group"
-              >
-                <div className="flex items-center gap-2 py-1">
-                  <span
-                    className="text-[12px] font-semibold"
-                    style={{ color: isLatest ? "var(--text-primary)" : "var(--text-secondary)" }}
-                  >
-                    R{round.round}
-                  </span>
-                  <span
-                    className="text-[11px] tabular-nums font-medium"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    {round.gapScore}
-                  </span>
-                  {hasDelta && delta !== 0 && (
-                    <span
-                      className="text-[10px] font-semibold tabular-nums"
-                      style={{ color: delta < 0 ? "var(--status-success)" : "var(--status-error)" }}
-                    >
-                      {delta > 0 ? "+" : ""}{delta}
-                    </span>
-                  )}
-                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    {round.gapCount} gaps
-                  </span>
-                  {resolved.length > 0 && (
-                    <span className="text-[10px]" style={{ color: "var(--status-success)" }}>
-                      {resolved.length} fixed
-                    </span>
-                  )}
-                  {isLatest && (
-                    <span
-                      className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-px rounded"
-                      style={{ background: withAlpha(dotColor, 12), color: dotColor }}
-                    >
-                      Latest
-                    </span>
-                  )}
-                  <ChevronRight
-                    className="ml-auto h-3.5 w-3.5 shrink-0 transition-transform duration-150 opacity-40 group-hover:opacity-70"
-                    style={{
-                      color: "var(--text-muted)",
-                      transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
-                    }}
-                  />
-                </div>
-              </button>
-
-              {/* Expanded round detail */}
-              {isExpanded && (
-                <div
-                  id={`verification-round-panel-${round.round}`}
-                  className="pt-1 pb-2 space-y-2"
+              {/* Round header — non-interactive label; round selection
+                  happens by clicking the chart bar above. */}
+              <div className="flex items-center gap-2 py-1">
+                <span
+                  className="text-[12px] font-semibold"
+                  style={{ color: isLatest ? "var(--text-primary)" : "var(--text-secondary)" }}
                 >
+                  R{round.round}
+                </span>
+                <span
+                  className="text-[11px] tabular-nums font-medium"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {round.gapScore}
+                </span>
+                {hasDelta && delta !== 0 && (
+                  <span
+                    className="text-[10px] font-semibold tabular-nums"
+                    style={{ color: delta < 0 ? "var(--status-success)" : "var(--status-error)" }}
+                  >
+                    {delta > 0 ? "+" : ""}{delta}
+                  </span>
+                )}
+                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                  {round.gapCount} gaps
+                </span>
+                {resolved.length > 0 && (
+                  <span className="text-[10px]" style={{ color: "var(--status-success)" }}>
+                    {resolved.length} fixed
+                  </span>
+                )}
+                {isLatest && (
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-px rounded"
+                    style={{ background: withAlpha(dotColor, 12), color: dotColor }}
+                  >
+                    Latest
+                  </span>
+                )}
+              </div>
+
+              {/* Always-expanded round detail (only the selected round renders). */}
+              <div
+                id={`verification-round-panel-${round.round}`}
+                className="pt-1 pb-2 space-y-2"
+              >
                   {round.gaps.length > 0 ? (
                     <div>
                       {round.gaps.map((gap, gapIndex) => {
@@ -457,8 +458,7 @@ function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[
                       resolved={resolved}
                     />
                   )}
-                </div>
-              )}
+              </div>
             </div>
           );
         })}
@@ -478,11 +478,43 @@ export function VerificationHistory({
 }: VerificationHistoryProps) {
   const hasGaps = currentGaps !== undefined && currentGaps.length > 0;
   const hasRoundDetails = roundDetails !== undefined && roundDetails.length > 0;
+  // Prefer the latest round that has detail data — that's the round whose
+  // lineage we can actually render. Fall back to the rounds summary if no
+  // details are available yet.
+  const latestRoundNumber = useMemo(() => {
+    if (roundDetails && roundDetails.length > 0) {
+      return roundDetails.reduce(
+        (max, r) => (r.round > max ? r.round : max),
+        roundDetails[0]!.round,
+      );
+    }
+    if (rounds.length > 0) {
+      return rounds.reduce(
+        (max, r) => (r.round > max ? r.round : max),
+        rounds[0]!.round,
+      );
+    }
+    return null;
+  }, [rounds, roundDetails]);
+  const [selectedRound, setSelectedRound] = useState<number | null>(latestRoundNumber);
+  // Re-anchor to the latest round when the data set changes (new run).
+  useEffect(() => {
+    setSelectedRound(latestRoundNumber);
+  }, [latestRoundNumber]);
+  const handleSelectRound = useCallback((round: number) => {
+    setSelectedRound(round);
+  }, []);
 
   return (
     <div className="py-2">
       {/* Round timeline */}
-      {rounds.length > 0 && <RoundTimeline rounds={rounds} />}
+      {rounds.length > 0 && (
+        <RoundTimeline
+          rounds={rounds}
+          selectedRound={selectedRound}
+          onSelectRound={handleSelectRound}
+        />
+      )}
 
       {/* No rounds yet */}
       {rounds.length === 0 && !hasGaps && (
@@ -494,7 +526,9 @@ export function VerificationHistory({
         </p>
       )}
 
-      {hasRoundDetails && <RoundLineage roundDetails={roundDetails!} />}
+      {hasRoundDetails && (
+        <RoundLineage roundDetails={roundDetails!} selectedRound={selectedRound} />
+      )}
 
       {/* Final gaps */}
       {hasGaps && !hasRoundDetails && <GapBreakdown gaps={currentGaps!} />}

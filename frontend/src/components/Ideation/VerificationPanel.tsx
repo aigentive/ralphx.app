@@ -19,8 +19,6 @@ import {
   ChevronDown,
   History,
   AlertCircle,
-  CheckCircle2,
-  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -905,62 +903,15 @@ export function VerificationPanel({
         </div>
       )}
 
-      {/* Terminal status card or in-progress badge */}
-      {isTerminalStatus ? (
-        <div
-          data-testid="verification-status-card"
-          className="flex items-center gap-2.5 rounded-lg px-3 py-2.5"
-          style={{
-            background: isVerified
-              ? "var(--status-success-muted)"
-              : "var(--status-error-muted)",
-            border: isVerified
-              ? "1px solid var(--status-success-border)"
-              : "1px solid var(--status-error-border)",
-          }}
-        >
-          {isVerified ? (
-            <CheckCircle2
-              className="w-4 h-4 flex-shrink-0"
-              style={{ color: "var(--status-success)" }}
-            />
-          ) : (
-            <AlertTriangle
-              className="w-4 h-4 flex-shrink-0"
-              style={{ color: "var(--status-error)" }}
-            />
-          )}
-          <div
-            className="text-[12px] font-medium flex-1 min-w-0"
-            style={{ color: isVerified ? "var(--status-success)" : "var(--status-error)" }}
-          >
-            {isVerified ? "Plan verified" : "Gaps require attention"}
-          </div>
-          {showSkipVerification && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleSkipVerification}
-              data-testid="skip-verification-button"
-              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg shrink-0 transition-colors duration-150"
-              style={{
-                color: "var(--text-secondary)",
-                background: "transparent",
-                border: "1px solid var(--overlay-weak)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--overlay-weak)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
-            >
-              <SkipForward className="w-3 h-3" />
-              Skip
-            </Button>
-          )}
-        </div>
-      ) : (
+      <SolutionCritiqueSummary
+        sessionId={session.id}
+        enabled={hasPlan && session.sessionPurpose !== "verification"}
+      />
+
+      {/* In-progress badge — terminal states are conveyed by the
+          VERIFICATION GAPS card and the action row below, so we no longer
+          render a separate terminal status banner. */}
+      {!isTerminalStatus && (
         <div className="flex items-center justify-between gap-3">
           <VerificationBadge
             status={verificationStatus}
@@ -976,40 +927,8 @@ export function VerificationPanel({
             })}
             onRetry={handleTriggerVerification}
           />
-          <div className="flex items-center gap-1.5">
-            {showSkipVerification && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSkipVerification}
-                data-testid="skip-verification-button"
-                className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
-                style={{
-                  color: "var(--text-secondary)",
-                  background: "transparent",
-                  border: "1px solid var(--overlay-weak)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--overlay-weak)";
-                  e.currentTarget.style.color = "var(--text-secondary)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-secondary)";
-                }}
-              >
-                <SkipForward className="w-3 h-3" />
-                Skip
-              </Button>
-            )}
-          </div>
         </div>
       )}
-
-      <SolutionCritiqueSummary
-        sessionId={session.id}
-        enabled={hasPlan && session.sessionPurpose !== "verification"}
-      />
 
       {showCurrentRunBootstrap && (
         <div
@@ -1152,74 +1071,99 @@ export function VerificationPanel({
         </div>
       )}
 
-      {/* Address Gaps button */}
-      {showAddressGaps && (
-        <Button
-          size="sm"
-          onClick={handleAddressGaps}
-          data-testid="address-gaps-button"
-          className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
-          style={{
-            color: "var(--accent-primary)",
-            background: withAlpha("var(--accent-primary)", 10),
-            border: "1px solid var(--accent-border)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = withAlpha("var(--accent-primary)", 15);
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = withAlpha("var(--accent-primary)", 10);
-          }}
-        >
-          <Wand2 className="w-3 h-3" />
-          {selectedGaps.size === 0
-            ? "Address All Gaps"
-            : `Address ${selectedGaps.size} Gap${selectedGaps.size !== 1 ? "s" : ""}`}
-        </Button>
+      {/* Verification action row — surfaces Address Gaps, Re-verify Plan,
+          and Skip side-by-side. Replaces the dedicated terminal status
+          banner that previously hosted Skip. */}
+      {(showAddressGaps || showReVerify || showSkipVerification) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {showAddressGaps && (
+            <Button
+              size="sm"
+              onClick={handleAddressGaps}
+              data-testid="address-gaps-button"
+              className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
+              style={{
+                color: "var(--accent-primary)",
+                background: withAlpha("var(--accent-primary)", 10),
+                border: "1px solid var(--accent-border)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = withAlpha("var(--accent-primary)", 15);
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = withAlpha("var(--accent-primary)", 10);
+              }}
+            >
+              <Wand2 className="w-3 h-3" />
+              {selectedGaps.size === 0
+                ? "Address All Gaps"
+                : `Address ${selectedGaps.size} Gap${selectedGaps.size !== 1 ? "s" : ""}`}
+            </Button>
+          )}
+
+          {showReVerify && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleTriggerVerification}
+              data-testid="re-verify-button"
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
+              style={{
+                color: "var(--text-secondary)",
+                background: "transparent",
+                border: "1px solid var(--overlay-weak)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--overlay-weak)";
+                e.currentTarget.style.color = "var(--text-secondary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "var(--text-secondary)";
+              }}
+            >
+              <RotateCcw className="w-3 h-3" />
+              Re-verify Plan
+            </Button>
+          )}
+
+          {showSkipVerification && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSkipVerification}
+              data-testid="skip-verification-button"
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
+              style={{
+                color: "var(--text-secondary)",
+                background: "transparent",
+                border: "1px solid var(--overlay-weak)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--overlay-weak)";
+                e.currentTarget.style.color = "var(--text-secondary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "var(--text-secondary)";
+              }}
+            >
+              <SkipForward className="w-3 h-3" />
+              Skip
+            </Button>
+          )}
+        </div>
       )}
 
-      {/* Re-verify Plan button */}
-      {showReVerify && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleTriggerVerification}
-          data-testid="re-verify-button"
-          className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
-          style={{
-            color: "var(--text-secondary)",
-            background: "transparent",
-            border: "1px solid var(--overlay-weak)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--overlay-weak)";
-            e.currentTarget.style.color = "var(--text-secondary)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "var(--text-secondary)";
-          }}
-        >
-          <RotateCcw className="w-3 h-3" />
-          Re-verify Plan
-        </Button>
-      )}
-
-      {/* Round history */}
+      {/* Round history — sub-headings inside (Gap Score by Round, Round
+          Lineage) carry enough context, so we drop the redundant outer
+          "Verification History" heading. */}
       {hasRounds && (
-        <>
-          <div
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Verification History
-          </div>
-          <VerificationHistory
-            rounds={rounds}
-            roundDetails={roundDetails}
-            {...(hasGaps && { currentGaps: gaps })}
-          />
-        </>
+        <VerificationHistory
+          rounds={rounds}
+          roundDetails={roundDetails}
+          {...(hasGaps && { currentGaps: gaps })}
+        />
       )}
     </div>
   );

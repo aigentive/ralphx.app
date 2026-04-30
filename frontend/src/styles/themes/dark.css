@@ -38,6 +38,11 @@
   --overlay-faint: hsla(0 0% 100% / 0.04);
   --overlay-weak: hsla(0 0% 100% / 0.06);
   --overlay-moderate: hsla(0 0% 100% / 0.10);
+
+  /* Form / composer borders. Dark mode keeps the existing overlay-weak
+     hairline so this swap is a no-op visually; light theme overrides
+     the alias to a stronger gray that matches panel cards. */
+  --form-border: var(--overlay-weak);
   --overlay-scrim: hsla(0 0% 0% / 0.30);
   --overlay-scrim-med: hsla(0 0% 0% / 0.50);
   --overlay-scrim-deep: hsla(0 0% 0% / 0.60);

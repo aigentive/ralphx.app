@@ -116,6 +116,40 @@ const PUBLISH_TAB = {
   icon: GitPullRequestArrow,
 };
 
+const SELECTED_TASK_STORAGE_PREFIX = "agents:artifact:selected-task:";
+
+function readSelectedTaskForConversation(
+  conversationId: string | null,
+): string | null {
+  if (!conversationId) return null;
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(
+      `${SELECTED_TASK_STORAGE_PREFIX}${conversationId}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+function writeSelectedTaskForConversation(
+  conversationId: string | null,
+  taskId: string | null,
+): void {
+  if (!conversationId) return;
+  if (typeof window === "undefined") return;
+  try {
+    const key = `${SELECTED_TASK_STORAGE_PREFIX}${conversationId}`;
+    if (taskId) {
+      window.localStorage.setItem(key, taskId);
+    } else {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore quota / private-mode write failures.
+  }
+}
+
 interface AgentsArtifactPaneProps {
   conversation: AgentConversation | null;
   workspace?: AgentConversationWorkspace | null;
@@ -188,9 +222,22 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
     status: VerificationStatus;
     inProgress: boolean;
   } | null>(null);
+  const conversationId = conversation?.id ?? null;
+  const [taskArtifactSelectedId, setTaskArtifactSelectedIdState] =
+    useState<string | null>(() => readSelectedTaskForConversation(conversationId));
   useEffect(() => {
     setDisplayedVerificationStatus(null);
   }, [attachedSessionId]);
+  useEffect(() => {
+    setTaskArtifactSelectedIdState(readSelectedTaskForConversation(conversationId));
+  }, [conversationId]);
+  const setTaskArtifactSelectedId = useCallback(
+    (id: string | null) => {
+      setTaskArtifactSelectedIdState(id);
+      writeSelectedTaskForConversation(conversationId, id);
+    },
+    [conversationId],
+  );
   const sessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedSessionId ?? ""),
     queryFn: () => ideationApi.sessions.getWithData(attachedSessionId!),
@@ -315,7 +362,7 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
       className="h-full w-full min-w-0 flex flex-col overflow-hidden border-l"
       style={{
         background: "var(--bg-surface)",
-        borderColor: "var(--border-subtle)",
+        borderColor: "var(--overlay-faint)",
       }}
       data-testid="agents-artifact-pane"
     >
@@ -326,7 +373,7 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
           background: withAlpha("var(--bg-surface)", 60),
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
-          borderColor: "var(--border-subtle)",
+          borderColor: "var(--overlay-faint)",
         }}
       >
         <div className="flex h-full items-stretch gap-0 min-w-0 self-stretch">
@@ -354,7 +401,17 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
               <button
                 key={id}
                 type="button"
-                onClick={() => onTabChange(id)}
+                onClick={() => {
+                  if (
+                    id === "tasks" &&
+                    effectiveActiveTab === "tasks" &&
+                    taskArtifactSelectedId
+                  ) {
+                    setTaskArtifactSelectedId(null);
+                    return;
+                  }
+                  onTabChange(id);
+                }}
                 className={cn(
                   "relative flex h-full self-stretch items-center gap-1.5 bg-transparent px-3 text-[12px] font-medium transition-colors duration-150 rounded-none shadow-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 appearance-none",
                   id === "tasks" ? "hidden xl:flex" : ""
@@ -494,6 +551,8 @@ export const AgentsArtifactPane = memo(function AgentsArtifactPane({
           isPublishingWorkspace={isPublishingWorkspace}
           onFocusVerificationSession={onFocusVerificationSession}
           onDisplayedVerificationStatusChange={setDisplayedVerificationStatus}
+          taskArtifactSelectedId={taskArtifactSelectedId}
+          onTaskArtifactSelectedIdChange={setTaskArtifactSelectedId}
         />
       </div>
     </aside>
@@ -521,6 +580,8 @@ type ArtifactContentProps = {
     status: VerificationStatus;
     inProgress: boolean;
   } | null) => void;
+  taskArtifactSelectedId: string | null;
+  onTaskArtifactSelectedIdChange: (id: string | null) => void;
 };
 
 function ArtifactContent({
@@ -539,8 +600,10 @@ function ArtifactContent({
   proposals,
   onPublishWorkspace,
   isPublishingWorkspace,
-  onFocusVerificationSession,
+  onFocusVerificationSession: _onFocusVerificationSession,
   onDisplayedVerificationStatusChange,
+  taskArtifactSelectedId,
+  onTaskArtifactSelectedIdChange,
 }: ArtifactContentProps) {
   const criticalPathSet = useMemo(
     () => new Set(dependencyGraph?.criticalPath ?? []),
@@ -562,12 +625,14 @@ function ArtifactContent({
     setViewingProposalId(null);
     setViewingEnrichment(undefined);
   }, []);
+  // Opening the Verification tab no longer auto-focuses the chat on the
+  // verification child. The user switches chats explicitly via the composer
+  // chat-focus pill instead.
   const handleDisplayedVerificationChildChange = useCallback(
-    (childSessionId: string | null) => {
-      if (!attachedSessionId || !childSessionId) return;
-      onFocusVerificationSession?.(attachedSessionId, childSessionId);
+    (_childSessionId: string | null) => {
+      // intentionally empty — see comment above.
     },
-    [attachedSessionId, onFocusVerificationSession],
+    [],
   );
   const handleDisplayedVerificationStatusChange = useCallback(
     (status: VerificationStatus, inProgress: boolean) => {
@@ -676,6 +741,8 @@ function ArtifactContent({
       projectId={projectId}
       sessionId={attachedSessionId}
       mode={taskMode}
+      selectedTaskId={taskArtifactSelectedId}
+      onSelectedTaskIdChange={onTaskArtifactSelectedIdChange}
     />
   );
 }
@@ -731,7 +798,7 @@ function AgentPlanPanel({
   }
 
   return (
-    <div className="min-h-full p-4">
+    <div className="min-h-full px-4 pb-4 pt-4">
       {planArtifact ? (
         isEditing ? (
           <Suspense fallback={<EmptyArtifactState title="Loading plan editor..." />}>
@@ -753,6 +820,7 @@ function AgentPlanPanel({
               onExport={() => setExportDialogOpen(true)}
               isExpanded={isPlanExpanded}
               onExpandedChange={setIsPlanExpanded}
+              chromeless
               {...(teamMetadata !== undefined && { teamMetadata })}
               {...(session !== null && { onCreateProposals: handleCreateProposals })}
             />
@@ -785,33 +853,38 @@ function TaskArtifactSurface({
   projectId,
   sessionId,
   mode,
+  selectedTaskId,
+  onSelectedTaskIdChange,
 }: {
   projectId: string | null;
   sessionId: string;
   mode: AgentTaskArtifactMode;
+  selectedTaskId: string | null;
+  onSelectedTaskIdChange: (id: string | null) => void;
 }) {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const handleTaskSelect = useCallback((taskId: string) => {
-    setSelectedTaskId(taskId);
-  }, []);
+  const handleTaskSelect = useCallback(
+    (taskId: string) => {
+      onSelectedTaskIdChange(taskId);
+    },
+    [onSelectedTaskIdChange],
+  );
   const handleCloseTaskDetail = useCallback(() => {
-    setSelectedTaskId(null);
-  }, []);
-
-  useEffect(() => {
-    setSelectedTaskId(null);
-  }, [projectId, sessionId, mode]);
+    onSelectedTaskIdChange(null);
+  }, [onSelectedTaskIdChange]);
 
   if (!projectId) {
     return <EmptyArtifactState title="No project selected" />;
   }
 
+  const backLabel = mode === "kanban" ? "Back to Kanban" : "Back to Graph";
   const detailOverlay = selectedTaskId ? (
     <Suspense fallback={null}>
       <LazyAgentsTaskDetailOverlay
         projectId={projectId}
         selectedTaskIdOverride={selectedTaskId}
         onCloseOverride={handleCloseTaskDetail}
+        backLabel={backLabel}
+        onBack={handleCloseTaskDetail}
         constrainContent
       />
     </Suspense>

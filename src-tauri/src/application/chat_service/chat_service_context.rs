@@ -1448,8 +1448,7 @@ pub async fn resolve_working_directory(
                                             {
                                                 tracing::warn!(
                                                     child_session_id = context_id,
-                                                    parent_session_id =
-                                                        parent_session_id.as_str(),
+                                                    parent_session_id = parent_session_id.as_str(),
                                                     child_error = %child_error,
                                                     parent_error = %parent_error,
                                                     fallback = %project.working_directory,

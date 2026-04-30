@@ -34,10 +34,34 @@ interface ReviewFeedbackBodyProps {
   dialogBodyClassName?: string;
 }
 
+// Pull lists flush with the section edge so review bullets line up with the
+// surrounding heading and paragraph text instead of sitting under an indent.
+const flushListComponents = {
+  ...markdownComponents,
+  ul: ({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) => (
+    <ul className="list-disc pl-5 -ml-5 mb-2" {...props}>
+      {children}
+    </ul>
+  ),
+  ol: ({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) => (
+    <ol className="list-decimal pl-5 -ml-5 mb-2" {...props}>
+      {children}
+    </ol>
+  ),
+};
+
 function MarkdownBody({ content, className }: { content: string; className?: string }) {
   return (
-    <div className={cn("prose prose-sm prose-invert max-w-none", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+    <div
+      className={cn(
+        "prose prose-sm prose-invert max-w-none",
+        // Tailwind Typography wraps inline code with backtick pseudo-elements;
+        // the markdown parser already strips delimiters, so disable both.
+        "prose-code:before:content-none prose-code:after:content-none",
+        className,
+      )}
+    >
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={flushListComponents}>
         {content}
       </ReactMarkdown>
     </div>

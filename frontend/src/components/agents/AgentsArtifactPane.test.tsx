@@ -343,7 +343,7 @@ describe("AgentsArtifactPane", () => {
     const inactiveTab = screen.getByTestId("agents-artifact-tab-plan");
 
     expect(tabRow.getAttribute("style")).toContain(
-      "border-color: var(--border-subtle);"
+      "border-color: var(--overlay-faint);"
     );
     expect(activeTab.parentElement?.className).toContain("self-stretch");
     expect(activeTab.className).toContain("self-stretch");

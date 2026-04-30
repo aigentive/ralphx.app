@@ -810,7 +810,12 @@ function AppContent() {
             </h1>
 
             {/* View Navigation */}
-            <Navigation currentView={currentView} onViewChange={handleViewChange} onOpenSettings={handleOpenSettings} />
+            <Navigation
+              currentView={currentView}
+              onViewChange={handleViewChange}
+              onOpenSettings={handleOpenSettings}
+              hideViews={hasNoProjects || showWelcomeOverlay}
+            />
           </div>
 
           {/* Spacer */}
@@ -822,11 +827,14 @@ function AppContent() {
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             <ThemeSelector />
-            {/* Project selector */}
-            <div className="mr-2">
-              <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
-            </div>
+            {/* Project selector — hidden during welcome screen */}
+            {!(hasNoProjects || showWelcomeOverlay) && (
+              <div className="mr-2">
+                <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
+              </div>
+            )}
             {/* Reviews Panel Toggle */}
+            {!(hasNoProjects || showWelcomeOverlay) && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -872,9 +880,10 @@ function AppContent() {
                 Toggle Reviews <kbd className="ml-1 opacity-70">⌘⇧R</kbd>
               </TooltipContent>
             </Tooltip>
+            )}
 
             {/* Graph Right Panel Toggle (graph view only) */}
-            {currentView === "graph" && (
+            {!(hasNoProjects || showWelcomeOverlay) && currentView === "graph" && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

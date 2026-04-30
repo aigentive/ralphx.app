@@ -37,7 +37,7 @@ export function TaskBoardSkeleton() {
                 paddingLeft: "10px",
                 paddingRight: "10px",
                 borderRight: index < COLUMN_COUNT - 1
-                  ? "1px solid var(--border-subtle)"
+                  ? "1px solid var(--overlay-weak)"
                   : undefined,
               }}
             >

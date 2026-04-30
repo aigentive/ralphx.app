@@ -89,7 +89,7 @@ describe("VerificationHistory", () => {
     expect(screen.queryByText(/Critical/)).not.toBeInTheDocument();
   });
 
-  it("renders round lineage with addressed gaps when round details are present", async () => {
+  it("renders round lineage with addressed gaps for the latest round by default", async () => {
     const user = userEvent.setup();
 
     render(
@@ -102,20 +102,18 @@ describe("VerificationHistory", () => {
 
     expect(screen.getByText(/Round Lineage/i)).toBeInTheDocument();
 
-    // Expand round 2 to see gaps and addressed toggle
-    await user.click(screen.getByRole("button", { name: /round 2 summary/i }));
-
+    // Latest round (R2) is expanded by default — gaps and addressed toggle visible.
     expect(screen.getByText("Missing register-project coverage")).toBeInTheDocument();
     expect(screen.getByText(/1 addressed since round 1/i)).toBeInTheDocument();
-    // Addressed gaps collapsed by default
+    // Addressed gaps still collapsed by default within the latest round.
     expect(screen.queryByText("Missing migration registration")).not.toBeInTheDocument();
 
-    // Expand addressed gaps
+    // Expand the addressed gaps disclosure.
     await user.click(screen.getByText(/1 addressed since round 1/i));
     expect(screen.getByText("Missing migration registration")).toBeInTheDocument();
   });
 
-  it("renders newest round first in the lineage list", () => {
+  it("only renders the selected round in the lineage list", () => {
     render(
       <VerificationHistory
         rounds={mockRounds}
@@ -123,28 +121,14 @@ describe("VerificationHistory", () => {
       />
     );
 
-    const buttons = screen.getAllByRole("button", { name: /round \d+ summary/i });
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]).toHaveTextContent("R2");
-    expect(buttons[1]).toHaveTextContent("R1");
+    // Default selection = latest round (R2). R1 should not appear in the lineage body.
+    const lineageHeading = screen.getByText(/Round Lineage/i);
+    const lineageContainer = lineageHeading.parentElement!;
+    expect(lineageContainer.textContent).toContain("R2");
+    expect(lineageContainer.textContent).not.toMatch(/\bR1\b.*1 fixed|0 fixed/);
   });
 
-  it("starts with all round sections collapsed", () => {
-    render(
-      <VerificationHistory
-        rounds={mockRounds}
-        roundDetails={mockRoundDetails}
-      />
-    );
-
-    const round2Button = screen.getByRole("button", { name: /round 2 summary/i });
-    const round1Button = screen.getByRole("button", { name: /round 1 summary/i });
-
-    expect(round2Button).toHaveAttribute("aria-expanded", "false");
-    expect(round1Button).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("uses progressive disclosure for round details", async () => {
+  it("clicking a chart bar selects that round's lineage", async () => {
     const user = userEvent.setup();
 
     render(
@@ -154,27 +138,14 @@ describe("VerificationHistory", () => {
       />
     );
 
-    const round2Button = screen.getByRole("button", { name: /round 2 summary/i });
-    const round1Button = screen.getByRole("button", { name: /round 1 summary/i });
-
-    // All collapsed initially
-    expect(round2Button).toHaveAttribute("aria-expanded", "false");
-    expect(round1Button).toHaveAttribute("aria-expanded", "false");
-
-    // Expand round 2 — gap description visible
-    await user.click(round2Button);
-    expect(round2Button).toHaveAttribute("aria-expanded", "true");
+    // Latest round R2 expanded by default — its gap visible. R1's
+    // exclusive gap should not be on screen yet.
     expect(screen.getByText("Missing register-project coverage")).toBeInTheDocument();
-
-    // Switch to round 1
-    await user.click(round1Button);
-    expect(round1Button).toHaveAttribute("aria-expanded", "true");
-    expect(round2Button).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText("Missing migration registration")).toBeInTheDocument();
-
-    // Collapse round 1
-    await user.click(round1Button);
-    expect(round1Button).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Missing migration registration")).not.toBeInTheDocument();
+
+    // Click the R1 bar — lineage swaps to round 1, exposing R1's gap.
+    await user.click(screen.getByTestId("verification-round-bar-1"));
+
+    expect(screen.getByText("Missing migration registration")).toBeInTheDocument();
   });
 });

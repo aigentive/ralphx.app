@@ -31,6 +31,7 @@ interface AgentsConversationMainRegionProps {
   onPreloadArtifacts: ActiveConversationPanelProps["onPreloadArtifacts"];
   onPublishWorkspace: ActiveConversationPanelProps["onPublishWorkspace"];
   onRenameConversation: ActiveConversationPanelProps["onRenameConversation"];
+  onRuntimePreferenceChange: StartConversationPanelProps["onRuntimePreferenceChange"];
   onSelectArtifact: ActiveConversationPanelProps["onSelectArtifact"];
   onStartAgentConversation: StartConversationPanelProps["onStartAgentConversation"];
   onToggleArtifacts: ActiveConversationPanelProps["onToggleArtifacts"];
@@ -69,6 +70,7 @@ export const AgentsConversationMainRegion = memo(function AgentsConversationMain
   onPreloadArtifacts,
   onPublishWorkspace,
   onRenameConversation,
+  onRuntimePreferenceChange,
   onSelectArtifact,
   onStartAgentConversation,
   onToggleArtifacts,
@@ -124,6 +126,7 @@ export const AgentsConversationMainRegion = memo(function AgentsConversationMain
       defaultRuntime={defaultRuntime}
       isLoadingProjects={isLoadingProjects}
       onCreateProject={onCreateProject}
+      onRuntimePreferenceChange={onRuntimePreferenceChange}
       onStartAgentConversation={onStartAgentConversation}
     />
   );

@@ -10,31 +10,11 @@
 import { Loader2, ListChecks, RotateCcw, Timer, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTaskMetrics } from "@/hooks/useTaskMetrics";
-import { deriveComplexityTier, type ComplexityTier } from "@/api/task-metrics";
+import { deriveComplexityTier } from "@/api/task-metrics";
 
-// ── Complexity badge ─────────────────────────────────────────────────────────
+// ── Stat cell ────────────────────────────────────────────────────────────────
 
-const COMPLEXITY_STYLE: { bg: string; color: string } = {
-  bg: "var(--overlay-weak)",
-  color: "var(--text-muted)",
-};
-
-function ComplexityBadge({ tier }: { tier: ComplexityTier }) {
-  return (
-    <span
-      data-testid="complexity-badge"
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
-      style={{ backgroundColor: COMPLEXITY_STYLE.bg, color: COMPLEXITY_STYLE.color }}
-    >
-      <Zap className="w-3 h-3" />
-      {tier}
-    </span>
-  );
-}
-
-// ── Stat row ─────────────────────────────────────────────────────────────────
-
-function StatRow({
+function StatCell({
   icon: Icon,
   label,
   value,
@@ -44,18 +24,20 @@ function StatRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-3">
+    <div className="flex items-start gap-2 min-w-0">
       <div
         className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
         style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <Icon className="w-3.5 h-3.5 text-text-primary/40" />
       </div>
-      <div className="flex-1 min-w-0">
-        <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
+      <div className="min-w-0">
+        <span className="text-[10px] uppercase tracking-wider text-text-primary/40 block">
           {label}
         </span>
-        <span className="text-[13px] text-text-primary/70 font-medium">{value}</span>
+        <span className="text-[13px] text-text-primary font-medium truncate block">
+          {value}
+        </span>
       </div>
     </div>
   );
@@ -105,6 +87,11 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
 
   const rows = [
     {
+      icon: Zap,
+      label: "Complexity",
+      value: tier,
+    },
+    {
       icon: ListChecks,
       label: "Steps",
       value:
@@ -128,26 +115,14 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
   ];
 
   return (
-    <div>
-      {/* Header: complexity tier */}
-      <div className="flex items-center justify-between px-3 py-3">
-        <span className="text-[11px] uppercase tracking-wider text-text-primary/40">
-          Complexity
-        </span>
-        <ComplexityBadge tier={tier} />
-      </div>
-
-      {rows.map((row, index) => (
-        <div
+    <div className="flex flex-wrap gap-x-8 gap-y-3">
+      {rows.map((row) => (
+        <StatCell
           key={row.label}
-          style={
-            index < rows.length - 1
-              ? { borderBottom: "1px solid var(--border-subtle)" }
-              : undefined
-          }
-        >
-          <StatRow icon={row.icon} label={row.label} value={row.value} />
-        </div>
+          icon={row.icon}
+          label={row.label}
+          value={row.value}
+        />
       ))}
     </div>
   );

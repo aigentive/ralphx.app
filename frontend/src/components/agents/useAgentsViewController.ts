@@ -24,12 +24,14 @@ import { useAgentsOptimisticState } from "./useAgentsOptimisticState";
 import { useAgentsTerminalDocks } from "./useAgentsTerminalDocks";
 import { useAgentsSidebarState } from "./useAgentsSidebarState";
 import { useAgentsSidebarProps } from "./useAgentsSidebarProps";
+import { normalizeRuntimeSelection } from "./agentOptions";
 import {
   getFocusedArtifactIdeationSessionId,
   type AgentsChatFocus,
   type AgentsChatFocusSwitchOption,
   type AgentsChatFocusType,
 } from "./agentChatFocus";
+import type { AgentRuntimeSelection } from "@/stores/agentSessionStore";
 
 interface UseAgentsViewControllerParams {
   projectId: string;
@@ -81,6 +83,7 @@ export function useAgentsViewController({
     selectedProjectId,
     setActiveConversation,
     setFocusedProject,
+    setLastRuntimeForProject,
     setRuntimeForConversation,
     storedSelectedConversationId,
   } = useAgentsSessionBindings({
@@ -356,25 +359,10 @@ export function useAgentsViewController({
     selectedConversationId,
     setArtifactPaneVisibility,
   });
-  const handleSelectArtifactWithChatFocus = useCallback(
-    (tab: Parameters<typeof handleSelectArtifact>[0]) => {
-      handleSelectArtifact(tab);
-      if (tab !== "plan") {
-        return;
-      }
-      const targetIdeationSessionId =
-        focusedArtifactIdeationSessionId ?? attachedIdeationSessionId;
-      if (targetIdeationSessionId) {
-        handleFocusIdeationSession(targetIdeationSessionId);
-      }
-    },
-    [
-      attachedIdeationSessionId,
-      focusedArtifactIdeationSessionId,
-      handleFocusIdeationSession,
-      handleSelectArtifact,
-    ],
-  );
+  // Switching artifact tabs no longer touches the chat focus. The user
+  // toggles between workspace and child chats explicitly via the composer
+  // chat-focus pill.
+  const handleSelectArtifactWithChatFocus = handleSelectArtifact;
 
   const handleAgentUserMessageSent = useAgentUserMessageAutoTitle({
     activeProjectId,
@@ -382,6 +370,12 @@ export function useAgentsViewController({
     handleAutoManagedTitle,
     selectedConversationId,
   });
+  const handleStartRuntimePreferenceChange = useCallback(
+    (targetProjectId: string, runtime: AgentRuntimeSelection) => {
+      setLastRuntimeForProject(targetProjectId, normalizeRuntimeSelection(runtime));
+    },
+    [setLastRuntimeForProject],
+  );
 
   const { handlePublishWorkspace, publishingConversationId } =
     useAgentWorkspacePublisher({
@@ -459,6 +453,7 @@ export function useAgentsViewController({
       onPreloadArtifacts: handlePreloadArtifacts,
       onPublishWorkspace: handlePublishWorkspace,
       onRenameConversation: handleRenameConversation,
+      onRuntimePreferenceChange: handleStartRuntimePreferenceChange,
       onSelectArtifact: handleSelectArtifactWithChatFocus,
       onStartAgentConversation: handleStartAgentConversation,
       onToggleArtifacts: toggleArtifactPaneVisibility,

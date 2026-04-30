@@ -48,6 +48,7 @@ interface AgentSessionActions {
     projectId: string,
     runtime: AgentRuntimeSelection
   ) => void;
+  setLastRuntimeForProject: (projectId: string, runtime: AgentRuntimeSelection) => void;
 }
 
 const DEFAULT_ARTIFACT_STATE: AgentArtifactState = {
@@ -173,6 +174,11 @@ export const useAgentSessionStore = create<AgentSessionState & AgentSessionActio
       setRuntimeForConversation: (conversationId, projectId, runtime) =>
         set((state) => {
           state.runtimeByConversationId[conversationId] = runtime;
+          state.lastRuntimeByProjectId[projectId] = runtime;
+        }),
+
+      setLastRuntimeForProject: (projectId, runtime) =>
+        set((state) => {
           state.lastRuntimeByProjectId[projectId] = runtime;
         }),
     })),

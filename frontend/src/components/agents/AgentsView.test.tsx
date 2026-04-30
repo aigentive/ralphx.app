@@ -148,13 +148,14 @@ describe("AgentsView", () => {
       "data-send-conversation-id",
       "",
     );
-    expect(screen.getByTestId("agents-chat-focus-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("agents-chat-focus-trigger")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-composer-chat-focus-pill")).toBeInTheDocument();
     expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
 
     // Open dropdown and select Workspace
-    fireEvent.click(screen.getByTestId("agents-chat-focus-trigger"));
-    fireEvent.click(screen.getByTestId("agents-chat-focus-return"));
+    fireEvent.click(screen.getByTestId("agents-composer-chat-focus-pill"));
+    fireEvent.click(
+      screen.getByTestId("agents-composer-chat-focus-option-workspace"),
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
@@ -180,11 +181,10 @@ describe("AgentsView", () => {
     renderAgentsView();
     selectSidebarConversationRow();
 
-    expect(await screen.findByTestId("agents-chat-focus-bar")).toBeInTheDocument();
-    // Trigger shows the active focus (Workspace)
-    expect(screen.getByTestId("agents-chat-focus-trigger")).toHaveTextContent(
-      "Workspace",
-    );
+    // Workspace chat hosts the focus switcher inline in the composer.
+    expect(
+      await screen.findByTestId("agents-composer-chat-focus-pill"),
+    ).toHaveTextContent("Workspace");
     await waitFor(() => {
       expect(getLatestChildSessionIdMock).toHaveBeenCalledWith(
         "session-1",
@@ -194,8 +194,10 @@ describe("AgentsView", () => {
     });
 
     // Open dropdown and select Verification
-    fireEvent.click(screen.getByTestId("agents-chat-focus-trigger"));
-    fireEvent.click(screen.getByTestId("agents-chat-focus-option-verification"));
+    fireEvent.click(screen.getByTestId("agents-composer-chat-focus-pill"));
+    fireEvent.click(
+      screen.getByTestId("agents-composer-chat-focus-option-verification"),
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
@@ -209,7 +211,7 @@ describe("AgentsView", () => {
     );
   });
 
-  it("focuses the main chat on the attached ideation run when the Plan artifact tab is selected", async () => {
+  it("does NOT auto-switch the chat focus when the Plan artifact tab is selected", async () => {
     mockAgentViewData();
     getAgentConversationWorkspaceMock.mockResolvedValue(
       conversationWorkspace({ mode: "ideation", linkedIdeationSessionId: "session-1" })
@@ -234,24 +236,18 @@ describe("AgentsView", () => {
 
     fireEvent.click(screen.getByLabelText("Plan"));
 
+    // Workspace chat stays selected — clicking artifact tabs no longer
+    // auto-focuses the attached ideation chat. The user opts in via the
+    // composer chat-focus pill explicitly.
     await waitFor(() => {
       expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
-        "data-ideation-session-id",
-        "session-1",
+        "data-conversation-id-override",
+        "conversation-1",
       );
     });
     expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
-      "data-conversation-id-override",
+      "data-ideation-session-id",
       "",
-    );
-    expect(screen.getByTestId("agents-chat-focus-bar")).toBeInTheDocument();
-    // Trigger shows Ideation as the active focus
-    expect(screen.getByTestId("agents-chat-focus-trigger")).toHaveTextContent(
-      "Ideation",
-    );
-    expect(screen.getByTestId("agents-chat-header")).toHaveAttribute(
-      "data-focus-type",
-      "ideation",
     );
   });
 
@@ -294,13 +290,15 @@ describe("AgentsView", () => {
       "data-focused-ideation-session-id",
       "session-parent",
     );
-    // Trigger shows Verification as the active focus
-    expect(screen.getByTestId("agents-chat-focus-trigger")).toHaveTextContent(
+    // Composer pill shows Verification as the active focus
+    expect(screen.getByTestId("agents-composer-chat-focus-pill")).toHaveTextContent(
       "Verification",
     );
     // Open dropdown and switch to Ideation
-    fireEvent.click(screen.getByTestId("agents-chat-focus-trigger"));
-    fireEvent.click(screen.getByTestId("agents-chat-focus-option-ideation"));
+    fireEvent.click(screen.getByTestId("agents-composer-chat-focus-pill"));
+    fireEvent.click(
+      screen.getByTestId("agents-composer-chat-focus-option-ideation"),
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
@@ -308,8 +306,8 @@ describe("AgentsView", () => {
         "session-parent",
       );
     });
-    // Trigger now shows Ideation
-    expect(screen.getByTestId("agents-chat-focus-trigger")).toHaveTextContent(
+    // Composer pill now shows Ideation
+    expect(screen.getByTestId("agents-composer-chat-focus-pill")).toHaveTextContent(
       "Ideation",
     );
     expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();

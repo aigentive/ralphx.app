@@ -1,10 +1,12 @@
-import type { ComponentProps, ReactNode, Ref } from "react";
+import { useRef, type ComponentProps, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react";
 import { Menu } from "lucide-react";
 
+import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { withAlpha } from "@/lib/theme-colors";
 
 import { AgentsSidebar } from "./AgentsSidebar";
+import { useAgentsSidebarResize } from "./useAgentsSidebarResize";
 
 type AgentsSidebarShellProps = Omit<ComponentProps<typeof AgentsSidebar>, "onCollapse">;
 
@@ -31,6 +33,29 @@ export function AgentsShellLayout({
   splitContainerRef,
   suppressSidebarTransition,
 }: AgentsShellLayoutProps) {
+  const sidebarContainerRef = useRef<HTMLDivElement | null>(null);
+  const {
+    handleSidebarResizeReset,
+    handleSidebarResizeStart,
+    isSidebarResizing,
+    userSidebarWidth,
+  } = useAgentsSidebarResize(sidebarContainerRef);
+  const effectiveSidebarWidth =
+    !isSidebarCollapsed && userSidebarWidth !== null && sidebarWidth > 0
+      ? userSidebarWidth
+      : sidebarWidth;
+  const showSidebarResizeHandle =
+    !isSidebarCollapsed && !isSidebarOverlayOpen && sidebarWidth > 0;
+  const sidebarTransitionStyle =
+    suppressSidebarTransition.current || isSidebarResizing
+      ? "none"
+      : "width 300ms ease";
+  const onSidebarResizeStart = (event: ReactMouseEvent) => {
+    handleSidebarResizeStart(event);
+  };
+  const onSidebarResizeReset = (event: ReactMouseEvent) => {
+    handleSidebarResizeReset(event);
+  };
   return (
     <TooltipProvider delayDuration={300}>
       <section
@@ -87,18 +112,29 @@ export function AgentsShellLayout({
 
         {!isSidebarOverlayOpen && (
           <div
+            ref={sidebarContainerRef}
             style={{
-              width: isSidebarCollapsed ? 0 : sidebarWidth,
-              minWidth: isSidebarCollapsed ? 0 : sidebarWidth,
+              width: isSidebarCollapsed ? 0 : effectiveSidebarWidth,
+              minWidth: isSidebarCollapsed ? 0 : effectiveSidebarWidth,
               flexShrink: 0,
               overflow: "hidden",
-              transition: suppressSidebarTransition.current ? "none" : "width 300ms ease",
+              transition: sidebarTransitionStyle,
               display: isSidebarCollapsed ? "none" : undefined,
             }}
             aria-hidden={isSidebarCollapsed ? "true" : undefined}
+            data-testid="agents-sidebar-container"
           >
             <AgentsSidebar {...sidebarProps} onCollapse={onToggleSidebarCollapse} />
           </div>
+        )}
+
+        {showSidebarResizeHandle && (
+          <ResizeHandle
+            isResizing={isSidebarResizing}
+            onMouseDown={onSidebarResizeStart}
+            onDoubleClick={onSidebarResizeReset}
+            testId="agents-sidebar-resize-handle"
+          />
         )}
 
         {isSidebarOverlayOpen && (
