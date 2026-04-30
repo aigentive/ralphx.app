@@ -205,7 +205,7 @@ esac
 
 echo
 echo "Next manual steps:"
-echo "  git add frontend/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json"
+echo "  git add frontend/package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json"
 echo "  git commit -m \"chore: bump version to ${proposed_version}\""
 echo "  git add ${notes_output}"
 echo "  git commit -m \"docs: add release notes for v${proposed_version}\""
