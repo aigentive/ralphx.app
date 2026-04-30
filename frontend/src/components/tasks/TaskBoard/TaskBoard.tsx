@@ -8,7 +8,7 @@
  * - Premium Apple-grade typography and spacing
  */
 
-import { useState, useEffect, useMemo, useRef, useSyncExternalStore, useCallback } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -62,6 +62,8 @@ export interface TaskBoardProps {
   projectId: string;
   /** Optional ideation session ID to filter tasks by plan */
   ideationSessionId?: string | null;
+  /** Optional host-owned task selection handler for embedded task surfaces. */
+  onTaskSelect?: (taskId: string) => void;
   /** Opens the global plan quick switcher with source attribution */
   onOpenPlanQuickSwitcher?: (source: SelectionSource) => void;
 }
@@ -69,6 +71,7 @@ export interface TaskBoardProps {
 export function TaskBoard({
   projectId,
   ideationSessionId: ideationSessionIdProp,
+  onTaskSelect,
   onOpenPlanQuickSwitcher,
 }: TaskBoardProps) {
   const queryClient = useQueryClient();
@@ -82,13 +85,15 @@ export function TaskBoard({
   // Use prop if provided, otherwise fall back to active plan from store.
   // When an executionPlanId is active, use null for ideationSessionId (exclusive filters).
   const ideationSessionId = ideationSessionIdProp ?? (activeExecutionPlanId ? null : activePlanId);
+  // In Agents context (ideationSessionIdProp provided), don't use global execution plan — filter by session only.
+  const effectiveExecutionPlanId = ideationSessionIdProp ? null : activeExecutionPlanId;
 
   // Load active plan from backend on mount or project change
   useEffect(() => {
     usePlanStore.getState().loadActivePlan(projectId);
   }, [projectId]);
 
-  const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId, ideationSessionId, activeExecutionPlanId);
+  const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId, ideationSessionId, effectiveExecutionPlanId);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
@@ -100,9 +105,6 @@ export function TaskBoard({
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const boardSearchQuery = useUiStore((s) => s.boardSearchQuery);
   const setBoardSearchQuery = useUiStore((s) => s.setBoardSearchQuery);
-  const kanbanChatVisible = useUiStore((s) => s.chatVisibleByView.kanban);
-  const setChatVisible = useUiStore((s) => s.setChatVisible);
-  const previousActivePlanRef = useRef<string | null>(activePlanId);
 
   // Column collapse: reactive task counts and auto-collapse/expand logic
   const taskCounts = useColumnTaskCounts(
@@ -111,27 +113,13 @@ export function TaskBoard({
     showArchived,
     ideationSessionId,
     showMergeTasks,
-    activeExecutionPlanId,
+    effectiveExecutionPlanId,
   );
   const { isCollapsed, toggleCollapse, expandColumn } = useColumnCollapse(
     defaultWorkflow.columns,
     taskCounts,
     ideationSessionId,
   );
-
-  // Auto-open Kanban chat when switching to a different active plan.
-  useEffect(() => {
-    const previousActivePlanId = previousActivePlanRef.current;
-    const activePlanChanged =
-      activePlanId !== null &&
-      activePlanId !== previousActivePlanId;
-
-    if (activePlanChanged && !kanbanChatVisible) {
-      setChatVisible("kanban", true);
-    }
-
-    previousActivePlanRef.current = activePlanId;
-  }, [activePlanId, kanbanChatVisible, setChatVisible]);
 
   // Fetch archived count to show/hide the toggle
   const { data: archivedCount = 0 } = useQuery({
@@ -148,7 +136,7 @@ export function TaskBoard({
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
         ideationSessionId,
-        executionPlanId: activeExecutionPlanId,
+        executionPlanId: effectiveExecutionPlanId,
       });
       const colData = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       if (colData?.pages) {
@@ -158,7 +146,7 @@ export function TaskBoard({
       }
     }
     return count;
-  }, [columns, projectId, showArchived, ideationSessionId, activeExecutionPlanId, queryClient]);
+  }, [columns, projectId, showArchived, ideationSessionId, effectiveExecutionPlanId, queryClient]);
 
   const subscribeToQueryCache = useCallback(
     (onStoreChange: () => void) => queryClient.getQueryCache().subscribe(onStoreChange),
@@ -358,7 +346,7 @@ export function TaskBoard({
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
         ideationSessionId,
-        executionPlanId: activeExecutionPlanId,
+        executionPlanId: effectiveExecutionPlanId,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       if (data?.pages) {
@@ -390,7 +378,7 @@ export function TaskBoard({
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
         ideationSessionId,
-        executionPlanId: activeExecutionPlanId,
+        executionPlanId: effectiveExecutionPlanId,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       return data?.pages?.some((page) => page.tasks.some((t: Task) => t.id === taskId));
@@ -425,7 +413,7 @@ export function TaskBoard({
   // Check if we should show empty state
   const hasSearchResults = searchResults.length > 0;
   const showEmptyState = isSearchActive && !hasSearchResults && !isSearchLoading;
-  const showNoPlanState = activePlanLoaded && !activePlanId && !isSearchActive;
+  const showNoPlanState = !ideationSessionIdProp && activePlanLoaded && !activePlanId && !isSearchActive;
 
   return (
     <DndContext
@@ -452,12 +440,14 @@ export function TaskBoard({
             />
           </div>
 
-          {/* Active plan selector in header row */}
-          <PlanSelectorInline
-            projectId={projectId}
-            source="kanban_inline"
-            onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
-          />
+          {/* Active plan selector in header row — hidden in Agents context (session-scoped) */}
+          {!ideationSessionIdProp && (
+            <PlanSelectorInline
+              projectId={projectId}
+              source="kanban_inline"
+              onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+            />
+          )}
 
           {/* Show Archived toggle - simple Tahoe style */}
           {archivedCount > 0 && (
@@ -636,9 +626,10 @@ export function TaskBoard({
                     {...(groups && { groups })}
                     isLast={index === displayColumns.length - 1}
                     ideationSessionId={ideationSessionId}
-                    executionPlanId={activeExecutionPlanId}
+                    executionPlanId={effectiveExecutionPlanId}
                     isCollapsed={columnCollapsed}
                     onToggleCollapse={() => toggleCollapse(column.id)}
+                    {...(onTaskSelect !== undefined && { onTaskSelect })}
                   />
                 );
               })}

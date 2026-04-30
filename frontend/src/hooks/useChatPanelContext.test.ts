@@ -177,6 +177,34 @@ describe("useChatPanelContext", () => {
       // isSending is per-panel UI state — should still be cleared
       expect(mockStore.setSending).toHaveBeenCalledWith("session:session-1", false);
     });
+
+    it("uses an explicit store key for externally owned project conversations", async () => {
+      const { result } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: undefined,
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+            overrideConversationId: "conversation-1",
+            storeContextKeyOverride: "project:conversation-1",
+          },
+        }
+      );
+
+      expect(result.current.storeContextKey).toBe("project:conversation-1");
+      await waitFor(() => {
+        expect(mockStore.setActiveConversation).toHaveBeenCalledWith(
+          "project:conversation-1",
+          "conversation-1"
+        );
+      });
+    });
   });
 
   describe("context switching", () => {
@@ -560,6 +588,52 @@ describe("useChatPanelContext", () => {
 
       // Should not have called setActiveConversation again because we're in history mode
       // with an explicit override
+      expect(mockStore.setActiveConversation).not.toHaveBeenCalled();
+    });
+
+    it("should not auto-select over an explicit conversation override outside history mode", async () => {
+      const { result } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: undefined,
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+            overrideConversationId: "conv-archived",
+          },
+        }
+      );
+
+      await waitFor(() => {
+        expect(mockStore.setActiveConversation).toHaveBeenCalledWith(
+          "project:project-1",
+          "conv-archived"
+        );
+      });
+
+      mockStore.activeConversationIds["project:project-1"] = "conv-archived";
+      mockStore.setActiveConversation.mockClear();
+
+      const mockConversations: ConversationData[] = [
+        {
+          id: "conv-active",
+          lastMessageAt: "2026-02-11T12:00:00Z",
+          createdAt: "2026-02-11T11:00:00Z",
+        },
+      ];
+
+      act(() => {
+        result.current.autoSelectConversation({
+          data: mockConversations,
+          isLoading: false,
+        });
+      });
+
       expect(mockStore.setActiveConversation).not.toHaveBeenCalled();
     });
   });

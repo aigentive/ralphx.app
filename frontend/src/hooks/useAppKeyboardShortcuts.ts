@@ -1,5 +1,5 @@
 /**
- * useAppKeyboardShortcuts - Keyboard shortcuts for view switching and chat toggle
+ * useAppKeyboardShortcuts - Keyboard shortcuts for view switching and shell actions
  */
 
 import { useEffect, useRef } from "react";
@@ -11,12 +11,12 @@ const ALL_ENABLED_FLAGS: FeatureFlags = {
   activityPage: true,
   extensibilityPage: true,
   battleMode: true,
+  teamMode: false,
 };
 
 interface UseAppKeyboardShortcutsProps {
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
-  toggleChatVisible: (view: ViewType) => void;
   toggleReviewsPanel?: () => void;
   toggleGraphRightPanel?: () => void;
   openProjectWizard?: () => void;
@@ -28,13 +28,13 @@ interface UseAppKeyboardShortcutsProps {
   openPlanQuickSwitcher?: () => void;
   onBattleModeToggle?: () => void;
   openSettings?: () => void;
+  openNewAgent?: () => void;
   featureFlags?: FeatureFlags;
 }
 
 export function useAppKeyboardShortcuts({
   currentView,
   setCurrentView,
-  toggleChatVisible,
   toggleReviewsPanel,
   toggleGraphRightPanel,
   openProjectWizard,
@@ -46,9 +46,10 @@ export function useAppKeyboardShortcuts({
   openPlanQuickSwitcher,
   onBattleModeToggle,
   openSettings,
+  openNewAgent,
   featureFlags = ALL_ENABLED_FLAGS,
 }: UseAppKeyboardShortcutsProps) {
-  // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
+  // Keyboard shortcuts for view switching and shell actions
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Escape to close welcome overlay (no modifier required)
@@ -62,29 +63,27 @@ export function useAppKeyboardShortcuts({
       }
 
       if (e.metaKey || e.ctrlKey) {
-        // Order reflects workflow: plan ideas → visualize dependencies → execute tasks
+        // Main navigation order: Agents → Ideation → Graph → Kanban → Insights
         switch (e.key) {
           case "1":
             e.preventDefault();
-            setCurrentView("ideation");
+            setCurrentView("agents");
             break;
           case "2":
             e.preventDefault();
-            setCurrentView("graph");
+            setCurrentView("ideation");
             break;
           case "3":
             e.preventDefault();
-            setCurrentView("kanban");
+            setCurrentView("graph");
             break;
           case "4":
-            if (!featureFlags.extensibilityPage) break;
             e.preventDefault();
-            setCurrentView("extensibility");
+            setCurrentView("kanban");
             break;
           case "5":
-            if (!featureFlags.activityPage) break;
             e.preventDefault();
-            setCurrentView("activity");
+            setCurrentView("insights");
             break;
           case "6":
           case ".":
@@ -93,27 +92,10 @@ export function useAppKeyboardShortcuts({
             e.preventDefault();
             openSettings?.();
             break;
-          case "k":
-          case "K": {
-            // Cmd+K to toggle chat panel (skip if in input/textarea or on ideation)
-            if (currentView === "ideation") {
-              return; // Ideation has built-in chat, no toggle needed
-            }
-            const activeElement = document.activeElement;
-            if (
-              activeElement instanceof HTMLInputElement ||
-              activeElement instanceof HTMLTextAreaElement
-            ) {
-              return;
-            }
-            e.preventDefault();
-            toggleChatVisible(currentView);
-            break;
-          }
           case "n":
           case "N": {
             // Cmd+Shift+N: Always open project wizard (global)
-            // Cmd+N: Open project wizard only on welcome screen (no projects)
+            // Cmd+N: Open new agent in Agents view, otherwise project wizard only on welcome screen
             if (!openProjectWizard) {
               return;
             }
@@ -132,7 +114,26 @@ export function useAppKeyboardShortcuts({
               // Cmd+N: Only on welcome screen (no projects)
               e.preventDefault();
               openProjectWizard();
+            } else if (currentView === "agents" && openNewAgent) {
+              e.preventDefault();
+              openNewAgent();
             }
+            break;
+          }
+          case "a":
+          case "A": {
+            if (!e.shiftKey) {
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (
+              activeEl instanceof HTMLInputElement ||
+              activeEl instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
+            e.preventDefault();
+            setCurrentView("agents");
             break;
           }
           case "w":
@@ -237,7 +238,7 @@ export function useAppKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher, onBattleModeToggle, openSettings, featureFlags]);
+  }, [setCurrentView, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher, onBattleModeToggle, openSettings, openNewAgent, featureFlags]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);

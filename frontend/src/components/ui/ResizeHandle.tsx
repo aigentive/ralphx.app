@@ -25,6 +25,8 @@ interface ResizeHandleProps {
   isResizing: boolean;
   /** Mouse down handler to start resizing */
   onMouseDown: (e: React.MouseEvent) => void;
+  /** Optional double click handler, typically used to reset the split */
+  onDoubleClick?: (e: React.MouseEvent) => void;
   /** Test ID for testing */
   testId?: string;
 }
@@ -32,20 +34,22 @@ interface ResizeHandleProps {
 export const ResizeHandle = memo(function ResizeHandle({
   isResizing,
   onMouseDown,
+  onDoubleClick,
   testId = "resize-handle",
 }: ResizeHandleProps) {
   return (
     <div
       data-testid={testId}
-      className="shrink-0 cursor-ew-resize flex items-center justify-center group relative z-10"
+      className="h-full shrink-0 cursor-ew-resize flex items-center justify-center group relative z-10"
       style={{ width: "12px", marginLeft: "-6px", marginRight: "-6px" }}
       onMouseDown={onMouseDown}
+      onDoubleClick={onDoubleClick}
     >
       <div
         className={`h-full transition-all duration-150 ${
           isResizing
             ? "w-[3px] bg-[var(--accent-primary)]"
-            : "w-[2px] bg-[var(--border-subtle)] group-hover:w-[3px] group-hover:bg-[var(--accent-primary)]"
+            : "w-[2px] bg-[var(--overlay-weak)] group-hover:w-[3px] group-hover:bg-[var(--accent-primary)]"
         }`}
       />
     </div>

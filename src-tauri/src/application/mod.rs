@@ -3,10 +3,14 @@
 
 pub mod agent_lane_settings_bootstrap;
 pub mod agent_lane_resolution;
+pub mod agent_conversation_workspace;
+pub mod agent_workspace_bridge;
+pub mod agent_terminal;
 pub mod agent_client_bundle;
 pub mod app_setup;
 pub mod app_state;
 pub mod ideation_harness_availability;
+pub mod ideation_workspace;
 pub mod apply_service;
 pub mod chat_attachment_service;
 pub mod chat_resumption;
@@ -29,6 +33,7 @@ pub mod plan_ranking;
 pub mod priority_service;
 pub mod pr_startup_recovery;
 pub mod prune_engine;
+pub mod publish_resilience;
 pub mod qa_service;
 pub mod question_state;
 pub mod ready_task_scheduler;
@@ -82,6 +87,7 @@ pub use apply_service::{
     ApplyProposalsOptions, ApplyProposalsResult, ApplyService, SelectionValidation, TargetColumn,
 };
 pub use chat_attachment_service::ChatAttachmentService;
+pub use agent_terminal::AgentTerminalService;
 pub use chat_resumption::ChatResumptionRunner;
 pub use dependency_service::{DependencyAnalysis, DependencyService, ValidationResult};
 pub use event_cleanup_service::EventCleanupService;
@@ -138,6 +144,8 @@ mod app_state_shared_state_tests;
 #[cfg(test)]
 mod agent_lane_resolution_tests;
 #[cfg(test)]
+mod chat_service_output_tests;
+#[cfg(test)]
 mod ideation_harness_availability_tests;
 #[cfg(test)]
 mod recovery_queue_tests;
@@ -145,6 +153,8 @@ mod recovery_queue_tests;
 mod webhook_service_tests;
 #[cfg(test)]
 mod prune_engine_tests;
+#[cfg(test)]
+mod publish_resilience_tests;
 #[cfg(test)]
 mod session_export_service_tests;
 #[cfg(test)]

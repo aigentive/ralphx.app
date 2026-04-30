@@ -34,37 +34,9 @@ import { withAlpha } from "@/lib/theme-colors";
 import { useChatStore, selectAgentStatus } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
+import { formatHumanTimestamp } from "@/lib/formatters";
 import type { IdeationSessionWithProgress, SessionProgress } from "@/types/ideation";
 import type { SessionGroup } from "./planBrowserUtils";
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function formatRelativeTime(dateString: string | null | undefined): string {
-  if (!dateString) return "—";
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return "—";
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function formatDate(dateString: string | null | undefined): string {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
 
 // ============================================================================
 // ActivityIndicator
@@ -137,6 +109,10 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
   const parentSessionTitle = plan.parentSessionTitle;
   const activityLabel = isVerifying ? "Verifying..." : undefined;
   const activityColor = isVerifying ? VERIFYING_COLOR : undefined;
+  const updatedAtTimestamp = formatHumanTimestamp(plan.updatedAt);
+  const convertedAtTimestamp = plan.convertedAt
+    ? formatHumanTimestamp(plan.convertedAt)
+    : null;
 
   // Show parent session indicator if this is a child session
   if (parentSessionTitle) {
@@ -166,7 +142,9 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           ) : (
             <>
               <Clock className="w-3 h-3" />
-              <span>{formatRelativeTime(plan.updatedAt)}</span>
+              <span title={updatedAtTimestamp.title || undefined}>
+                {updatedAtTimestamp.label}
+              </span>
             </>
           )}
         </div>
@@ -211,7 +189,9 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           {plan.convertedAt && (
             <>
               <span>&middot;</span>
-              <span>{formatDate(plan.convertedAt)}</span>
+              <span title={convertedAtTimestamp?.title || undefined}>
+                {convertedAtTimestamp?.label ?? ""}
+              </span>
             </>
           )}
         </div>
@@ -506,7 +486,7 @@ export const PlanItem = memo(function PlanItem({
                 {plan.hasPendingPrompt && (
                   <span
                     className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-status-warning animate-pulse flex-shrink-0"
-                    title="Waiting for capacity — message queued"
+                    title="Waiting to start - message queued"
                   />
                 )}
               </div>

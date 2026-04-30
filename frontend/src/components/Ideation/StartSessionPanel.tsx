@@ -10,12 +10,19 @@ import { Lightbulb, Zap, FileText, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { withAlpha } from "@/lib/theme-colors";
+import { useTeamModeAvailability } from "@/hooks/useTeamModeAvailability";
 import { TaskPickerDialog } from "./TaskPickerDialog";
 import { TeamConfigPanel } from "./TeamConfigPanel";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
 import { useSessionExportImport } from "@/hooks/useSessionExportImport";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProjectStore } from "@/stores/projectStore";
+import { BranchBasePicker } from "@/components/shared/BranchBasePicker";
+import {
+  fallbackBranchBaseOptions,
+  loadBranchBaseOptions,
+  type BranchBaseOption,
+} from "@/components/shared/branchBaseOptions";
 import type { Task } from "@/types/task";
 import type { TeamMode, TeamConfig } from "@/types/ideation";
 
@@ -46,9 +53,24 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
   const addSession = useIdeationStore((state) => state.addSession);
   const setActiveSession = useIdeationStore((state) => state.setActiveSession);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const activeProject = useProjectStore((state) =>
+    state.activeProjectId ? state.projects[state.activeProjectId] ?? null : null,
+  );
+  const [startFromOptions, setStartFromOptions] = useState<BranchBaseOption[]>([]);
+  const [selectedStartFromKey, setSelectedStartFromKey] = useState<string>("");
+  const [isLoadingStartFrom, setIsLoadingStartFrom] = useState(false);
   const { importSession, isImporting } = useSessionExportImport();
+  const { ideationTeamModeAvailable: teamModeVisible } =
+    useTeamModeAvailability(activeProjectId);
+  const isTeamMode = teamModeVisible && teamMode !== "solo";
+  const activeProjectWorkingDirectory = activeProject?.workingDirectory;
+  const activeProjectBaseBranch = activeProject?.baseBranch;
 
-  const isTeamMode = teamMode !== "solo";
+  useEffect(() => {
+    if (!teamModeVisible && teamMode !== "solo") {
+      setTeamMode("solo");
+    }
+  }, [teamMode, teamModeVisible]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -76,6 +98,46 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onNewSession]);
 
+  useEffect(() => {
+    if (!activeProjectWorkingDirectory) {
+      setStartFromOptions([]);
+      setSelectedStartFromKey("");
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingStartFrom(true);
+
+    async function loadStartFromOptions() {
+      const result = await loadBranchBaseOptions({
+        projectId: activeProjectId,
+        workingDirectory: activeProjectWorkingDirectory!,
+        projectBaseBranch: activeProjectBaseBranch,
+      });
+
+      if (cancelled) return;
+
+      setStartFromOptions(result.options);
+      setSelectedStartFromKey(result.selectedKey);
+      setIsLoadingStartFrom(false);
+    }
+
+    void loadStartFromOptions().catch(() => {
+      if (!cancelled) {
+        const fallback = fallbackBranchBaseOptions(activeProjectBaseBranch);
+        setStartFromOptions(fallback.options);
+        setSelectedStartFromKey(fallback.selectedKey);
+        setIsLoadingStartFrom(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectBaseBranch, activeProjectId, activeProjectWorkingDirectory]);
+
+  const selectedStartFrom = startFromOptions.find((option) => option.key === selectedStartFromKey);
+
   const handleStartSession = async () => {
     if (!activeProjectId) {
       toast.error("No active project selected");
@@ -87,6 +149,9 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
       const params: Parameters<typeof createSession.mutateAsync>[0] = {
         projectId: activeProjectId,
       };
+      if (selectedStartFrom) {
+        params.analysisBase = selectedStartFrom.selection;
+      }
       if (isTeamMode) {
         params.teamMode = teamMode;
         params.teamConfig = teamConfig;
@@ -109,6 +174,9 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
         title: `Ideation: ${task.title}`,
         seedTaskId: task.id,
       };
+      if (selectedStartFrom) {
+        params.analysisBase = selectedStartFrom.selection;
+      }
       if (isTeamMode) {
         params.teamMode = teamMode;
         params.teamConfig = teamConfig;
@@ -171,67 +239,92 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             Select a session from the sidebar or start a new brainstorming session.
           </p>
 
-          {/* Team Mode Selector */}
-          <div className="mb-6">
+          <div className="mb-6 flex flex-col items-center">
+            <BranchBasePicker
+              value={selectedStartFromKey}
+              onValueChange={setSelectedStartFromKey}
+              options={startFromOptions}
+              placeholder={isLoadingStartFrom ? "Loading branch..." : "Base branch"}
+              disabled={isLoadingStartFrom || startFromOptions.length === 0}
+              testId="start-from-select"
+              align="center"
+              className="max-w-[min(100%,440px)] justify-center rounded-xl border px-3 py-2"
+            />
             <p
-              className="text-[12px] font-medium tracking-wide uppercase mb-3"
-              style={{ color: "var(--text-muted)" }}
+              className="mt-2 text-[12px] text-center"
+              style={{ color: "var(--text-secondary)" }}
             >
-              Ideation Mode
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              {TEAM_MODES.map((mode) => {
-                const isSelected = teamMode === mode.value;
-                return (
-                  <button
-                    key={mode.value}
-                    onClick={() => setTeamMode(mode.value)}
-                    className="px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150"
-                    style={{
-                      background: isSelected ? "var(--accent-muted)" : "var(--overlay-faint)",
-                      border: `1px solid ${isSelected ? "var(--accent-primary)" : "var(--overlay-weak)"}`,
-                      color: isSelected ? "var(--accent-primary)" : "var(--text-secondary)",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor = "var(--overlay-moderate)";
-                        e.currentTarget.style.color = "var(--text-primary)";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor = "var(--overlay-weak)";
-                        e.currentTarget.style.color = "var(--text-secondary)";
-                      }
-                    }}
-                  >
-                    {mode.recommended && "\u2605 "}
-                    {mode.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Team Config Panel (animated) */}
-          <div
-            className="overflow-hidden transition-all duration-200 ease-out"
-            style={{
-              maxHeight: isTeamMode ? "280px" : "0px",
-              opacity: isTeamMode ? 1 : 0,
-            }}
-          >
-            <TeamConfigPanel config={teamConfig} onChange={setTeamConfig} />
-
-            {/* Info text */}
-            <p
-              className="text-[12px] mt-3 flex items-center justify-center gap-1.5"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <span className="text-[14px]">&#9432;</span>
-              The lead agent will decide what specialist roles to create based on your task.
+              {isLoadingStartFrom
+                ? "Detecting repository branches..."
+                : selectedStartFrom?.detail ?? "The selected base is locked for this ideation session."}
             </p>
           </div>
+
+          {teamModeVisible && (
+            <>
+              {/* Team Mode Selector */}
+              <div className="mb-6">
+                <p
+                  className="text-[12px] font-medium tracking-wide uppercase mb-3"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Ideation Mode
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  {TEAM_MODES.map((mode) => {
+                    const isSelected = teamMode === mode.value;
+                    return (
+                      <button
+                        key={mode.value}
+                        onClick={() => setTeamMode(mode.value)}
+                        className="px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150"
+                        style={{
+                          background: isSelected ? "var(--accent-muted)" : "var(--overlay-faint)",
+                          border: `1px solid ${isSelected ? "var(--accent-primary)" : "var(--overlay-weak)"}`,
+                          color: isSelected ? "var(--accent-primary)" : "var(--text-secondary)",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = "var(--overlay-moderate)";
+                            e.currentTarget.style.color = "var(--text-primary)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = "var(--overlay-weak)";
+                            e.currentTarget.style.color = "var(--text-secondary)";
+                          }
+                        }}
+                      >
+                        {mode.recommended && "\u2605 "}
+                        {mode.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Team Config Panel (animated) */}
+              <div
+                className="overflow-hidden transition-all duration-200 ease-out"
+                style={{
+                  maxHeight: isTeamMode ? "280px" : "0px",
+                  opacity: isTeamMode ? 1 : 0,
+                }}
+              >
+                <TeamConfigPanel config={teamConfig} onChange={setTeamConfig} />
+
+                {/* Info text */}
+                <p
+                  className="text-[12px] mt-3 flex items-center justify-center gap-1.5"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  <span className="text-[14px]">&#9432;</span>
+                  The lead agent will decide what specialist roles to create based on your task.
+                </p>
+              </div>
+            </>
+          )}
 
           {/* Primary Action */}
           <Button
@@ -240,7 +333,7 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             className="h-11 px-6 text-[14px] font-semibold tracking-[-0.01em] border-0 transition-colors duration-150 mt-4"
             style={{
               background: isCreating ? withAlpha("var(--accent-primary)", 60) : "var(--accent-primary)",
-              color: "var(--text-inverse)",
+              color: "var(--text-on-accent)",
             }}
             onMouseEnter={(e) => {
               if (!isCreating) e.currentTarget.style.background = withAlpha("var(--accent-primary)", 90);

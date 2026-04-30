@@ -8,7 +8,6 @@ import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 import { api } from "@/lib/tauri";
 import type { StateTransition } from "@/api/tasks";
 import type { ReviewNoteResponse } from "@/lib/tauri";
-import { DetailCard } from "./DetailCard";
 import { ReviewTimeline } from "./ReviewTimeline";
 import { SectionTitle } from "./SectionTitle";
 
@@ -48,11 +47,16 @@ export function CommitSummaryCard({ taskId }: CommitSummaryCardProps) {
   }
 
   return (
-    <div className="space-y-2">
-      {commits.map((commit) => (
+    <div>
+      {commits.map((commit, index) => (
         <div
           key={commit.sha}
-          className="flex items-start gap-3 py-2"
+          className="flex items-start gap-3 px-3 py-3"
+          style={
+            index < commits.length - 1
+              ? { borderBottom: "1px solid var(--border-subtle)" }
+              : undefined
+          }
         >
           <span className="text-[11px] font-mono text-text-primary/50 shrink-0 pt-0.5">
             {commit.shortSha}
@@ -130,9 +134,7 @@ export function ChangeReviewSection({
     <>
       <section data-testid="commits-section">
         <SectionTitle>Commits</SectionTitle>
-        <DetailCard>
-          <CommitSummaryCard taskId={taskId} />
-        </DetailCard>
+        <CommitSummaryCard taskId={taskId} />
       </section>
 
       <section data-testid="review-history-section">
@@ -149,28 +151,26 @@ export function ChangeReviewSection({
             {isPlanMerge ? "Review Diff" : "Review Code"}
           </Button>
         </div>
-        <DetailCard>
-          {isLoadingPlanReviews ? (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="w-5 h-5 animate-spin text-text-primary/30" />
-            </div>
-          ) : isPlanMerge && !hasReviewHistory ? (
-            <p className="text-[13px] text-text-primary/50 italic">
-              No internal plan review records available
-            </p>
-          ) : (
-            <ReviewTimeline
-              history={effectiveHistory}
-              stateTransitions={effectiveStateTransitions}
-              emptyMessage={
-                isPlanMerge
-                  ? "No internal plan review records available"
-                  : "No review history available"
-              }
-              {...(getEntryContext !== undefined && { getEntryContext })}
-            />
-          )}
-        </DetailCard>
+        {isLoadingPlanReviews ? (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="w-5 h-5 animate-spin text-text-primary/30" />
+          </div>
+        ) : isPlanMerge && !hasReviewHistory ? (
+          <p className="text-[13px] text-text-primary/50 italic">
+            No internal plan review records available
+          </p>
+        ) : (
+          <ReviewTimeline
+            history={effectiveHistory}
+            stateTransitions={effectiveStateTransitions}
+            emptyMessage={
+              isPlanMerge
+                ? "No internal plan review records available"
+                : "No review history available"
+            }
+            {...(getEntryContext !== undefined && { getEntryContext })}
+          />
+        )}
       </section>
 
       {showReviewModal && (

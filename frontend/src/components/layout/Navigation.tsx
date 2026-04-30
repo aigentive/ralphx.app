@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   Network,
   Lightbulb,
+  Bot,
   Puzzle,
   Activity,
   SlidersHorizontal,
@@ -30,54 +31,59 @@ interface NavItemConfig {
   view: ViewType;
   label: string;
   icon: React.ElementType;
-  shortcut: string;
+  shortcut?: string;
   visible: (flags: FeatureFlags, taskCount: number) => boolean;
 }
 
 // Unified nav items with visibility predicates.
-// Order reflects workflow: plan ideas → visualize dependencies → execute tasks
+// Order matches the main navigation shortcut map: ⌘1 through ⌘5.
 const ALL_NAV_ITEMS: NavItemConfig[] = [
+  {
+    view: "agents",
+    label: "Agents",
+    icon: Bot,
+    shortcut: "⌘1",
+    visible: () => true,
+  },
   {
     view: "ideation",
     label: "Ideation",
     icon: Lightbulb,
-    shortcut: "⌘1",
+    shortcut: "⌘2",
     visible: () => true,
   },
   {
     view: "graph",
     label: "Graph",
     icon: Network,
-    shortcut: "⌘2",
+    shortcut: "⌘3",
     visible: () => true,
   },
   {
     view: "kanban",
     label: "Kanban",
     icon: LayoutGrid,
-    shortcut: "⌘3",
+    shortcut: "⌘4",
     visible: () => true,
+  },
+  {
+    view: "insights",
+    label: "Insights",
+    icon: TrendingUp,
+    shortcut: "⌘5",
+    visible: (_flags, taskCount) => taskCount >= 10,
   },
   {
     view: "extensibility",
     label: "Extensibility",
     icon: Puzzle,
-    shortcut: "⌘4",
     visible: (flags) => flags.extensibilityPage,
   },
   {
     view: "activity",
     label: "Activity",
     icon: Activity,
-    shortcut: "⌘5",
     visible: (flags) => flags.activityPage,
-  },
-  {
-    view: "insights",
-    label: "Insights",
-    icon: TrendingUp,
-    shortcut: "⌘6",
-    visible: (_flags, taskCount) => taskCount >= 10,
   },
 ];
 
@@ -85,6 +91,9 @@ interface NavigationProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
   onOpenSettings?: () => void;
+  /** When true, hide view tabs + team indicator and only render Settings.
+   *  Used during the first-run welcome screen. */
+  hideViews?: boolean;
 }
 
 function NavItem({
@@ -98,7 +107,7 @@ function NavItem({
   view: ViewType;
   label: string;
   icon: React.ElementType;
-  shortcut: string;
+  shortcut: string | undefined;
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
 }) {
@@ -134,13 +143,14 @@ function NavItem({
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="text-xs">
-        {label} <kbd className="ml-1 opacity-70">{shortcut}</kbd>
+        {label}
+        {shortcut && <kbd className="ml-1 opacity-70">{shortcut}</kbd>}
       </TooltipContent>
     </Tooltip>
   );
 }
 
-export function Navigation({ currentView, onViewChange, onOpenSettings }: NavigationProps) {
+export function Navigation({ currentView, onViewChange, onOpenSettings, hideViews = false }: NavigationProps) {
   const hasActiveTeam = useTeamStore(selectHasAnyActiveTeam);
   const teammateCount = useTeamStore(selectTotalTeammateCount);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -148,7 +158,9 @@ export function Navigation({ currentView, onViewChange, onOpenSettings }: Naviga
   const { data: featureFlags } = useFeatureFlags();
 
   const taskCount = stats?.taskCount ?? 0;
-  const visibleItems = ALL_NAV_ITEMS.filter((item) => item.visible(featureFlags, taskCount));
+  const visibleItems = hideViews
+    ? []
+    : ALL_NAV_ITEMS.filter((item) => item.visible(featureFlags, taskCount));
 
   return (
     <nav
@@ -194,7 +206,7 @@ export function Navigation({ currentView, onViewChange, onOpenSettings }: Naviga
       </Tooltip>
 
       {/* Team active indicator */}
-      {hasActiveTeam && (
+      {hasActiveTeam && !hideViews && (
         <div
           className="flex items-center gap-1.5 h-7 px-2.5 rounded-full ml-1"
           style={{

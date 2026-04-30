@@ -1,7 +1,7 @@
 import type React from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
 import { PlanItem } from "./PlanItem";
 import type { PlanItemProps } from "./PlanItem";
 import type { IdeationSessionWithProgress, SessionProgress } from "@/types/ideation";
@@ -61,6 +61,10 @@ describe("PlanItem", () => {
     useIdeationStore.setState({ activeVerificationChildId: {} });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders the session title", () => {
     renderItem();
     expect(screen.getByText("Test Session")).toBeInTheDocument();
@@ -86,6 +90,23 @@ describe("PlanItem", () => {
       const container = screen.getByTestId("plan-item-session-1");
       // Clock icon is rendered but invisible to text — just check relative time text exists
       expect(container).toBeInTheDocument();
+    });
+
+    it("drafts: shows human-diff time with a full timestamp title", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
+
+      renderItem({
+        group: "drafts",
+        plan: createSession({
+          updatedAt: new Date(2026, 3, 25, 15, 33, 0).toISOString(),
+        }),
+      });
+
+      expect(screen.getByText("1 hour ago")).toHaveAttribute(
+        "title",
+        "Apr 25, 2026, 3:33 PM",
+      );
     });
 
     it("in-progress: shows progress counts with colored text", () => {

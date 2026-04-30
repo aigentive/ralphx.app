@@ -186,7 +186,7 @@ export function parseStoreKey(
  * - useChatPanelContext.ts (contextKey + currentContextType)
  * - useIntegratedChatHandlers.ts (getContextForMode)
  * - useChatPanelHandlers.ts
- * - ChatPanel.tsx
+ * - Agents and ideation chat hosts
  *
  * @param internalStatus - Task's current internal status (or effective status in history mode)
  * @param ideationSessionId - If truthy, ideation context wins

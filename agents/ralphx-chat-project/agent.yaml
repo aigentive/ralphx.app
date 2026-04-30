@@ -9,18 +9,64 @@ capabilities:
     - get_memory
     - get_memories_for_paths
     - get_conversation_transcript
+    - append_task_to_ideation_plan
     - delegate_start
     - delegate_wait
     - delegate_cancel
+  internal_skills:
+    allowed:
+      - ralphx-agent-workspace-swe
 harnesses:
   claude:
     model: sonnet
+    mcp_transport: external
+    mcp_tools:
+      - v1_get_agent_guide
+      - v1_list_projects
+      - v1_get_project_status
+      - v1_get_pipeline_overview
+      - v1_start_ideation
+      - v1_get_ideation_status
+      - v1_send_ideation_message
+      - v1_get_ideation_messages
+      - v1_list_ideation_sessions
+      - v1_get_plan
+      - v1_get_plan_verification
+      - v1_trigger_plan_verification
+      - v1_list_proposals
+      - v1_get_proposal_detail
+      - v1_get_session_tasks
+      - v1_append_task_to_plan
     tools:
-      extends: base_tools
-      include:
-        - Task
-    preapproved_cli_tools:
-      - Task(Plan)
+      extends: readonly_tools
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
+      - Bash
+      - Task
+    preapproved_cli_tools: []
+  codex:
+    mcp_transport: external
+    mcp_tools:
+      - v1_get_agent_guide
+      - v1_list_projects
+      - v1_get_project_status
+      - v1_get_pipeline_overview
+      - v1_start_ideation
+      - v1_get_ideation_status
+      - v1_send_ideation_message
+      - v1_get_ideation_messages
+      - v1_list_ideation_sessions
+      - v1_get_plan
+      - v1_get_plan_verification
+      - v1_trigger_plan_verification
+      - v1_list_proposals
+      - v1_get_proposal_detail
+      - v1_get_session_tasks
+      - v1_append_task_to_plan
+    runtime_features:
+      shell_tool: false
 delegation:
   allowed_targets:
     - ralphx-general-explorer

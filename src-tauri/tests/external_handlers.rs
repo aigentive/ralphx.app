@@ -28,7 +28,7 @@ use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::HttpServerState;
 use ralphx_lib::infrastructure::agents::mock::{MockAgenticClient, MockCallType};
-use std::path::PathBuf;
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fs, os::unix::fs::PermissionsExt};
@@ -86,6 +86,25 @@ impl Drop for EnvVarGuard {
             std::env::remove_var(self.key);
         }
     }
+}
+
+fn prepend_to_path(dir: &FsPath) -> EnvVarGuard {
+    let existing = std::env::var("PATH").unwrap_or_default();
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let value = if existing.is_empty() {
+        dir.display().to_string()
+    } else {
+        format!("{}{separator}{existing}", dir.display())
+    };
+    EnvVarGuard::set("PATH", &value)
+}
+
+fn prepend_fake_codex_to_path(fake_codex_path: &FsPath) -> EnvVarGuard {
+    prepend_to_path(
+        fake_codex_path
+            .parent()
+            .expect("fake codex script should have parent dir"),
+    )
 }
 
 fn install_fake_codex_cli() -> (TempDir, PathBuf) {
@@ -550,6 +569,131 @@ async fn test_start_ideation_creates_session() {
     assert_eq!(response.status, "ideating");
 }
 
+#[tokio::test]
+async fn test_start_ideation_tauri_parent_workspace_binds_analysis_and_links_workspace() {
+    use ralphx_lib::application::agent_conversation_workspace::{
+        prepare_agent_conversation_workspace, AgentConversationWorkspaceBaseSelection,
+    };
+    use ralphx_lib::domain::entities::{
+        AgentConversationWorkspaceMode, ChatConversation, IdeationAnalysisBaseRefKind,
+        IdeationAnalysisWorkspaceKind,
+    };
+
+    let state = setup_test_state().await;
+    let repo_dir = tempfile::TempDir::new().unwrap();
+    let repo_path = repo_dir.path();
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git config email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git config name");
+    std::process::Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git commit");
+    let worktree_parent = tempfile::TempDir::new().unwrap();
+
+    let project_id = "proj-parent-workspace";
+    let mut project = Project::new(
+        "Workspace Project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
+    project.id = ProjectId::from_string(project_id.to_string());
+    project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(worktree_parent.path().to_string_lossy().to_string());
+    let project = state.app_state.project_repo.create(project).await.unwrap();
+
+    let conversation = state
+        .app_state
+        .chat_conversation_repo
+        .create(ChatConversation::new_project(project.id.clone()))
+        .await
+        .expect("create project conversation");
+    let workspace = prepare_agent_conversation_workspace(
+        &project,
+        &conversation.id,
+        AgentConversationWorkspaceMode::Ideation,
+        AgentConversationWorkspaceBaseSelection {
+            kind: Some(IdeationAnalysisBaseRefKind::ProjectDefault),
+            base_ref: Some("main".to_string()),
+            display_name: Some("Project default (main)".to_string()),
+        },
+    )
+    .await
+    .expect("prepare agent workspace");
+    state
+        .app_state
+        .agent_conversation_workspace_repo
+        .create_or_update(workspace.clone())
+        .await
+        .expect("save agent workspace");
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("x-ralphx-tauri-mcp", "1".parse().unwrap());
+    headers.insert(
+        "x-ralphx-parent-conversation-id",
+        conversation.id.as_str().parse().unwrap(),
+    );
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        headers,
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: Some("Workspace ideation".to_string()),
+            prompt: None,
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await
+    .expect("start ideation should bind parent workspace")
+    .0;
+
+    assert_eq!(result.parent_conversation_id, Some(conversation.id.as_str()));
+    assert_eq!(result.workspace_branch.as_deref(), Some(workspace.branch_name.as_str()));
+
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(result.session_id.clone()))
+        .await
+        .unwrap()
+        .expect("session should exist");
+    assert_eq!(
+        session.analysis.workspace_kind,
+        IdeationAnalysisWorkspaceKind::IdeationWorktree
+    );
+    assert_eq!(
+        session.analysis.workspace_path.as_deref(),
+        Some(workspace.worktree_path.as_str())
+    );
+
+    let linked_workspace = state
+        .app_state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation.id)
+        .await
+        .unwrap()
+        .expect("workspace should still exist");
+    assert_eq!(
+        linked_workspace.linked_ideation_session_id.as_ref(),
+        Some(&session.id)
+    );
+}
+
 
 #[tokio::test]
 async fn test_start_ideation_scope_violation() {
@@ -610,6 +754,54 @@ async fn test_start_ideation_no_prompt_agent_not_spawned() {
     assert_eq!(response.status, "ideating");
     // No prompt → no agent spawned
     assert!(!response.agent_spawned, "agent_spawned must be false when no prompt is given");
+}
+
+#[tokio::test]
+async fn test_start_ideation_persists_prompt_when_execution_paused() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-paused-prompt";
+    let prompt = "Verify and fix the app-wide font scaling issue";
+    let p = make_project(project_id, "Paused Prompt Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+    state.execution_state.pause();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some(prompt.to_string()),
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "paused start must return a durable deferred session");
+    let response = result.unwrap().0;
+    assert!(!response.agent_spawned, "paused ideation must not report a spawned agent");
+    assert_eq!(response.next_action, "wait_for_resume");
+    assert_eq!(response.pending_initial_prompt.as_deref(), Some(prompt));
+    assert!(
+        response
+            .agent_spawn_blocked_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("execution paused")),
+        "paused start must surface a concrete blocked reason"
+    );
+
+    let session_id = IdeationSessionId::from_string(response.session_id);
+    let stored = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("session should exist");
+    assert_eq!(stored.pending_initial_prompt.as_deref(), Some(prompt));
 }
 
 /// With title → session created with that title preserved in the response session_id and
@@ -707,10 +899,7 @@ async fn test_start_ideation_without_title_assigns_default_title() {
 #[tokio::test]
 async fn test_start_ideation_codex_lane_keeps_session_namer_on_default_helper_client() {
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let default_mock_impl = Arc::new(MockAgenticClient::new());
     let default_mock: Arc<dyn AgenticClient> = default_mock_impl.clone();
     let codex_mock_impl = Arc::new(MockAgenticClient::new());

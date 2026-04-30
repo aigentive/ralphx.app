@@ -1,13 +1,12 @@
-use crate::infrastructure::agents::claude::plugin_repo_root;
 use crate::infrastructure::agents::claude::{
     claude_runtime_config, find_base_plugin_dir, get_agent_config,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
     list_canonical_agent_names, load_canonical_agent_definition, load_harness_agent_prompt,
-    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata,
-    AgentPromptHarness, CanonicalAgentDefinition, CanonicalClaudeAgentMetadata,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
+    CanonicalAgentDefinition, CanonicalClaudeAgentMetadata,
 };
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -15,13 +14,18 @@ use tracing::warn;
 
 const GENERATED_PLUGIN_DIR_REL_DEBUG: &str = ".artifacts/generated/claude-plugin";
 const GENERATED_PLUGIN_DIR_REL_PROD: &str = "generated/claude-plugin";
-const GENERATED_PLUGIN_DIR_ENV: &str = "RALPHX_GENERATED_PLUGIN_DIR";
 const INTERNAL_MCP_SERVER_DIR: &str = "ralphx-mcp-server";
 const EXTERNAL_MCP_SERVER_DIR: &str = "ralphx-external-mcp";
-const MCP_RUNTIME_ENTRY_REL: &str = "ralphx-mcp-server/build/index.js";
-const MCP_RUNTIME_SDK_MARKER_REL: &str =
-    "ralphx-mcp-server/node_modules/@modelcontextprotocol/sdk/package.json";
 const FALLBACK_RUNTIME_ENTRY_NAMES: &[&str] = &[INTERNAL_MCP_SERVER_DIR, EXTERNAL_MCP_SERVER_DIR];
+const GENERATED_PLUGIN_ENTRY_NAMES: &[&str] = &[
+    ".claude-plugin",
+    ".mcp.json",
+    "hooks",
+    "memory-framework.md",
+    "skills",
+    INTERNAL_MCP_SERVER_DIR,
+    EXTERNAL_MCP_SERVER_DIR,
+];
 
 fn generated_plugin_materialization_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -31,6 +35,25 @@ fn generated_plugin_materialization_lock() -> &'static Mutex<()> {
 fn generated_plugin_dir_cache() -> &'static Mutex<HashMap<PathBuf, PathBuf>> {
     static CACHE: OnceLock<Mutex<HashMap<PathBuf, PathBuf>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn generated_plugin_dir_override() -> &'static Mutex<Option<PathBuf>> {
+    static OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+    OVERRIDE.get_or_init(|| Mutex::new(None))
+}
+
+pub(super) fn replace_generated_plugin_dir_override(next: Option<PathBuf>) -> Option<PathBuf> {
+    let mut guard = generated_plugin_dir_override()
+        .lock()
+        .expect("generated plugin dir override lock poisoned");
+    std::mem::replace(&mut *guard, next)
+}
+
+fn configured_generated_plugin_dir() -> Option<PathBuf> {
+    generated_plugin_dir_override()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
 }
 
 fn generated_plugin_cache_key(base_plugin_dir: &Path) -> PathBuf {
@@ -45,7 +68,10 @@ fn cached_generated_plugin_dir(base_plugin_dir: &Path) -> Result<Option<PathBuf>
         .map_err(|_| "Generated Claude plugin cache lock poisoned".to_string())?;
     Ok(cache
         .get(&generated_plugin_cache_key(base_plugin_dir))
-        .filter(|generated_dir| generated_dir.exists())
+        .filter(|generated_dir| {
+            // codeql[rust/path-injection]
+            generated_dir.exists()
+        })
         .cloned())
 }
 
@@ -93,6 +119,7 @@ pub(crate) fn materialize_generated_plugin_dir_with_runtime_source(
     let runtime_source_plugin_dir =
         resolve_runtime_entries_source_plugin_dir(base_plugin_dir, fallback_runtime_plugin_dir);
 
+    // codeql[rust/path-injection]
     fs::create_dir_all(&generated_plugin_dir).map_err(|error| {
         format!(
             "Failed to create generated Claude plugin dir {}: {error}",
@@ -105,7 +132,7 @@ pub(crate) fn materialize_generated_plugin_dir_with_runtime_source(
         &runtime_source_plugin_dir,
         &generated_plugin_dir,
     )?;
-    sync_generated_agent_prompts(base_plugin_dir, &generated_plugin_dir, &project_root)?;
+    sync_generated_agent_prompts(&generated_plugin_dir, &project_root)?;
     cache_generated_plugin_dir(base_plugin_dir, &generated_plugin_dir)?;
 
     Ok(generated_plugin_dir)
@@ -115,13 +142,9 @@ pub(crate) fn resolve_runtime_entries_source_plugin_dir(
     base_plugin_dir: &Path,
     fallback_runtime_plugin_dir: Option<&Path>,
 ) -> PathBuf {
-    if plugin_dir_has_runnable_mcp_runtime(base_plugin_dir) {
-        return base_plugin_dir.to_path_buf();
-    }
-
-    if let Some(fallback_runtime_plugin_dir) = fallback_runtime_plugin_dir.filter(|candidate| {
-        *candidate != base_plugin_dir && plugin_dir_has_runnable_mcp_runtime(candidate)
-    }) {
+    if let Some(fallback_runtime_plugin_dir) =
+        fallback_runtime_plugin_dir.filter(|candidate| *candidate != base_plugin_dir)
+    {
         warn!(
             base_plugin_dir = %base_plugin_dir.display(),
             fallback_runtime_plugin_dir = %fallback_runtime_plugin_dir.display(),
@@ -134,8 +157,10 @@ pub(crate) fn resolve_runtime_entries_source_plugin_dir(
 }
 
 fn generated_plugin_dir_for_base(base_plugin_dir: &Path) -> PathBuf {
-    let override_dir = std::env::var_os(GENERATED_PLUGIN_DIR_ENV).map(PathBuf::from);
-    generated_plugin_dir_for_base_with_override(base_plugin_dir, override_dir.as_deref())
+    generated_plugin_dir_for_base_with_override(
+        base_plugin_dir,
+        configured_generated_plugin_dir().as_deref(),
+    )
 }
 
 fn generated_plugin_dir_for_base_with_override(
@@ -146,11 +171,14 @@ fn generated_plugin_dir_for_base_with_override(
         return override_dir.to_path_buf();
     }
 
-    let repo_root = plugin_repo_root(base_plugin_dir);
+    let repo_root = resolve_project_root_from_plugin_dir(base_plugin_dir);
     if cfg!(debug_assertions) {
         repo_root.join(GENERATED_PLUGIN_DIR_REL_DEBUG)
     } else {
-        repo_root.join(GENERATED_PLUGIN_DIR_REL_PROD)
+        dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("com.ralphx.app")
+            .join(GENERATED_PLUGIN_DIR_REL_PROD)
     }
 }
 
@@ -159,70 +187,39 @@ fn sync_runtime_entries(
     runtime_source_plugin_dir: &Path,
     generated_plugin_dir: &Path,
 ) -> Result<(), String> {
-    let mut entry_names = BTreeSet::new();
-    for entry in fs::read_dir(base_plugin_dir).map_err(|error| {
-        format!(
-            "Failed to read base Claude plugin dir {}: {error}",
-            base_plugin_dir.display()
-        )
-    })? {
-        let entry = entry.map_err(|error| {
-            format!(
-                "Failed to inspect entry under base Claude plugin dir {}: {error}",
-                base_plugin_dir.display()
-            )
-        })?;
-        let file_name = entry.file_name().to_string_lossy().to_string();
-        if file_name == "agents" || file_name == ".DS_Store" {
-            continue;
-        }
-        entry_names.insert(file_name);
-    }
-
-    for runtime_entry_name in FALLBACK_RUNTIME_ENTRY_NAMES {
-        if runtime_source_plugin_dir.join(runtime_entry_name).exists() {
-            entry_names.insert((*runtime_entry_name).to_string());
-        }
-    }
-
-    for file_name in entry_names {
-        let target = generated_plugin_dir.join(&file_name);
-        let preferred_runtime_source = runtime_source_plugin_dir.join(&file_name);
-        let source = if FALLBACK_RUNTIME_ENTRY_NAMES.contains(&file_name.as_str())
+    for file_name in GENERATED_PLUGIN_ENTRY_NAMES {
+        let target = generated_plugin_dir.join(file_name);
+        let preferred_runtime_source = runtime_source_plugin_dir.join(file_name);
+        let source = if FALLBACK_RUNTIME_ENTRY_NAMES.contains(file_name)
+            && runtime_source_plugin_dir != base_plugin_dir
+            // codeql[rust/path-injection]
             && preferred_runtime_source.exists()
         {
             preferred_runtime_source
         } else {
-            base_plugin_dir.join(&file_name)
+            base_plugin_dir.join(file_name)
         };
 
-        if !source.exists() {
-            continue;
-        }
         ensure_symlink(&source, &target)?;
     }
     Ok(())
 }
 
-fn plugin_dir_has_runnable_mcp_runtime(plugin_dir: &Path) -> bool {
-    plugin_dir.join(MCP_RUNTIME_ENTRY_REL).is_file()
-        && plugin_dir.join(MCP_RUNTIME_SDK_MARKER_REL).is_file()
-}
-
 fn sync_generated_agent_prompts(
-    base_plugin_dir: &Path,
     generated_plugin_dir: &Path,
     project_root: &Path,
 ) -> Result<(), String> {
     let generated_agents_dir = generated_plugin_dir.join("agents");
-    if generated_agents_dir.exists() {
-        fs::remove_dir_all(&generated_agents_dir).map_err(|error| {
-            format!(
+    // codeql[rust/path-injection]
+    if let Err(error) = fs::remove_dir_all(&generated_agents_dir) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(format!(
                 "Failed to clear generated Claude agents dir {}: {error}",
                 generated_agents_dir.display()
-            )
-        })?;
+            ));
+        }
     }
+    // codeql[rust/path-injection]
     fs::create_dir_all(&generated_agents_dir).map_err(|error| {
         format!(
             "Failed to create generated Claude agents dir {}: {error}",
@@ -230,14 +227,12 @@ fn sync_generated_agent_prompts(
         )
     })?;
 
-    let mut reserved_outputs = HashSet::new();
     for short_name in list_canonical_agent_names(project_root) {
         let Some(definition) = load_canonical_agent_definition(project_root, &short_name) else {
             continue;
         };
 
         let relative_output = claude_output_relative_path(&definition, &short_name)?;
-        reserved_outputs.insert(relative_output.clone());
 
         let Some(prompt_body) =
             load_harness_agent_prompt(project_root, &short_name, AgentPromptHarness::Claude)
@@ -254,49 +249,13 @@ fn sync_generated_agent_prompts(
             &claude_metadata,
             &prompt_body,
         )?;
+        // codeql[rust/path-injection]
         fs::write(&generated_target, rendered).map_err(|error| {
             format!(
                 "Failed to write generated Claude agent prompt {}: {error}",
                 generated_target.display()
             )
         })?;
-    }
-
-    let base_agents_dir = base_plugin_dir.join("agents");
-    if base_agents_dir.exists() {
-        for entry in fs::read_dir(&base_agents_dir).map_err(|error| {
-            format!(
-                "Failed to read base Claude agents dir {}: {error}",
-                base_agents_dir.display()
-            )
-        })? {
-            let entry = entry.map_err(|error| {
-                format!(
-                    "Failed to inspect base Claude agent entry under {}: {error}",
-                    base_agents_dir.display()
-                )
-            })?;
-            let source_path = entry.path();
-            if !entry
-                .file_type()
-                .map_err(|error| {
-                    format!(
-                        "Failed to read base Claude agent file type for {}: {error}",
-                        source_path.display()
-                    )
-                })?
-                .is_file()
-            {
-                continue;
-            }
-            let relative_output = PathBuf::from("agents").join(entry.file_name());
-            if reserved_outputs.contains(&relative_output) {
-                continue;
-            }
-            let generated_target =
-                trusted_generated_plugin_child_path(generated_plugin_dir, &relative_output)?;
-            ensure_symlink(&source_path, &generated_target)?;
-        }
     }
 
     Ok(())
@@ -344,6 +303,7 @@ fn trusted_generated_plugin_child_path(
         ));
     };
 
+    // codeql[rust/path-injection]
     fs::create_dir_all(parent).map_err(|error| {
         format!(
             "Failed to create generated Claude plugin output parent dir {}: {error}",
@@ -395,7 +355,8 @@ fn build_claude_frontmatter(
         )
     })?;
     let mcp_server_name = &claude_runtime_config().mcp_server_name;
-    let tools = build_claude_frontmatter_tools(agent_config, mcp_server_name);
+    let tools = build_claude_frontmatter_tools(agent_config, claude_metadata, mcp_server_name);
+    let mcp_tools = resolved_claude_mcp_tools(agent_config, claude_metadata);
 
     let mut lines = vec![
         "---".to_string(),
@@ -413,18 +374,31 @@ fn build_claude_frontmatter(
         }
     }
 
-    if !agent_config.allowed_mcp_tools.is_empty() {
+    if !mcp_tools.is_empty() {
         lines.push("mcpServers:".to_string());
         lines.push(format!("  - {}:", yaml_scalar(mcp_server_name)?));
-        lines.push("      type: stdio".to_string());
-        lines.push("      command: node".to_string());
-        lines.push("      args:".to_string());
-        lines.push(format!(
-            "        - {}",
-            yaml_scalar("${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js")?
-        ));
-        lines.push(format!("        - {}", yaml_scalar("--agent-type")?));
-        lines.push(format!("        - {}", yaml_scalar(agent_name)?));
+        if claude_metadata.mcp_transport.as_deref() == Some("external") {
+            lines.push("      type: http".to_string());
+            lines.push(format!(
+                "      url: {}",
+                yaml_scalar("http://127.0.0.1:3848/mcp")?
+            ));
+            lines.push("      headers:".to_string());
+            lines.push(format!(
+                "        Authorization: {}",
+                yaml_scalar("Bearer ${RALPHX_TAURI_MCP_BYPASS_TOKEN}")?
+            ));
+        } else {
+            lines.push("      type: stdio".to_string());
+            lines.push("      command: node".to_string());
+            lines.push("      args:".to_string());
+            lines.push(format!(
+                "        - {}",
+                yaml_scalar("${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js")?
+            ));
+            lines.push(format!("        - {}", yaml_scalar("--agent-type")?));
+            lines.push(format!("        - {}", yaml_scalar(agent_name)?));
+        }
     }
 
     if !claude_metadata.disallowed_tools.is_empty() {
@@ -455,6 +429,7 @@ fn build_claude_frontmatter(
 
 fn build_claude_frontmatter_tools(
     agent_config: &crate::infrastructure::agents::claude::AgentConfig,
+    claude_metadata: &CanonicalClaudeAgentMetadata,
     mcp_server_name: &str,
 ) -> Vec<String> {
     let mut tools = Vec::new();
@@ -463,8 +438,7 @@ fn build_claude_frontmatter_tools(
     }
 
     tools.extend(
-        agent_config
-            .allowed_mcp_tools
+        resolved_claude_mcp_tools(agent_config, claude_metadata)
             .iter()
             .map(|tool| normalize_frontmatter_mcp_tool(tool, mcp_server_name)),
     );
@@ -473,6 +447,19 @@ fn build_claude_frontmatter_tools(
     let mut seen = HashSet::new();
     tools.retain(|tool| seen.insert(tool.clone()));
     tools
+}
+
+fn resolved_claude_mcp_tools<'a>(
+    agent_config: &'a crate::infrastructure::agents::claude::AgentConfig,
+    claude_metadata: &'a CanonicalClaudeAgentMetadata,
+) -> &'a [String] {
+    if claude_metadata.mcp_transport.as_deref() == Some("external")
+        && !claude_metadata.mcp_tools.is_empty()
+    {
+        &claude_metadata.mcp_tools
+    } else {
+        &agent_config.allowed_mcp_tools
+    }
 }
 
 fn normalize_frontmatter_mcp_tool(tool: &str, mcp_server_name: &str) -> String {
@@ -490,6 +477,7 @@ fn yaml_scalar(value: &str) -> Result<String, String> {
 }
 
 fn ensure_symlink(source: &Path, target: &Path) -> Result<(), String> {
+    // codeql[rust/path-injection]
     if let Ok(existing) = fs::read_link(target) {
         if existing == source {
             return Ok(());
@@ -510,18 +498,20 @@ fn ensure_symlink(source: &Path, target: &Path) -> Result<(), String> {
 }
 
 fn remove_existing_path(path: &Path) -> Result<(), String> {
-    if !path.exists() && fs::symlink_metadata(path).is_err() {
-        return Ok(());
-    }
-
-    let metadata = fs::symlink_metadata(path).map_err(|error| {
-        format!(
-            "Failed to inspect existing generated Claude plugin path {}: {error}",
-            path.display()
-        )
-    })?;
+    // codeql[rust/path-injection]
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "Failed to inspect existing generated Claude plugin path {}: {error}",
+                path.display()
+            ));
+        }
+    };
 
     if metadata.file_type().is_symlink() || metadata.is_file() {
+        // codeql[rust/path-injection]
         fs::remove_file(path).map_err(|error| {
             format!(
                 "Failed to remove generated Claude plugin file {}: {error}",
@@ -529,6 +519,7 @@ fn remove_existing_path(path: &Path) -> Result<(), String> {
             )
         })
     } else {
+        // codeql[rust/path-injection]
         fs::remove_dir_all(path).map_err(|error| {
             format!(
                 "Failed to remove generated Claude plugin directory {}: {error}",
@@ -540,6 +531,7 @@ fn remove_existing_path(path: &Path) -> Result<(), String> {
 
 #[cfg(unix)]
 fn symlink_path(source: &Path, target: &Path) -> Result<(), String> {
+    // codeql[rust/path-injection]
     std::os::unix::fs::symlink(source, target).map_err(|error| {
         format!(
             "Failed to symlink generated Claude plugin path {} -> {}: {error}",
@@ -551,6 +543,7 @@ fn symlink_path(source: &Path, target: &Path) -> Result<(), String> {
 
 #[cfg(windows)]
 fn symlink_path(source: &Path, target: &Path) -> Result<(), String> {
+    // codeql[rust/path-injection]
     let result = if source.is_dir() {
         std::os::windows::fs::symlink_dir(source, target)
     } else {
@@ -567,9 +560,7 @@ fn symlink_path(source: &Path, target: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        generated_plugin_dir_for_base_with_override, trusted_generated_plugin_child_path,
-    };
+    use super::{generated_plugin_dir_for_base_with_override, trusted_generated_plugin_child_path};
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -606,6 +597,9 @@ mod tests {
                 .expect("trusted relative path should be accepted");
 
         assert!(target.starts_with(dir.path().canonicalize().unwrap()));
-        assert_eq!(target.file_name().and_then(|name| name.to_str()), Some("ralphx-test.md"));
+        assert_eq!(
+            target.file_name().and_then(|name| name.to_str()),
+            Some("ralphx-test.md")
+        );
     }
 }

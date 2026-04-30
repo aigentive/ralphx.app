@@ -1,21 +1,28 @@
 mod codex_cli_client;
 pub mod stream_processor;
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
-use std::fs;
 use tracing::warn;
 
 use crate::domain::agents::LogicalEffort;
 use crate::infrastructure::agents::claude::SpawnableCommand;
 use crate::infrastructure::agents::claude::{
-    claude_runtime_config, filter_interactive_tools, format_allowed_tools_arg_value,
-    get_agent_config, load_agent_system_prompt, mcp_agent_type, node_utils, validate_mcp_tool_name,
+    claude_runtime_config, external_mcp_config, filter_interactive_tools,
+    format_allowed_tools_arg_value, get_agent_config, mcp_agent_type, node_utils,
+    validate_mcp_tool_name,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
-    has_canonical_agent_definition, load_canonical_codex_metadata, load_harness_agent_prompt,
-    resolve_project_root_from_plugin_dir,
-    AgentPromptHarness,
+    load_canonical_codex_metadata, load_harness_agent_prompt, resolve_project_root_from_plugin_dir,
+    AgentPromptHarness, CanonicalCodexAgentMetadata,
+};
+use crate::infrastructure::agents::internal_skills::inject_internal_skills_into_system_prompt;
+use crate::infrastructure::agents::mcp_runtime_context::{
+    append_mcp_runtime_query, McpRuntimeContext,
+};
+use crate::infrastructure::external_mcp_supervisor::{
+    ensure_tauri_mcp_bypass_token, TAURI_MCP_BYPASS_TOKEN_ENV,
 };
 pub use codex_cli_client::CodexCliClient;
 
@@ -99,15 +106,7 @@ impl Default for CodexExecCliConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CodexMcpRuntimeContext {
-    pub context_type: Option<String>,
-    pub context_id: Option<String>,
-    pub task_id: Option<String>,
-    pub project_id: Option<String>,
-    pub working_directory: Option<PathBuf>,
-    pub lead_session_id: Option<String>,
-}
+pub type CodexMcpRuntimeContext = McpRuntimeContext;
 
 fn encode_codex_string_literal(value: &str) -> Result<String, String> {
     serde_json::to_string(value)
@@ -128,13 +127,16 @@ pub fn build_codex_mcp_overrides(
     let mcp_server_name = claude_runtime_config().mcp_server_name.clone();
     let short_name = mcp_agent_type(agent_name);
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
-    let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
-    if !mcp_server_path.exists() {
-        return Err(format!(
-            "Codex MCP server not found at {}",
-            mcp_server_path.display()
-        ));
+    let codex_metadata = load_canonical_codex_metadata(&project_root, short_name);
+    if codex_metadata.mcp_transport.as_deref() == Some("external") {
+        return build_codex_external_mcp_overrides(
+            &mcp_server_name,
+            codex_metadata,
+            runtime_context,
+        );
     }
+
+    let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
 
     let node_command = node_utils::find_node_binary()
         .to_string_lossy()
@@ -210,7 +212,41 @@ pub fn build_codex_mcp_overrides(
         ));
     }
 
-    let codex_metadata = load_canonical_codex_metadata(&project_root, short_name);
+    for (feature_name, enabled) in codex_metadata.runtime_features {
+        overrides.push(format!("features.{feature_name}={enabled}"));
+    }
+
+    Ok(overrides)
+}
+
+fn build_codex_external_mcp_overrides(
+    mcp_server_name: &str,
+    codex_metadata: CanonicalCodexAgentMetadata,
+    runtime_context: Option<&CodexMcpRuntimeContext>,
+) -> Result<Vec<String>, String> {
+    let cfg = external_mcp_config();
+    let _token = ensure_tauri_mcp_bypass_token();
+    let mut url = format!("http://{}:{}/mcp", cfg.host, cfg.port);
+    append_mcp_runtime_query(&mut url, runtime_context);
+    let mut overrides = vec![
+        format!(
+            "mcp_servers.{mcp_server_name}.url={}",
+            encode_codex_string_literal(&url)?
+        ),
+        format!(
+            "mcp_servers.{mcp_server_name}.bearer_token_env_var={}",
+            encode_codex_string_literal(TAURI_MCP_BYPASS_TOKEN_ENV)?
+        ),
+        format!("mcp_servers.{mcp_server_name}.enabled=true"),
+    ];
+
+    if !codex_metadata.mcp_tools.is_empty() {
+        overrides.push(format!(
+            "mcp_servers.{mcp_server_name}.enabled_tools={}",
+            encode_codex_string_array(&codex_metadata.mcp_tools)?
+        ));
+    }
+
     for (feature_name, enabled) in codex_metadata.runtime_features {
         overrides.push(format!("features.{feature_name}={enabled}"));
     }
@@ -231,16 +267,26 @@ pub fn compose_codex_prompt(
     };
 
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
-    let system_prompt = load_harness_agent_prompt(&project_root, agent_name, AgentPromptHarness::Codex)
-        .or_else(|| {
-            if has_canonical_agent_definition(&project_root, agent_name) {
-                None
-            } else {
-                load_agent_system_prompt(plugin_dir, agent_name)
-            }
-        });
+    let system_prompt =
+        load_harness_agent_prompt(&project_root, agent_name, AgentPromptHarness::Codex);
     let Some(system_prompt) = system_prompt else {
         return prompt.to_string();
+    };
+    let system_prompt = match inject_internal_skills_into_system_prompt(
+        &project_root,
+        agent_name,
+        &system_prompt,
+        prompt,
+    ) {
+        Ok(injection) => injection.system_prompt,
+        Err(error) => {
+            warn!(
+                agent = agent_name,
+                error = %error,
+                "Failed to inject internal skills into Codex prompt"
+            );
+            system_prompt
+        }
     };
 
     format!(
@@ -310,13 +356,6 @@ pub fn normalize_codex_exec_output(raw_stdout: &str) -> String {
 }
 
 pub fn find_codex_cli() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("CODEX_CLI_PATH") {
-        let candidate = PathBuf::from(path);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-
     if let Ok(path) = which::which("codex") {
         return Some(path);
     }

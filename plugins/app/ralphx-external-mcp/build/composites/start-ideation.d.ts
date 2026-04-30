@@ -15,6 +15,7 @@ export interface StartIdeationResult {
     status: "started" | "blocked";
     agentSpawned: boolean;
     agentSpawnBlockedReason?: string;
+    pendingInitialPrompt?: string;
     existingActiveSessions?: Array<{
         sessionId: string;
         title?: string;
@@ -27,6 +28,8 @@ export interface StartIdeationResult {
     similarityScore?: number;
     nextAction?: string;
     hint?: string;
+    parentConversationId?: string;
+    workspaceBranch?: string;
 }
 /**
  * Start an ideation session on the backend and return session_id + status.

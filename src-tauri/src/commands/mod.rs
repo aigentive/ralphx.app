@@ -2,6 +2,7 @@
 // Commands should be minimal - delegate to domain/infrastructure
 
 pub mod activity_commands;
+pub mod agent_terminal_commands;
 pub mod branch_helpers;
 pub mod api_key_commands;
 pub mod agent_profile_commands;
@@ -52,6 +53,11 @@ pub use activity_commands::{
 pub use agent_profile_commands::{
     get_agent_profile, get_agent_profiles_by_role, get_builtin_agent_profiles,
     get_custom_agent_profiles, list_agent_profiles, seed_builtin_profiles,
+};
+pub use agent_terminal_commands::{
+    clear_agent_terminal, close_agent_terminal, open_agent_terminal, resize_agent_terminal,
+    restart_agent_terminal, write_agent_terminal, AgentTerminalCloseInput, AgentTerminalOpenInput,
+    AgentTerminalResizeInput, AgentTerminalWriteInput,
 };
 pub use artifact_commands::{
     add_artifact_relation, archive_artifact, create_artifact, create_bucket, delete_artifact,
@@ -175,15 +181,27 @@ pub use team_commands::{
 };
 // Unified chat commands (consolidates context_chat + execution_chat)
 pub use unified_chat_commands::{
-    create_agent_conversation, delete_queued_agent_message, get_agent_conversation,
-    get_agent_conversation_messages_page, get_agent_run_status_unified,
-    get_queued_agent_messages, is_agent_running, is_chat_service_available,
-    list_agent_conversations, queue_agent_message, send_agent_message, stop_agent,
-    AgentConversationMessagesPageResponse, AgentConversationResponse,
+    archive_agent_conversation, create_agent_conversation,
+    delete_queued_agent_message, get_agent_conversation, get_agent_conversation_messages_page,
+    get_agent_conversation_workspace, get_agent_conversation_workspace_freshness,
+    get_agent_run_status_unified, get_queued_agent_messages, is_agent_running,
+    is_chat_service_available, list_agent_conversations,
+    list_agent_conversation_workspace_publication_events,
+    list_agent_conversation_workspaces_by_project, list_agent_conversations_page,
+    publish_agent_conversation_workspace, queue_agent_message, restore_agent_conversation,
+    send_agent_message, start_agent_conversation, stop_agent, switch_agent_conversation_mode,
+    update_agent_conversation_title, update_agent_conversation_workspace_from_base,
+    AgentConversationWorkspaceFreshnessResponse,
+    AgentConversationWorkspacePublicationEventResponse, AgentConversationWorkspaceResponse,
+    PublishAgentConversationWorkspaceResponse, UpdateAgentConversationWorkspaceFromBaseResponse,
+    AgentConversationListPageResponse, AgentConversationMessagesPageResponse,
+    AgentConversationResponse,
     AgentConversationWithMessagesResponse, AgentMessageResponse, AgentRunStatusResponse,
     CreateAgentConversationInput, QueueAgentMessageInput,
     QueuedMessageResponse as UnifiedQueuedMessageResponse, SendAgentMessageInput,
-    SendAgentMessageResponse,
+    SendAgentMessageResponse, StartAgentConversationInput, StartAgentConversationResponse,
+    SwitchAgentConversationModeInput, SwitchAgentConversationModeResponse,
+    UpdateAgentConversationTitleInput,
 };
 // Plan branch commands (Phase 85 - Feature branch for plan groups)
 pub use plan_branch_commands::{

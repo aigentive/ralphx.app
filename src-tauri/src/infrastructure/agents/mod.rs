@@ -4,6 +4,8 @@
 pub mod claude;
 pub mod codex;
 pub mod harness_agent_catalog;
+pub mod internal_skills;
+pub mod mcp_runtime_context;
 pub mod mock;
 pub mod spawner;
 
@@ -27,4 +29,5 @@ pub use codex::{
     CodexMcpRuntimeContext, ResolvedCodexCli,
 };
 pub use mock::{MockAgenticClient, MockCall, MockCallType};
+pub use mcp_runtime_context::McpRuntimeContext;
 pub use spawner::AgenticClientSpawner;

@@ -1,0 +1,27 @@
+import type {
+  AgentConversationWorkspace,
+  AgentConversationWorkspaceMode,
+} from "@/api/chat";
+
+import type { AgentConversation } from "./agentConversations";
+
+export const AGENT_CONVERSATION_MODE_OPTIONS: Array<{
+  id: AgentConversationWorkspaceMode;
+  label: string;
+  description: string;
+}> = [
+  { id: "chat", label: "Chat", description: "Ask read-only questions about the project." },
+  { id: "edit", label: "Agent", description: "Build, change, and review code in a branch." },
+  { id: "ideation", label: "Ideation", description: "Plan work before creating tasks." },
+];
+
+export function resolveConversationAgentMode(
+  conversation: AgentConversation,
+  workspace: AgentConversationWorkspace | null
+): AgentConversationWorkspaceMode {
+  return conversation.agentMode ?? workspace?.mode ?? "chat";
+}
+
+export function isWorkspaceModeLocked(workspace: AgentConversationWorkspace | null): boolean {
+  return Boolean(workspace?.linkedIdeationSessionId || workspace?.linkedPlanBranchId);
+}

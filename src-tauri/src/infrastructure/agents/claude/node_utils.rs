@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 #[cfg(test)]
 #[path = "node_utils_tests.rs"]
@@ -14,7 +14,7 @@ mod tests;
 /// 2. `which::which("node")` (PATH-based lookup)
 /// 3. `/opt/homebrew/bin/node` (Homebrew ARM / Apple Silicon)
 /// 4. `/usr/local/bin/node` (Homebrew Intel)
-/// 5. nvm latest (reads `~/.nvm/versions/node`, picks highest version)
+/// 5. login shell `command -v node` (covers nvm/asdf/volta shell init)
 /// 6. `"node"` (last resort — rely on whatever PATH the process has)
 ///
 /// # Errors
@@ -25,7 +25,7 @@ pub fn find_node_binary() -> PathBuf {
     // 1. Explicit override via env var — caller controls exact binary.
     if let Ok(path) = std::env::var("RALPHX_NODE_PATH") {
         let p = PathBuf::from(&path);
-        if p.exists() {
+        if has_safe_absolute_shape(&p) {
             return p;
         }
     }
@@ -37,49 +37,56 @@ pub fn find_node_binary() -> PathBuf {
 
     // 3. Homebrew ARM (Apple Silicon default).
     let homebrew_arm = PathBuf::from("/opt/homebrew/bin/node");
+    // Fixed Homebrew path.
+    // codeql[rust/path-injection]
     if homebrew_arm.exists() {
         return homebrew_arm;
     }
 
     // 4. Homebrew Intel.
     let homebrew_intel = PathBuf::from("/usr/local/bin/node");
+    // Fixed Homebrew path.
+    // codeql[rust/path-injection]
     if homebrew_intel.exists() {
         return homebrew_intel;
     }
 
-    // 5. nvm latest.
-    if let Some(nvm_node) = find_nvm_latest() {
-        return nvm_node;
+    // 5. Login shell lookup for nvm/asdf/volta paths initialized by shell startup files.
+    if let Some(shell_node) = find_login_shell_node() {
+        return shell_node;
     }
 
     // 6. Last resort — bare "node", rely on whatever PATH the process inherits.
     PathBuf::from("node")
 }
 
-/// Find the latest Node binary installed via nvm.
-///
-/// Reads `~/.nvm/versions/node/`, sorts version directories lexicographically
-/// in descending order (e.g. `v22.x.x` > `v20.x.x` > `v18.x.x`), and returns
-/// the `bin/node` path from the highest version found.
-fn find_nvm_latest() -> Option<PathBuf> {
-    let home = std::env::var("HOME").ok()?;
-    let versions_dir = PathBuf::from(home).join(".nvm/versions/node");
+fn has_safe_absolute_shape(path: &Path) -> bool {
+    if !path.is_absolute() {
+        return false;
+    }
 
-    let mut entries: Vec<_> = std::fs::read_dir(&versions_dir)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-        .collect();
-
-    // Sort descending — "v22.0.0" > "v20.11.0" > "v18.0.0".
-    entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
-
-    for entry in entries {
-        let node_bin = entry.path().join("bin/node");
-        if node_bin.exists() {
-            return Some(node_bin);
+    let mut normal_components = 0usize;
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => {}
+            Component::Normal(_) => normal_components += 1,
+            Component::ParentDir | Component::CurDir => return false,
         }
     }
 
-    None
+    normal_components > 0
+}
+
+fn find_login_shell_node() -> Option<PathBuf> {
+    let output = std::process::Command::new("/bin/zsh")
+        .args(["-lc", "command -v node"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let path = String::from_utf8(output.stdout).ok()?;
+    let candidate = PathBuf::from(path.trim());
+    has_safe_absolute_shape(&candidate).then_some(candidate)
 }

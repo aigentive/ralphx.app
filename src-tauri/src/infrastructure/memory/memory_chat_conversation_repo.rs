@@ -7,10 +7,10 @@ use tokio::sync::RwLock;
 
 use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
-    ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
+    AgentConversationWorkspaceMode, AttributionBackfillStatus, ChatContextType, ChatConversation,
+    ChatConversationId, ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
 };
-use crate::domain::repositories::ChatConversationRepository;
+use crate::domain::repositories::{ChatConversationPage, ChatConversationRepository};
 use crate::error::AppResult;
 
 /// In-memory implementation of ChatConversationRepository for testing
@@ -53,10 +53,88 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
         let convos = self.conversations.read().await;
         let filtered: Vec<ChatConversation> = convos
             .values()
-            .filter(|c| c.context_type == context_type && c.context_id == context_id)
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && !c.is_archived()
+            })
             .cloned()
             .collect();
         Ok(filtered)
+    }
+
+    async fn get_by_context_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+    ) -> AppResult<Vec<ChatConversation>> {
+        let convos = self.conversations.read().await;
+        let filtered: Vec<ChatConversation> = convos
+            .values()
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && (include_archived || !c.is_archived())
+            })
+            .cloned()
+            .collect();
+        Ok(filtered)
+    }
+
+    async fn get_by_context_page_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+        archived_only: bool,
+        offset: u32,
+        limit: u32,
+        search: Option<&str>,
+    ) -> AppResult<ChatConversationPage> {
+        let normalized_search = search
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_lowercase());
+        let convos = self.conversations.read().await;
+        let mut filtered: Vec<ChatConversation> = convos
+            .values()
+            .filter(|conversation| {
+                conversation.context_type == context_type
+                    && conversation.context_id == context_id
+                    && if archived_only {
+                        conversation.is_archived()
+                    } else {
+                        include_archived || !conversation.is_archived()
+                    }
+                    && normalized_search.as_ref().map_or(true, |term| {
+                        conversation
+                            .title
+                            .as_deref()
+                            .unwrap_or("Untitled agent")
+                            .to_lowercase()
+                            .contains(term)
+                    })
+            })
+            .cloned()
+            .collect();
+        filtered.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+
+        let total_count = filtered.len() as i64;
+        let start = offset as usize;
+        let end = start.saturating_add(limit as usize).min(filtered.len());
+        let conversations = if start >= filtered.len() {
+            Vec::new()
+        } else {
+            filtered[start..end].to_vec()
+        };
+
+        Ok(ChatConversationPage {
+            conversations,
+            total_count,
+            offset,
+            limit,
+        })
     }
 
     async fn get_active_for_context(
@@ -67,7 +145,11 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
         let convos = self.conversations.read().await;
         Ok(convos
             .values()
-            .filter(|c| c.context_type == context_type && c.context_id == context_id)
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && !c.is_archived()
+            })
             .max_by_key(|c| c.created_at)
             .cloned())
     }
@@ -108,11 +190,39 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
         Ok(())
     }
 
+    async fn update_agent_mode(
+        &self,
+        id: &ChatConversationId,
+        mode: Option<AgentConversationWorkspaceMode>,
+    ) -> AppResult<()> {
+        let mut convos = self.conversations.write().await;
+        if let Some(conversation) = convos.get_mut(id) {
+            conversation.set_agent_mode(mode);
+        }
+        Ok(())
+    }
+
     async fn update_title(&self, id: &ChatConversationId, title: &str) -> AppResult<()> {
         let mut convos = self.conversations.write().await;
         if let Some(conv) = convos.get_mut(id) {
             conv.title = Some(title.to_string());
             conv.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn archive(&self, id: &ChatConversationId) -> AppResult<()> {
+        let mut convos = self.conversations.write().await;
+        if let Some(conv) = convos.get_mut(id) {
+            conv.archive();
+        }
+        Ok(())
+    }
+
+    async fn restore(&self, id: &ChatConversationId) -> AppResult<()> {
+        let mut convos = self.conversations.write().await;
+        if let Some(conv) = convos.get_mut(id) {
+            conv.restore();
         }
         Ok(())
     }

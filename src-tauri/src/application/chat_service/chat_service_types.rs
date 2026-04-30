@@ -100,9 +100,9 @@ pub struct SendResult {
     pub was_queued: bool,
     /// The queued message ID if was_queued is true
     pub queued_message_id: Option<String>,
-    /// Whether the message was persisted as `pending_initial_prompt` because ideation
-    /// capacity was full.  Distinct from `was_queued` (which means an agent is already running
-    /// for the context and the message entered the backend queue).
+    /// Whether the message was persisted as `pending_initial_prompt` because an idle
+    /// ideation launch was deferred by pause or capacity. Distinct from a volatile
+    /// running-agent queue entry.
     pub queued_as_pending: bool,
 }
 
@@ -400,6 +400,8 @@ pub struct AgentMessageQueuedPayload {
     pub content: String,
     pub context_type: String,
     pub context_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
     pub created_at: String,
 }
 

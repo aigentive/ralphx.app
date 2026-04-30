@@ -21,6 +21,8 @@ pub struct UiFeatureFlagsConfig {
     pub extensibility_page: bool,
     /// Enable or disable Battle Mode. Default: true (backward compat; disabled via config/ralphx.yaml).
     pub battle_mode: bool,
+    /// Enable or disable team mode UI. Default: false.
+    pub team_mode: bool,
 }
 
 impl Default for UiFeatureFlagsConfig {
@@ -29,6 +31,7 @@ impl Default for UiFeatureFlagsConfig {
             activity_page: true,
             extensibility_page: true,
             battle_mode: true,
+            team_mode: false,
         }
     }
 }

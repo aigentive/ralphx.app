@@ -31,6 +31,44 @@ async fn test_get_by_context() {
 }
 
 #[tokio::test]
+async fn test_get_by_context_page_filtered_can_return_archived_only() {
+    let repo = MemoryChatConversationRepository::new();
+
+    let mut active =
+        ChatConversation::new_project(crate::domain::entities::ProjectId::from_string(
+            "project-1".to_string(),
+        ));
+    active.title = Some("Active agent".to_string());
+
+    let mut archived =
+        ChatConversation::new_project(crate::domain::entities::ProjectId::from_string(
+            "project-1".to_string(),
+        ));
+    archived.title = Some("Archived agent".to_string());
+    archived.archived_at = Some(chrono::Utc::now());
+
+    repo.create(active.clone()).await.unwrap();
+    repo.create(archived.clone()).await.unwrap();
+
+    let page = repo
+        .get_by_context_page_filtered(
+            ChatContextType::Project,
+            "project-1",
+            true,
+            true,
+            0,
+            10,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(page.total_count, 1);
+    assert_eq!(page.conversations.len(), 1);
+    assert_eq!(page.conversations[0].id, archived.id);
+}
+
+#[tokio::test]
 async fn test_update_claude_session_id() {
     let repo = MemoryChatConversationRepository::new();
     let session_id = IdeationSessionId::new();

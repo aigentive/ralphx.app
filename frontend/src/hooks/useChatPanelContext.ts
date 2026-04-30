@@ -31,6 +31,8 @@ interface UseChatPanelContextProps {
   isHistoryMode: boolean;
   /** Override conversation ID for history mode - forces selection of specific conversation */
   overrideConversationId?: string | undefined;
+  /** Override the store key used for queue/running state. */
+  storeContextKeyOverride?: string | undefined;
   /** Override agent run ID for history mode - used for scroll positioning */
   overrideAgentRunId?: string | undefined;
   /** Whether this panel is currently visible — re-triggers autoSelectConversation on false→true transition */
@@ -55,8 +57,8 @@ export function useChatPanelContext({
   isExecutionMode,
   isReviewMode,
   isMergeMode,
-  isHistoryMode,
   overrideConversationId,
+  storeContextKeyOverride,
   overrideAgentRunId,
   isVisible = true,
 }: UseChatPanelContextProps) {
@@ -103,6 +105,9 @@ export function useChatPanelContext({
   // Compute store context key for queue/agent state operations
   // Uses context-aware keys via registry: "task_execution:id", "review:id", "merge:id", or standard keys
   const storeContextKey = useMemo(() => {
+    if (storeContextKeyOverride) {
+      return storeContextKeyOverride;
+    }
     if (isMergeMode && selectedTaskId) {
       return buildStoreKey("merge", selectedTaskId);
     }
@@ -113,17 +118,27 @@ export function useChatPanelContext({
       return buildStoreKey("review", selectedTaskId);
     }
     return getContextKey(chatContext);
-  }, [isMergeMode, isExecutionMode, isReviewMode, selectedTaskId, chatContext]);
+  }, [
+    storeContextKeyOverride,
+    isMergeMode,
+    isExecutionMode,
+    isReviewMode,
+    selectedTaskId,
+    chatContext,
+  ]);
 
-  // Active conversation ID scoped to this panel's storeContextKey
-  const activeConversationId = useChatStore((s) => s.activeConversationIds[storeContextKey] ?? null);
+  // Active conversation ID scoped to this panel's storeContextKey. When the
+  // caller owns a specific conversation, the override is authoritative on the
+  // first render instead of waiting for the store sync effect.
+  const storedActiveConversationId = useChatStore((s) => s.activeConversationIds[storeContextKey] ?? null);
+  const activeConversationId = overrideConversationId ?? storedActiveConversationId;
 
   // Context key for tracking changes
   const contextKey = ideationSessionId
     ? `ideation:${ideationSessionId}`
     : selectedTaskId
       ? `${isMergeMode ? "merge" : isExecutionMode ? "execution" : isReviewMode ? "review" : "task"}:${selectedTaskId}`
-      : `project:${projectId}`;
+      : (storeContextKeyOverride ?? `project:${projectId}`);
 
   // Initialize with empty string to ensure cleanup runs on first mount
   const prevContextKeyRef = useRef("");
@@ -307,10 +322,9 @@ export function useChatPanelContext({
       return;
     }
 
-    // In history mode with an explicit conversation override, skip auto-selection.
-    // But if no override is provided (e.g., 'approved' transition has no conversation_id),
-    // allow auto-selection to pick the most recent review conversation.
-    if (isHistoryMode && overrideConversationId) {
+    // Explicit conversation owners such as history and Agents archived/session
+    // lists must not be replaced by the active-list auto-selection path.
+    if (overrideConversationId) {
       return;
     }
 
@@ -376,7 +390,7 @@ export function useChatPanelContext({
         setActiveConversation(storeContextKey, mostRecent.id);
       }
     }
-  }, [isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, overrideConversationId, setActiveConversation, storeContextKey]);
+  }, [isMergeMode, isExecutionMode, isReviewMode, overrideConversationId, setActiveConversation, storeContextKey]);
 
   return {
     chatContext,

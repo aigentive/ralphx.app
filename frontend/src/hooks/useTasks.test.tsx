@@ -146,6 +146,16 @@ describe("useTasks", () => {
     expect(result.current.data).toEqual([]);
   });
 
+  it("should not fetch when disabled", async () => {
+    const { result } = renderHook(
+      () => useTasks("project-disabled", { enabled: false }),
+      { wrapper }
+    );
+
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(api.tasks.list).not.toHaveBeenCalled();
+  });
+
   it("should not refetch on every render", async () => {
     const mockTasks = [createMockTask()];
     vi.mocked(api.tasks.list).mockResolvedValue({ tasks: mockTasks, total: 1, hasMore: false, offset: 0 });

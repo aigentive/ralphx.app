@@ -115,6 +115,7 @@ export function invalidateConversationDataQueries(
 ) {
   queryClient.invalidateQueries({
     queryKey: chatKeys.conversation(conversationId),
+    exact: true,
   });
   queryClient.invalidateQueries({
     queryKey: chatKeys.conversationHistory(conversationId),
@@ -303,6 +304,11 @@ export function useChat(
     storeKey?: string;
     disableAutoSelect?: boolean;
     skipActiveConversationQuery?: boolean;
+    sendOptions?: {
+      conversationId?: string | null;
+      providerHarness?: string | null;
+      modelId?: string | null;
+    };
   }
 ) {
   const queryClient = useQueryClient();
@@ -322,9 +328,11 @@ export function useChat(
   // Fetch conversations for this context
   const conversations = useConversations(context);
 
-  // Fetch active conversation with messages
-  const activeConversation = useConversation(activeConversationId, {
+  // Fetch the active transcript as a newest-message window. The returned
+  // message order is chronological inside the loaded window.
+  const activeConversation = useConversationHistoryWindow(activeConversationId, {
     enabled: !(options?.skipActiveConversationQuery ?? false),
+    pageSize: 40,
   });
 
   // Fetch agent run status
@@ -382,7 +390,24 @@ export function useChat(
   // Send message mutation
   const sendMessage = useMutation<SendAgentMessageResult, Error, { content: string; attachmentIds?: string[]; target?: string }>({
     mutationFn: async ({ content, attachmentIds, target }) => {
-      return chatApi.sendAgentMessage(contextType, contextId, content, attachmentIds, target);
+      if (options?.sendOptions) {
+        return chatApi.sendAgentMessage(
+          contextType,
+          contextId,
+          content,
+          attachmentIds,
+          target,
+          options.sendOptions
+        );
+      }
+
+      return chatApi.sendAgentMessage(
+        contextType,
+        contextId,
+        content,
+        attachmentIds,
+        target
+      );
     },
     onMutate: () => {
       setSending(effectiveStoreKey, true);

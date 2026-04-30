@@ -21,8 +21,12 @@ pub async fn set_max_concurrent(
     if max > old_max {
         // Get active project for scoped scheduling
         let active_project_id = active_project_state.get().await;
-        schedule_ready_tasks_for_project(&app_state, Arc::clone(&execution_state), active_project_id)
-            .await;
+        schedule_ready_tasks_for_project(
+            &app_state,
+            Arc::clone(&execution_state),
+            active_project_id,
+        )
+        .await;
     }
 
     // Get current status
@@ -120,8 +124,8 @@ pub async fn update_execution_settings(
     // DB is already persisted above so PendingSessionDrainService will see the new capacity.
     if updated.project_ideation_max > old_project_ideation_max {
         if let Some(ref pid) = project_id {
-            let svc = app_state
-                .build_chat_service_with_execution_state(Arc::clone(&execution_state));
+            let svc =
+                app_state.build_chat_service_with_execution_state(Arc::clone(&execution_state));
             let chat_svc: Arc<dyn ChatService> = Arc::new(svc);
 
             let drain = Arc::new(
@@ -305,8 +309,12 @@ pub async fn update_global_execution_settings(
     if updated.global_max_concurrent > old_global_max {
         // Get active project for scoped scheduling
         let active_project_id = active_project_state.get().await;
-        schedule_ready_tasks_for_project(&app_state, Arc::clone(&execution_state), active_project_id)
-            .await;
+        schedule_ready_tasks_for_project(
+            &app_state,
+            Arc::clone(&execution_state),
+            active_project_id,
+        )
+        .await;
     }
 
     // Emit event for UI sync

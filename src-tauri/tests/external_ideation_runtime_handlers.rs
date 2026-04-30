@@ -981,6 +981,45 @@ async fn test_ideation_message_no_running_agent_bypasses_queue_cap() {
     }
 }
 
+#[tokio::test]
+async fn test_ideation_message_persists_pending_prompt_when_execution_paused() {
+    let state = setup_test_state().await;
+    let session_id = create_active_ideation_session(&state).await;
+    let message = "Investigate the font scale regression";
+    state.execution_state.pause();
+
+    let req = IdeationMessageRequest {
+        session_id: session_id.clone(),
+        message: message.to_string(),
+    };
+    let result = ideation_message_http(State(state.clone()), unrestricted_scope(), Json(req)).await;
+
+    assert!(result.is_ok(), "paused idle ideation message must be accepted durably");
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "queued");
+    assert_eq!(response.session_id, session_id);
+    assert_eq!(response.queued_as_pending, Some(true));
+    assert_eq!(response.next_action, "wait_for_resume");
+    assert_eq!(
+        state
+            .app_state
+            .message_queue
+            .get_queued(ChatContextType::Ideation, &response.session_id)
+            .len(),
+        0,
+        "paused idle message must not be stored only in the volatile queue"
+    );
+
+    let stored = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(response.session_id))
+        .await
+        .unwrap()
+        .expect("session should exist");
+    assert_eq!(stored.pending_initial_prompt.as_deref(), Some(message));
+}
+
 // --- Internal-origin session guard tests ---
 
 #[tokio::test]

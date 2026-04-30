@@ -1,10 +1,16 @@
 use super::{
     conversation_spawn_harness_override, get_agent_name, interactive_run_started_provider_session,
-    should_inherit_parent_harness_for_fresh_spawn, spawn_settings_require_task_metadata,
+    resolve_agent_name_for_send, should_inherit_parent_harness_for_fresh_spawn,
+    spawn_settings_require_task_metadata,
 };
 use crate::application::interactive_process_registry::InteractiveProcessMetadata;
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
-use crate::domain::entities::{ChatContextType, ChatConversation, IdeationSessionId, TaskId};
+use crate::domain::entities::{
+    AgentConversationWorkspaceMode, ChatContextType, ChatConversation, IdeationSessionId, TaskId,
+};
+use crate::infrastructure::agents::claude::agent_names::{
+    AGENT_CHAT_PROJECT, AGENT_GENERAL_EXPLORER, AGENT_GENERAL_WORKER,
+};
 
 #[test]
 fn interactive_run_started_provider_session_prefers_process_metadata_harness() {
@@ -37,6 +43,51 @@ fn interactive_run_started_provider_session_falls_back_to_conversation_session_r
 
     assert_eq!(harness, AgentHarnessKind::Claude);
     assert_eq!(provider_session_id.as_deref(), Some("claude-session-123"));
+}
+
+#[test]
+fn project_agent_send_uses_workspace_mode_agent_before_project_default() {
+    let edit_agent = resolve_agent_name_for_send(
+        &ChatContextType::Project,
+        None,
+        false,
+        None,
+        Some(AgentConversationWorkspaceMode::Edit),
+    );
+    let chat_agent = resolve_agent_name_for_send(
+        &ChatContextType::Project,
+        None,
+        false,
+        None,
+        Some(AgentConversationWorkspaceMode::Chat),
+    );
+    let ideation_agent = resolve_agent_name_for_send(
+        &ChatContextType::Project,
+        None,
+        false,
+        None,
+        Some(AgentConversationWorkspaceMode::Ideation),
+    );
+    let default_project_agent =
+        resolve_agent_name_for_send(&ChatContextType::Project, None, false, None, None);
+
+    assert_eq!(edit_agent, AGENT_GENERAL_WORKER);
+    assert_eq!(chat_agent, AGENT_GENERAL_EXPLORER);
+    assert_eq!(ideation_agent, AGENT_CHAT_PROJECT);
+    assert_eq!(default_project_agent, AGENT_CHAT_PROJECT);
+}
+
+#[test]
+fn explicit_agent_override_wins_over_workspace_mode() {
+    let agent = resolve_agent_name_for_send(
+        &ChatContextType::Project,
+        None,
+        false,
+        Some("custom-agent"),
+        Some(AgentConversationWorkspaceMode::Edit),
+    );
+
+    assert_eq!(agent, "custom-agent");
 }
 
 #[test]
@@ -112,14 +163,13 @@ fn conversation_spawn_harness_override_skips_parent_without_continuation_metadat
         provider_session_id: "codex-parent-session".to_string(),
     });
 
-    let harness =
-        conversation_spawn_harness_override(
-            get_agent_name(&ChatContextType::TaskExecution),
-            ChatContextType::TaskExecution,
-            None,
-            &child,
-            Some(&parent),
-        );
+    let harness = conversation_spawn_harness_override(
+        get_agent_name(&ChatContextType::TaskExecution),
+        ChatContextType::TaskExecution,
+        None,
+        &child,
+        Some(&parent),
+    );
 
     assert_eq!(harness, None);
 }
@@ -248,7 +298,11 @@ fn spawn_settings_require_task_metadata_includes_review() {
     assert!(spawn_settings_require_task_metadata(
         ChatContextType::TaskExecution
     ));
-    assert!(spawn_settings_require_task_metadata(ChatContextType::Review));
+    assert!(spawn_settings_require_task_metadata(
+        ChatContextType::Review
+    ));
     assert!(spawn_settings_require_task_metadata(ChatContextType::Merge));
-    assert!(!spawn_settings_require_task_metadata(ChatContextType::Ideation));
+    assert!(!spawn_settings_require_task_metadata(
+        ChatContextType::Ideation
+    ));
 }

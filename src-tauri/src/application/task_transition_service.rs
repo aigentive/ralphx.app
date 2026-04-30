@@ -1808,6 +1808,7 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// the same execution plan, blocks the final merge behind it, and lets the existing
     /// worker/review/merge pipeline bring the plan PR back to a reviewable state.
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn route_github_pr_changes_requested<'a>(
         &'a self,
         task_id: &'a TaskId,
@@ -1937,6 +1938,7 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// Conflict cases are routed to the merger agent, but completion returns to
     /// `WaitingOnPr`; GitHub remains the authority for the final plan merge.
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub(crate) fn reconcile_pr_branch_freshness<'a>(
         &'a self,
         task_id: &'a TaskId,
@@ -2034,19 +2036,15 @@ impl<R: Runtime> TaskTransitionService<R> {
                 )
                 .await;
 
+            use crate::domain::state_machine::transition_handler::PlanUpdateResult;
             match update_result {
-                crate::domain::state_machine::transition_handler::PlanUpdateResult::Updated
-                | crate::domain::state_machine::transition_handler::PlanUpdateResult::AlreadyUpToDate => {
+                PlanUpdateResult::Updated | PlanUpdateResult::AlreadyUpToDate => {
                     self.push_and_refresh_pr_branch(&task, &project, &plan_branch)
                         .await?;
                     Ok(PrBranchFreshnessOutcome::Updated)
                 }
-                crate::domain::state_machine::transition_handler::PlanUpdateResult::NotPlanBranch => {
-                    Ok(PrBranchFreshnessOutcome::NotApplicable)
-                }
-                crate::domain::state_machine::transition_handler::PlanUpdateResult::Conflicts {
-                    conflict_files,
-                } => {
+                PlanUpdateResult::NotPlanBranch => Ok(PrBranchFreshnessOutcome::NotApplicable),
+                PlanUpdateResult::Conflicts { conflict_files } => {
                     self.route_pr_branch_update_conflict(
                         task,
                         &project,
@@ -2058,11 +2056,9 @@ impl<R: Runtime> TaskTransitionService<R> {
                     )
                     .await
                 }
-                crate::domain::state_machine::transition_handler::PlanUpdateResult::Error(error) => {
-                    Err(AppError::GitOperation(format!(
-                        "PR branch freshness update failed: {error}"
-                    )))
-                }
+                PlanUpdateResult::Error(error) => Err(AppError::GitOperation(format!(
+                    "PR branch freshness update failed: {error}"
+                ))),
             }
         }
     }
@@ -2206,6 +2202,7 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// When `execute_now` is true, this method also replays `RevisionNeeded` entry actions so
     /// the normal `RevisionNeeded -> ReExecuting` auto-transition runs immediately.
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn reroute_commit_hook_merge_failure<'a>(
         &'a self,
         task_id: &'a TaskId,
@@ -2335,6 +2332,7 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// the hook did not produce trustworthy code feedback, or the same feedback already
     /// repeated after re-execution.
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn mark_commit_hook_merge_failure_blocked<'a>(
         &'a self,
         task_id: &'a TaskId,

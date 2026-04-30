@@ -5,7 +5,16 @@
  */
 
 /** Input types accepted by date formatting functions */
-type DateInput = string | number | Date;
+type DateInput = string | number | Date | null | undefined;
+
+function toValidDate(input: DateInput): Date | null {
+  if (input === null || input === undefined) {
+    return null;
+  }
+
+  const date = input instanceof Date ? input : new Date(input);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 /**
  * Format a date for display
@@ -21,16 +30,9 @@ type DateInput = string | number | Date;
  * ```
  */
 export function formatDate(input: DateInput): string {
-  if (input === null || input === undefined) {
-    return "-";
-  }
-
   try {
-    const date = input instanceof Date ? input : new Date(input);
-
-    if (isNaN(date.getTime())) {
-      return "-";
-    }
+    const date = toValidDate(input);
+    if (!date) return "-";
 
     return date.toLocaleDateString("en-US", {
       year: "numeric",
@@ -55,16 +57,9 @@ export function formatDate(input: DateInput): string {
  * ```
  */
 export function formatRelativeTime(input: DateInput): string {
-  if (input === null || input === undefined) {
-    return "-";
-  }
-
   try {
-    const date = input instanceof Date ? input : new Date(input);
-
-    if (isNaN(date.getTime())) {
-      return "-";
-    }
+    const date = toValidDate(input);
+    if (!date) return "-";
 
     const now = Date.now();
     const diff = now - date.getTime();
@@ -191,16 +186,9 @@ export function formatMinutesHuman(minutes: number): string {
  * ```
  */
 export function formatDateTime(input: DateInput): string {
-  if (input === null || input === undefined) {
-    return "-";
-  }
-
   try {
-    const date = input instanceof Date ? input : new Date(input);
-
-    if (isNaN(date.getTime())) {
-      return "-";
-    }
+    const date = toValidDate(input);
+    if (!date) return "-";
 
     const currentYear = new Date().getFullYear();
     const dateYear = date.getFullYear();
@@ -221,4 +209,93 @@ export function formatDateTime(input: DateInput): string {
   } catch {
     return "-";
   }
+}
+
+export interface HumanTimestamp {
+  label: string;
+  title: string;
+}
+
+const HUMAN_TIMESTAMP_ABSOLUTE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+
+function formatAbsoluteTimestampLabel(date: Date): string {
+  const timeLabel = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  const dateOptions: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+  };
+
+  if (date.getFullYear() !== new Date().getFullYear()) {
+    dateOptions.year = "numeric";
+  }
+
+  return `${timeLabel} * ${date.toLocaleDateString("en-US", dateOptions)}`;
+}
+
+function formatTimestampTitle(date: Date): string {
+  return date.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+export function formatHumanTimestamp(input: DateInput): HumanTimestamp {
+  try {
+    const date = toValidDate(input);
+    if (!date) return { label: "-", title: "" };
+
+    const diffMs = Math.max(0, Date.now() - date.getTime());
+    const title = formatTimestampTitle(date);
+
+    if (diffMs >= HUMAN_TIMESTAMP_ABSOLUTE_AFTER_MS) {
+      return {
+        label: formatAbsoluteTimestampLabel(date),
+        title,
+      };
+    }
+
+    const minutes = Math.floor(diffMs / 60_000);
+    if (minutes < 1) {
+      return { label: "just now", title };
+    }
+
+    if (minutes < 60) {
+      return {
+        label: minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`,
+        title,
+      };
+    }
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      return {
+        label: hours === 1 ? "1 hour ago" : `${hours} hours ago`,
+        title,
+      };
+    }
+
+    const days = Math.floor(hours / 24);
+    return {
+      label: days === 1 ? "1 day ago" : `${days} days ago`,
+      title,
+    };
+  } catch {
+    return { label: "-", title: "" };
+  }
+}
+
+export function formatHumanTimestampLabel(input: DateInput): string {
+  return formatHumanTimestamp(input).label;
+}
+
+export function formatHumanTimestampTitle(input: DateInput): string {
+  return formatHumanTimestamp(input).title;
 }

@@ -12,16 +12,18 @@ use std::sync::Arc;
 
 use futures::StreamExt as _;
 
+use crate::application::agent_conversation_workspace::resolve_valid_agent_conversation_workspace_path;
+use crate::application::chat_service::ChatService;
 use crate::application::services::PrPollerRegistry;
 use crate::application::task_transition_service::PrBranchFreshnessOutcome;
 use crate::application::TaskTransitionService;
 use crate::domain::entities::{
-    ExecutionPlanId, ExecutionPlanStatus, InternalStatus, PlanBranch, PlanBranchStatus, Project,
-    Task, TaskCategory, TaskId,
+    AgentConversationWorkspace, ExecutionPlanId, ExecutionPlanStatus, InternalStatus, PlanBranch,
+    PlanBranchStatus, Project, Task, TaskCategory, TaskId,
 };
 use crate::domain::repositories::{
-    ArtifactRepository, ExecutionPlanRepository, IdeationSessionRepository, PlanBranchRepository,
-    ProjectRepository, TaskRepository,
+    AgentConversationWorkspaceRepository, ArtifactRepository, ExecutionPlanRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskRepository,
 };
 use crate::domain::services::{GithubServiceTrait, PlanPrPublisher, PrReviewState};
 use crate::domain::state_machine::transition_handler::{
@@ -31,6 +33,7 @@ use crate::domain::state_machine::transition_handler::{
 
 const PR_METADATA_REFRESH_CONCURRENCY: usize = 8;
 const PR_POLLER_RECOVERY_CONCURRENCY: usize = 4;
+const AGENT_WORKSPACE_PR_POLLER_RECOVERY_CONCURRENCY: usize = 4;
 
 #[derive(Clone)]
 struct PrMetadataRefreshJob {
@@ -527,6 +530,150 @@ pub async fn recover_pr_pollers(
             }
         })
         .await;
+}
+
+pub async fn recover_agent_workspace_pr_pollers(
+    workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    pr_poller_registry: Arc<PrPollerRegistry>,
+    chat_service: Arc<dyn ChatService>,
+) {
+    let workspaces = match workspace_repo
+        .list_active_direct_published_workspaces()
+        .await
+    {
+        Ok(workspaces) => workspaces,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Agent workspace PR startup recovery: failed to list published workspaces"
+            );
+            return;
+        }
+    };
+
+    if workspaces.is_empty() {
+        tracing::debug!("Agent workspace PR startup recovery: no published workspaces");
+        return;
+    }
+
+    tracing::info!(
+        count = workspaces.len(),
+        concurrency = AGENT_WORKSPACE_PR_POLLER_RECOVERY_CONCURRENCY,
+        "Agent workspace PR startup recovery: found active published workspaces"
+    );
+
+    futures::stream::iter(workspaces)
+        .for_each_concurrent(
+            AGENT_WORKSPACE_PR_POLLER_RECOVERY_CONCURRENCY,
+            |workspace| {
+                let workspace_repo = Arc::clone(&workspace_repo);
+                let project_repo = Arc::clone(&project_repo);
+                let pr_poller_registry = Arc::clone(&pr_poller_registry);
+                let chat_service = Arc::clone(&chat_service);
+                async move {
+                    recover_one_agent_workspace_pr_poller(
+                        workspace,
+                        workspace_repo,
+                        project_repo,
+                        pr_poller_registry,
+                        chat_service,
+                    )
+                    .await;
+                }
+            },
+        )
+        .await;
+}
+
+async fn recover_one_agent_workspace_pr_poller(
+    workspace: AgentConversationWorkspace,
+    workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    pr_poller_registry: Arc<PrPollerRegistry>,
+    chat_service: Arc<dyn ChatService>,
+) {
+    let Some(pr_number) = workspace.publication_pr_number else {
+        return;
+    };
+
+    let project = match project_repo.get_by_id(&workspace.project_id).await {
+        Ok(Some(project)) => project,
+        Ok(None) => {
+            tracing::warn!(
+                conversation_id = workspace.conversation_id.as_str(),
+                project_id = workspace.project_id.as_str(),
+                "Agent workspace PR startup recovery: project not found"
+            );
+            return;
+        }
+        Err(error) => {
+            tracing::warn!(
+                conversation_id = workspace.conversation_id.as_str(),
+                project_id = workspace.project_id.as_str(),
+                error = %error,
+                "Agent workspace PR startup recovery: failed to load project"
+            );
+            return;
+        }
+    };
+
+    let worktree_path =
+        match resolve_valid_agent_conversation_workspace_path(&project, &workspace).await {
+            Ok(path) => path,
+            Err(error) => {
+                tracing::warn!(
+                    conversation_id = workspace.conversation_id.as_str(),
+                    pr_number,
+                    error = %error,
+                    "Agent workspace PR startup recovery: workspace path is not usable"
+                );
+                let _ = workspace_repo
+                    .update_status(
+                        &workspace.conversation_id,
+                        crate::domain::entities::AgentConversationWorkspaceStatus::Missing,
+                    )
+                    .await;
+                return;
+            }
+        };
+
+    match pr_poller_registry
+        .process_agent_workspace_review_feedback_once(
+            &workspace.conversation_id,
+            pr_number,
+            &worktree_path,
+            Arc::clone(&workspace_repo),
+            Arc::clone(&chat_service),
+        )
+        .await
+    {
+        Ok(true) => {
+            tracing::info!(
+                conversation_id = workspace.conversation_id.as_str(),
+                pr_number,
+                "Agent workspace PR startup recovery: routed GitHub requested-changes review before restarting poller"
+            );
+            return;
+        }
+        Ok(false) => {}
+        Err(error) => {
+            tracing::warn!(
+                conversation_id = workspace.conversation_id.as_str(),
+                pr_number,
+                error = %error,
+                "Agent workspace PR startup recovery: failed to inspect GitHub review feedback before poller restart"
+            );
+        }
+    }
+
+    pr_poller_registry.start_agent_workspace_polling(
+        workspace.conversation_id,
+        pr_number,
+        worktree_path,
+        workspace_repo,
+        chat_service,
+    );
 }
 
 async fn recover_one_pr_poller(

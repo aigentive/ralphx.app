@@ -159,7 +159,7 @@ async function handleMcpRequest(req, res, keyContext, _config) {
     // Create new MCP server + transport per session (stateful mode)
     const server = createMcpServer();
     // Register tools with key context provider
-    let currentKeyContext = keyContext;
+    let currentKeyContext = withRuntimeContextFromUrl(keyContext, req.url);
     registerTools(server, () => currentKeyContext);
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
@@ -178,6 +178,34 @@ async function handleMcpRequest(req, res, keyContext, _config) {
     };
     await server.connect(transport);
     await transport.handleRequest(req, res, parsedBody);
+}
+function withRuntimeContextFromUrl(keyContext, rawUrl) {
+    if (keyContext.tauriOrigin !== true || !rawUrl) {
+        return keyContext;
+    }
+    let url;
+    try {
+        url = new URL(rawUrl, "http://127.0.0.1");
+    }
+    catch {
+        return keyContext;
+    }
+    const runtime = {
+        contextType: url.searchParams.get("context_type") ?? undefined,
+        contextId: url.searchParams.get("context_id") ?? undefined,
+        projectId: url.searchParams.get("project_id") ?? undefined,
+        parentConversationId: url.searchParams.get("parent_conversation_id") ?? undefined,
+    };
+    if (!runtime.contextType &&
+        !runtime.contextId &&
+        !runtime.projectId &&
+        !runtime.parentConversationId) {
+        return keyContext;
+    }
+    return {
+        ...keyContext,
+        runtime,
+    };
 }
 /** Reset connection counter — used in tests to clean up between runs. */
 export function resetActiveConnections() {

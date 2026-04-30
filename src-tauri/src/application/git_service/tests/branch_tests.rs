@@ -1,6 +1,52 @@
 use super::super::*;
 use std::process::Command;
 
+#[tokio::test]
+async fn test_resolve_project_default_branch_prefers_configured_branch() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let branch = GitService::resolve_project_default_branch(temp_dir.path(), Some(" develop "))
+        .await;
+
+    assert_eq!(branch, "develop");
+}
+
+#[tokio::test]
+async fn test_resolve_project_default_branch_detects_git_default_without_config() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("tracked.txt"), "initial").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    let branch = GitService::resolve_project_default_branch(repo, None).await;
+
+    assert_eq!(branch, "main");
+}
+
 // =========================================================================
 // clean_working_tree Tests
 // =========================================================================

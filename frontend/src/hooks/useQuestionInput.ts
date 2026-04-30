@@ -1,7 +1,7 @@
 /**
  * useQuestionInput — manages chip selection, input value sync, and question-aware send
  *
- * Extracted from ChatPanel to keep it under 500 LOC.
+ * Shared by embedded chat hosts to keep question handling isolated.
  * Handles selectedOptions state, chip click logic (single/multi-select),
  * onMatchedOptions callback, controlled input value, and question-aware send.
  */

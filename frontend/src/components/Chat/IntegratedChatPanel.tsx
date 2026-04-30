@@ -1,7 +1,7 @@
 /**
  * IntegratedChatPanel - Context-aware chat panel for split-screen layout
  *
- * This is a refactored version of ChatPanel that:
+ * This is the shared embedded chat surface that:
  * - Is part of the layout, not fixed positioned
  * - Supports context switching based on selected task
  * - No slide animations (instant show/hide)
@@ -10,11 +10,9 @@
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
-import { useShallow } from "zustand/react/shallow";
 import { type VirtuosoHandle } from "react-virtuoso";
 import {
   useChat,
-  useConversation,
   useConversationHistoryWindow,
   chatKeys,
 } from "@/hooks/useChat";
@@ -26,13 +24,14 @@ import {
   selectIsSending,
   selectToolCallStartTimes,
   selectLastAgentEventTimestamp,
+  type AgentStatus,
 } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
 import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { chatApi } from "@/api/chat";
+import { chatApi, type SendAgentMessageResult } from "@/api/chat";
 import { api } from "@/lib/tauri";
 import { withAlpha } from "@/lib/theme-colors";
 import { getContextConfig, buildStoreKey } from "@/lib/chat-context-registry";
@@ -45,7 +44,7 @@ import { ChatSessionToolbar } from "./ChatSessionToolbar";
 import { ChatSessionChips } from "./ChatSessionChips";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
-import { ChatInput } from "./ChatInput";
+import { ChatInput, type QuestionMode } from "./ChatInput";
 import { ChatMessageList } from "./ChatMessageList";
 import {
   EmptyState,
@@ -54,6 +53,7 @@ import {
   PreviousRunBanner,
   animationStyles,
   HistoryEmptyState,
+  ConversationTranscriptPlaceholders,
 } from "./IntegratedChatPanel.components";
 import { useChatActions } from "@/hooks/useChatActions";
 import { useChatEvents } from "@/hooks/useChatEvents";
@@ -66,9 +66,11 @@ import { RecoveryPromptDialog } from "@/components/recovery/RecoveryPromptDialog
 import { useEventBus } from "@/providers/EventProvider";
 import { logger } from "@/lib/logger";
 import { ChildSessionNotification } from "./ChildSessionNotification";
+import {
+  useChatAttachments,
+  type ChatAttachment as PendingChatAttachment,
+} from "@/hooks/useChatAttachments";
 import { useIdeationStore } from "@/stores/ideationStore";
-import { useChatAttachments } from "@/hooks/useChatAttachments";
-import { ideationApi } from "@/api/ideation";
 import { getModelLabel } from "@/lib/model-utils";
 import { selectIsTeamActive, selectEffectiveModel } from "@/stores/chatStore";
 import { useTeamStore, selectTeammates, selectActiveTeam, selectTeammateByName, type TeammateStatus } from "@/stores/teamStore";
@@ -80,13 +82,16 @@ import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { useTeamHistory } from "@/hooks/useTeamHistory";
+import { useTeamModeAvailability } from "@/hooks/useTeamModeAvailability";
 import { getTeamStatus } from "@/api/team";
 import { TimeoutWarning } from "./TimeoutWarning";
 import { ChildSessionNavigationContext } from "./tool-widgets/ChildSessionNavigationContext";
-import { toast } from "sonner";
+import { ChildSessionTranscriptModal } from "./ChildSessionTranscriptModal";
+import { cn } from "@/lib/utils";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
+const EMPTY_SORTED_MESSAGES: never[] = [];
 
 // ============================================================================
 // Main Component
@@ -105,6 +110,18 @@ interface IntegratedChatPanelProps {
   inputContainerClassName?: string;
   /** Custom header content to replace default context indicator */
   headerContent?: React.ReactNode;
+  /** Optional secondary row rendered below the primary chat header. */
+  headerSubContent?: React.ReactNode;
+  /** Hide provider/model/stat chips and conversation switcher in the header. */
+  hideHeaderSessionControls?: boolean;
+  /** Hide the secondary session toolbar below the header. */
+  hideSessionToolbar?: boolean;
+  /** Optional override for the chat surface background. */
+  surfaceBackground?: string;
+  /** Optional max-width wrapper for conversation content. */
+  contentWidthClassName?: string;
+  /** Extra session ids whose ask-user prompts should surface in this chat. */
+  additionalQuestionSessionIds?: string[];
   /** Called when Escape is pressed with input blurred - used to close the panel */
   onClose?: () => void;
   /** Whether to autofocus chat input on mount */
@@ -113,6 +130,51 @@ interface IntegratedChatPanelProps {
   isVisible?: boolean;
   /** Back navigation action rendered in the toolbar (e.g. "Back to Plan") */
   toolbarBackAction?: { label: string; icon?: React.ReactNode; onClick: () => void };
+  /** Force a specific conversation ID for externally-owned session lists. */
+  conversationIdOverride?: string | undefined;
+  /** Override task selection so host surfaces can ignore the global task detail state. */
+  selectedTaskIdOverride?: string | null | undefined;
+  /** Force a specific store key for externally-owned queue/running state. */
+  storeContextKeyOverride?: string | undefined;
+  /** Override the backend process/queue context id used for recovery, stop, and queued-message edits. */
+  agentProcessContextIdOverride?: string | undefined;
+  /** Optional first-spawn provider/model overrides. */
+  sendOptions?: {
+    conversationId?: string | null;
+    providerHarness?: string | null;
+    modelId?: string | null;
+  };
+  /** Optional host-owned child session navigation. Falls back to transcript modal. */
+  onChildSessionNavigate?: (sessionId: string) => void | Promise<void>;
+  renderComposer?: (props: IntegratedChatComposerRenderProps) => React.ReactNode;
+  onUserMessageSent?: (payload: {
+    content: string;
+    result: SendAgentMessageResult;
+  }) => void | Promise<void>;
+}
+
+export interface IntegratedChatComposerRenderProps {
+  onSend: (message: string) => Promise<void>;
+  onStop: () => Promise<void>;
+  agentStatus: AgentStatus;
+  isSending: boolean;
+  hasQueuedMessages: boolean;
+  onEditLastQueued: () => void;
+  isReadOnly: boolean;
+  placeholder: string;
+  autoFocus: boolean;
+  enableAttachments: boolean;
+  attachments: PendingChatAttachment[];
+  onFilesSelected: (files: File[]) => Promise<PendingChatAttachment[]>;
+  onRemoveAttachment: (id: string) => Promise<void>;
+  attachmentsUploading: boolean;
+  questionMode?: QuestionMode;
+  value?: string;
+  onChange?: (value: string) => void;
+  /** Model in use for this chat context, when known. Read-only signal. */
+  effectiveModel?: { id: string; label: string } | undefined;
+  /** Provider harness label (e.g. "claude", "codex") for this chat context. */
+  providerHarness?: string | null | undefined;
 }
 
 export function IntegratedChatPanel({
@@ -122,22 +184,47 @@ export function IntegratedChatPanel({
   showHelperTextAlways = false,
   inputContainerClassName,
   headerContent,
+  headerSubContent,
+  hideHeaderSessionControls = false,
+  hideSessionToolbar = false,
+  surfaceBackground,
+  contentWidthClassName,
+  additionalQuestionSessionIds,
   onClose,
   autoFocusInput = true,
   isVisible = true,
   toolbarBackAction,
+  conversationIdOverride,
+  selectedTaskIdOverride,
+  storeContextKeyOverride,
+  agentProcessContextIdOverride,
+  sendOptions,
+  onChildSessionNavigate,
+  renderComposer,
+  onUserMessageSent,
 }: IntegratedChatPanelProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
   const pollStartRef = useRef<number | null>(null);
-  const selectedTaskId = useUiStore((s) => s.selectedTaskId);
+  const transcriptHydrationJobRef = useRef<{ frame: number | null; timer: number | null } | null>(null);
+  const [hydratedTranscriptConversationId, setHydratedTranscriptConversationId] =
+    useState<string | null>(null);
+  const [transcriptPaintCoverConversationId, setTranscriptPaintCoverConversationId] =
+    useState<string | null>(null);
+  const [childSessionModalId, setChildSessionModalId] = useState<string | null>(null);
+  const ideationSessionsById = useIdeationStore((s) => s.sessions);
+  const globalSelectedTaskId = useUiStore((s) => s.selectedTaskId);
+  const selectedTaskId =
+    selectedTaskIdOverride === undefined ? globalSelectedTaskId : selectedTaskIdOverride;
   // History state from store - shared with TaskDetailOverlay for time-travel feature
   const taskHistoryState = useUiStore((s) => s.taskHistoryState);
   const isHistoryMode = !!taskHistoryState;
   const hasHistoryConversation = !!taskHistoryState?.conversationId;
 
   // Get task data from React Query (useTasks) which has full task data
-  const { data: tasks = EMPTY_TASKS } = useTasks(projectId);
+  const { data: tasks = EMPTY_TASKS } = useTasks(projectId, {
+    enabled: Boolean(selectedTaskId),
+  });
 
   // Read from Zustand store (event-updated, sync) — same pattern as TaskDetailOverlay
   const taskFromStore = useTaskStore((state) =>
@@ -216,10 +303,16 @@ export function IntegratedChatPanel({
     isMergeMode,
     isHistoryMode,
     // Pass history mode overrides for conversation selection
-    overrideConversationId: taskHistoryState?.conversationId,
+    overrideConversationId: conversationIdOverride ?? taskHistoryState?.conversationId,
+    storeContextKeyOverride,
     overrideAgentRunId: taskHistoryState?.agentRunId,
     isVisible,
   });
+  const agentProcessContextId = agentProcessContextIdOverride ?? currentContextId;
+  const {
+    ideationTeamModeAvailable,
+    executionTeamModeAvailable,
+  } = useTeamModeAvailability(projectId);
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -243,10 +336,17 @@ export function IntegratedChatPanel({
   const teammates = useTeamStore(teammatesSelector);
   const pendingPlan = useTeamStore((s) => s.pendingPlans[storeContextKey]);
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("lead");
+  const teamModeUiAvailable =
+    currentContextType === "ideation"
+      ? ideationTeamModeAvailable
+      : currentContextType === "task_execution"
+        ? executionTeamModeAvailable
+        : false;
+  const showTeamUi = isTeamActive && teamModeUiAvailable;
   const sendTarget = teamFilter === "lead" || !teamFilter ? "lead" : teamFilter;
 
   // Teammate tab: resolve the teammate's conversation_id for standard chat pipeline
-  const isTeammateTab = !!teamFilter && teamFilter !== "lead";
+  const isTeammateTab = showTeamUi && !!teamFilter && teamFilter !== "lead";
   const activeTeammateSelector = useMemo(
     () => isTeammateTab ? selectTeammateByName(storeContextKey, teamFilter) : () => null,
     [storeContextKey, teamFilter, isTeammateTab],
@@ -258,6 +358,12 @@ export function IntegratedChatPanel({
   const activeTeamSelector = useMemo(() => selectActiveTeam(storeContextKey), [storeContextKey]);
   const activeTeam = useTeamStore(activeTeamSelector);
   const isTeamHistorical = activeTeam?.isHistorical === true;
+
+  useEffect(() => {
+    if (!showTeamUi && teamFilter !== "lead") {
+      setTeamFilter("lead");
+    }
+  }, [showTeamUi, teamFilter]);
 
   // Team events subscription — always pass contextKey so team:created is never missed
   useTeamEvents(storeContextKey);
@@ -410,7 +516,7 @@ export function IntegratedChatPanel({
   const activeBashCall = streamingToolCalls.find((tc) => tc.name.toLowerCase() === "bash");
   const bashStartTime = activeBashCall ? toolCallStartTimes[activeBashCall.id] : undefined;
   // Context-aware threshold: 3600s for team mode, 600s otherwise
-  const effectiveTimeoutMs = isTeamActive ? 3_600_000 : 600_000;
+  const effectiveTimeoutMs = showTeamUi ? 3_600_000 : 600_000;
   const showTimeoutWarning = activeBashCall !== undefined && bashStartTime !== undefined && activeBashCall.id !== dismissedTimeoutCallId;
 
   // Auto-reset dismissed ID when the dismissed call is no longer active
@@ -427,7 +533,8 @@ export function IntegratedChatPanel({
     isVisible,
     storeKey: storeContextKey,
     disableAutoSelect: true,
-    skipActiveConversationQuery: !!ideationSessionId,
+    skipActiveConversationQuery: true,
+    ...(sendOptions !== undefined ? { sendOptions } : {}),
   });
 
   // Single dynamic query for all agent contexts (execution/review/merge)
@@ -482,37 +589,61 @@ export function IntegratedChatPanel({
   }, [autoSelectConversation, conversationsData, conversationsLoading, isVisible]);
 
   const {
-    messages: activeConversation,
     sendMessage,
     switchConversation: handleSelectConversation,
     createConversation: handleNewConversation,
   } = regularChatData;
 
-  // Load teammate conversation messages when on a teammate tab
-  const teammateConversation = useConversation(teammateConversationId);
-  const ideationConversationHistory = useConversationHistoryWindow(
-    ideationSessionId && !isTeammateTab ? activeConversationId : null,
+  // Load active transcript windows through the shared tail-window query. The
+  // backend returns each newest window oldest-to-newest; older pages prepend.
+  const teammateConversationHistory = useConversationHistoryWindow(
+    isTeammateTab ? teammateConversationId : null,
     {
-      enabled: !!ideationSessionId && !isTeammateTab,
+      enabled: !!teammateConversationId && isTeammateTab,
+      pageSize: 40,
+    }
+  );
+  const primaryConversationHistory = useConversationHistoryWindow(
+    !isTeammateTab ? activeConversationId : null,
+    {
+      enabled: !!activeConversationId && !isTeammateTab,
       pageSize: 40,
     }
   );
 
   const primaryConversationData =
-    ideationSessionId && !isTeammateTab
-      ? ideationConversationHistory.data
-      : activeConversation.data;
+    !isTeammateTab
+      ? primaryConversationHistory.data ?? regularChatData.messages.data
+      : regularChatData.messages.data;
+  const currentPrimaryConversationData =
+    activeConversationId &&
+    primaryConversationData &&
+    (!primaryConversationData.conversation?.id ||
+      primaryConversationData.conversation.id === activeConversationId)
+      ? primaryConversationData
+      : null;
+  const currentTeammateConversationData =
+    teammateConversationId &&
+    teammateConversationHistory.data &&
+    (!teammateConversationHistory.data.conversation?.id ||
+      teammateConversationHistory.data.conversation.id === teammateConversationId)
+      ? teammateConversationHistory.data
+      : null;
 
   // Check if active conversation belongs to current context (needed by recovery effects below)
   const activeConversationContext = isTeammateTab
-    ? teammateConversation.data?.conversation
-    : (primaryConversationData?.conversation ?? regularChatData.messages.data?.conversation);
+    ? currentTeammateConversationData?.conversation
+    : (
+      currentPrimaryConversationData?.conversation ??
+      conversationsData?.find((conversation) => conversation.id === activeConversationId)
+    );
   const isConversationInCurrentContext = useMemo(
     () =>
+      Boolean(currentPrimaryConversationData && !currentPrimaryConversationData.conversation) ||
       (activeConversationContext?.contextType === currentContextType ||
        (currentContextType === "task" && activeConversationContext?.contextType === "task_execution")) &&
       activeConversationContext?.contextId === currentContextId,
-    [activeConversationContext?.contextType, activeConversationContext?.contextId,
+    [currentPrimaryConversationData, activeConversationContext?.contextType, activeConversationContext?.contextId,
      currentContextType, currentContextId]
   );
 
@@ -529,7 +660,7 @@ export function IntegratedChatPanel({
     activeConversationId,
     storeContextKey,
     currentContextType,
-    currentContextId,
+    currentContextId: agentProcessContextId,
     isHistoryMode,
     isAgentContext,
     isAgentRunning,
@@ -565,14 +696,15 @@ export function IntegratedChatPanel({
     uploadFiles,
     removeAttachment,
     clearAttachments,
+    uploading,
   } = useChatAttachments(activeConversationId ?? "");
 
   // Effective conversation ID: teammate's when on teammate tab, lead's otherwise
   const effectiveConversationId = isTeammateTab ? teammateConversationId : activeConversationId;
   const activeConversationMeta = useMemo(() => {
     const queriedConversation = isTeammateTab
-      ? teammateConversation.data?.conversation
-      : primaryConversationData?.conversation;
+      ? currentTeammateConversationData?.conversation
+      : currentPrimaryConversationData?.conversation;
 
     if (queriedConversation) {
       return queriedConversation;
@@ -585,8 +717,8 @@ export function IntegratedChatPanel({
     );
   }, [
     isTeammateTab,
-    teammateConversation.data?.conversation,
-    primaryConversationData?.conversation,
+    currentTeammateConversationData?.conversation,
+    currentPrimaryConversationData?.conversation,
     conversationsData,
     effectiveConversationId,
   ]);
@@ -596,20 +728,100 @@ export function IntegratedChatPanel({
   const messagesData = useMemo(
     () => {
       if (isTeammateTab) {
-        return teammateConversation.data?.messages ?? [];
+        return currentTeammateConversationData?.messages ?? [];
       }
-      return activeConversationId && isConversationInCurrentContext
-        ? (primaryConversationData?.messages ?? [])
+      return activeConversationId && isConversationInCurrentContext && currentPrimaryConversationData
+        ? currentPrimaryConversationData.messages
         : [];
     },
     [
       isTeammateTab,
-      teammateConversation.data?.messages,
+      currentTeammateConversationData?.messages,
       activeConversationId,
       isConversationInCurrentContext,
-      primaryConversationData?.messages,
+      currentPrimaryConversationData,
     ]
   );
+
+  // Loading state: show skeleton when conversations list is loading OR active conversation is loading
+  const isConversationsLoading = conversations.isLoading;
+  const isActiveConversationLoading = activeConversationId
+    ? isTeammateTab
+      ? teammateConversationHistory.isLoading && !currentTeammateConversationData
+      : primaryConversationHistory.isLoading && !primaryConversationData
+    : false;
+  const isLoading = isConversationsLoading || isActiveConversationLoading;
+  const transcriptConversationId = effectiveConversationId ?? activeConversationId ?? null;
+  const hasTranscriptMessages = messagesData.length > 0;
+  const shouldDeferTranscriptHydration =
+    Boolean(transcriptConversationId) &&
+    !isLoading &&
+    hasTranscriptMessages &&
+    hydratedTranscriptConversationId !== transcriptConversationId;
+
+  useEffect(() => {
+    const clearHydrationJob = () => {
+      const job = transcriptHydrationJobRef.current;
+      if (!job) {
+        return;
+      }
+      if (job.frame !== null) {
+        window.cancelAnimationFrame(job.frame);
+      }
+      if (job.timer !== null) {
+        window.clearTimeout(job.timer);
+      }
+      transcriptHydrationJobRef.current = null;
+    };
+
+    clearHydrationJob();
+
+    if (!transcriptConversationId || isLoading) {
+      return clearHydrationJob;
+    }
+
+    if (!hasTranscriptMessages) {
+      if (hydratedTranscriptConversationId !== transcriptConversationId) {
+        setHydratedTranscriptConversationId(transcriptConversationId);
+      }
+      return clearHydrationJob;
+    }
+
+    if (hydratedTranscriptConversationId === transcriptConversationId) {
+      return clearHydrationJob;
+    }
+
+    const job = { frame: null as number | null, timer: null as number | null };
+    const hydrate = () => {
+      job.timer = null;
+      transcriptHydrationJobRef.current = null;
+      setTranscriptPaintCoverConversationId(transcriptConversationId);
+      setHydratedTranscriptConversationId(transcriptConversationId);
+    };
+
+    if (typeof window.requestAnimationFrame === "function") {
+      job.frame = window.requestAnimationFrame(() => {
+        job.frame = null;
+        job.timer = window.setTimeout(hydrate, 0);
+      });
+    } else {
+      job.timer = window.setTimeout(hydrate, 0);
+    }
+
+    transcriptHydrationJobRef.current = job;
+    return clearHydrationJob;
+  }, [
+    hasTranscriptMessages,
+    hydratedTranscriptConversationId,
+    isLoading,
+    transcriptConversationId,
+  ]);
+
+  const handleTranscriptInitialPaintReady = useCallback((conversationId: string) => {
+    setTranscriptPaintCoverConversationId((current) =>
+      current === conversationId ? null : current,
+    );
+  }, []);
 
   // Debug logging for history mode
   logger.debug('[IntegratedChatPanel] Context mode:', {
@@ -629,11 +841,14 @@ export function IntegratedChatPanel({
   } = useChatActions({
     contextType: currentContextType,
     contextId: currentContextId,
+    queueContextId: agentProcessContextId,
     storeContextKey,
     selectedTaskId: selectedTaskId ?? undefined,
     ideationSessionId,
     sendMessage,
+    sendOptions,
     messageCount: messagesData.length,
+    onUserMessageSent,
   });
 
   // Wrap handleSend to include attachment IDs, team target, and clear attachments after send.
@@ -643,17 +858,17 @@ export function IntegratedChatPanel({
     const attachmentIds = attachments.map(a => a.id);
     logger.debug("[ChatScroll] handleSend firing", {
       hasAttachments: attachmentIds.length > 0,
-      isTeamActive,
+      isTeamActive: showTeamUi,
     });
     await handleSendBase(
       message,
       attachmentIds.length > 0 ? attachmentIds : undefined,
-      isTeamActive ? sendTarget : undefined
+      showTeamUi ? sendTarget : undefined
     );
     if (attachmentIds.length > 0) {
       clearAttachments();
     }
-  }, [attachments, handleSendBase, clearAttachments, isTeamActive, sendTarget]);
+  }, [attachments, handleSendBase, clearAttachments, showTeamUi, sendTarget]);
 
   // Wrapper for handleEditLastQueued that provides the queued messages
   const handleEditLastQueuedWrapper = () => {
@@ -663,14 +878,14 @@ export function IntegratedChatPanel({
   // Handle stopping agent - clear streaming state
   const handleStopAgentWrapper = useCallback(async () => {
     // Stop all teammates when team is active, otherwise just stop the lead agent
-    if (isTeamActive) {
+    if (showTeamUi) {
       teamActions.stopTeam.mutate();
     }
     await handleStopAgent();
     setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
     setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
     setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
-  }, [isTeamActive, teamActions, handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
+  }, [showTeamUi, teamActions, handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
 
   useChatEvents({
     activeConversationId: effectiveConversationId,
@@ -683,7 +898,18 @@ export function IntegratedChatPanel({
     storeKey: storeContextKey,
   });
 
-  // Ask user question state — scoped to current context (ideation session, task, or project)
+  const bridgedQuestionSessionId = useMemo(
+    () => additionalQuestionSessionIds?.find((id) => id && id !== currentContextId),
+    [additionalQuestionSessionIds, currentContextId],
+  );
+
+  // Ask user question state — scoped to current context plus an attached child run when present.
+  const primaryQuestionState = useAskUserQuestion(currentContextId);
+  const bridgedQuestionState = useAskUserQuestion(bridgedQuestionSessionId);
+  const questionState =
+    primaryQuestionState.activeQuestion || primaryQuestionState.answeredQuestion
+      ? primaryQuestionState
+      : bridgedQuestionState;
   const {
     activeQuestion,
     answeredQuestion,
@@ -691,7 +917,7 @@ export function IntegratedChatPanel({
     dismissQuestion,
     clearAnswered,
     isLoading: isSubmittingAnswer,
-  } = useAskUserQuestion(currentContextId);
+  } = questionState;
 
   // Question UI state — chip selection, input sync, question-aware send
   const {
@@ -707,46 +933,26 @@ export function IntegratedChatPanel({
     handleSend,
   });
 
-  // Ideation store for session navigation
-  const selectSession = useIdeationStore((s) => s.selectSession);
-  const allSessions = useIdeationStore(useShallow((s) => Object.values(s.sessions)));
-
-  // Handler for navigating to child session
-  // Fetches from backend if session not in local store (e.g., newly created child)
+  // Handler for opening a child ideation run without leaving the parent chat.
   const handleNavigateToChildSession = useCallback(async (childSessionId: string) => {
-    // First check local store
-    const session = allSessions.find((s) => s.id === childSessionId);
-    if (session) {
-      selectSession(session);
+    if (onChildSessionNavigate) {
+      await onChildSessionNavigate(childSessionId);
       return;
     }
-
-    // Session not in store - fetch from backend
-    try {
-      const fetchedSession = await ideationApi.sessions.get(childSessionId);
-      if (fetchedSession) {
-        selectSession(fetchedSession);
-      } else {
-        logger.warn("[IntegratedChatPanel] Child session not found:", childSessionId);
-        toast.error("Session not found");
-      }
-    } catch (error) {
-      logger.warn("[IntegratedChatPanel] Failed to fetch child session:", { childSessionId, error });
-      toast.error("Session not found");
-    }
-  }, [allSessions, selectSession]);
+    setChildSessionModalId(childSessionId);
+  }, [onChildSessionNavigate]);
 
   // Hydrate effectiveModel from HTTP session data for inactive ideation sessions.
   // This covers the case where the user opens a past session that was never live
   // in the current app session — the store will be empty but the DB has the model.
   useEffect(() => {
     if (!ideationSessionId) return;
-    const session = allSessions.find((s) => s.id === ideationSessionId);
+    const session = ideationSessionsById[ideationSessionId];
     const lastEffectiveModel = session?.lastEffectiveModel;
     if (!lastEffectiveModel) return;
     const model = { id: lastEffectiveModel, label: getModelLabel(lastEffectiveModel) };
     useChatStore.getState().setEffectiveModel(storeContextKey, model);
-  }, [ideationSessionId, allSessions, storeContextKey]);
+  }, [ideationSessionId, ideationSessionsById, storeContextKey]);
 
   // Backfill effectiveModel from agentRunQuery for execution/review/merge contexts on reopen/refresh.
   // Guard: skip if live agent:run_started already populated the store, or if modelId is null.
@@ -760,6 +966,35 @@ export function IntegratedChatPanel({
       label: agentRunModelLabel ?? getModelLabel(agentRunModelId),
     });
   }, [storeContextKey, agentRunModelId, agentRunModelLabel]);
+
+  // Final fallback: derive runtime context from the latest non-user message.
+  // Covers child chats (ideation/verification opened from Agents) where the
+  // ideation store hasn't loaded the session and there's no agent run query.
+  // Roles vary ("assistant", "orchestrator", "agent", etc.), so anything
+  // non-user that carries the field is fair game.
+  const latestRuntimeFromMessages = useMemo(() => {
+    let modelId: string | null = null;
+    let providerHarness: string | null = null;
+    for (let i = messagesData.length - 1; i >= 0; i -= 1) {
+      const msg = messagesData[i];
+      if (!msg) continue;
+      if (msg.role === "user") continue;
+      if (!modelId && msg.effectiveModelId) modelId = msg.effectiveModelId;
+      if (!providerHarness && msg.providerHarness) providerHarness = msg.providerHarness;
+      if (modelId && providerHarness) break;
+    }
+    return { modelId, providerHarness };
+  }, [messagesData]);
+  useEffect(() => {
+    const { modelId } = latestRuntimeFromMessages;
+    if (!modelId) return;
+    if (useChatStore.getState().effectiveModel[storeContextKey]) return;
+    useChatStore.getState().setEffectiveModel(storeContextKey, {
+      id: modelId,
+      label: getModelLabel(modelId),
+    });
+  }, [storeContextKey, latestRuntimeFromMessages]);
+  const fallbackProviderHarness = latestRuntimeFromMessages.providerHarness;
 
   // Handle Escape key to close panel
   useEffect(() => {
@@ -779,6 +1014,10 @@ export function IntegratedChatPanel({
   // Sort messages by createdAt always. Secondary sort by id provides stable
   // tiebreaking when timestamps are equal (e.g. optimistic + DB messages share ms).
   const sortedMessages = useMemo(() => {
+    if (shouldDeferTranscriptHydration) {
+      return EMPTY_SORTED_MESSAGES;
+    }
+
     return [...messagesData]
       // Hide session recovery rehydration prompts from UI.
       // Primary: metadata flag set by backend. Fallback: content prefix for pre-existing rows.
@@ -797,16 +1036,7 @@ export function IntegratedChatPanel({
         if (timeDiff !== 0) return timeDiff;
         return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
       });
-  }, [messagesData]);
-
-  // Loading state: show skeleton when conversations list is loading OR active conversation is loading
-  const isConversationsLoading = conversations.isLoading;
-  const isActiveConversationLoading = activeConversationId
-    ? ideationSessionId && !isTeammateTab
-      ? ideationConversationHistory.isLoading
-      : activeConversation.isLoading
-    : false;
-  const isLoading = isConversationsLoading || isActiveConversationLoading;
+  }, [messagesData, shouldDeferTranscriptHydration]);
 
   // Status badge helpers - disabled in history mode (no live agent)
   // isAgentActive: only true when actively generating (not waiting_for_input)
@@ -840,6 +1070,11 @@ export function IntegratedChatPanel({
     const timer = setTimeout(() => setIsRecentlyActive(false), 10_000 - elapsed);
     return () => clearTimeout(timer);
   }, [lastAgentEventTs]);
+  const conversationContentShellClassName = cn(
+    "w-full",
+    contentWidthClassName ? ["mx-auto", contentWidthClassName] : undefined,
+  );
+  const transcriptTopInsetClassName = undefined;
 
   return (
     <>
@@ -854,14 +1089,19 @@ export function IntegratedChatPanel({
       >
         {/* Inner surface — flat with blur, no perimeter or radius. */}
         <div
-          className="flex-1 flex flex-col overflow-hidden"
-          style={{
-            background: withAlpha("var(--bg-surface)", 92),
-            backdropFilter: "blur(20px) saturate(180%)",
-            WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          }}
+          className="relative flex-1 flex flex-col overflow-hidden"
+          style={
+            surfaceBackground === "transparent"
+              ? { background: "transparent" }
+              : {
+                  background: surfaceBackground ?? withAlpha("var(--bg-surface)", 92),
+                  backdropFilter: "blur(20px) saturate(180%)",
+                  WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                }
+          }
         >
-          {/* Header — theme-agnostic subtle tint matches ChatPanel overlay.
+          {/* Header — theme-agnostic subtle tint keeps the embedded chrome
+             aligned across themes.
              Previous bg-base@50 produced visible seam on Dark (lum=25 vs
              body lum=30) and collapsed to pure black on HC. Using a tint
              derived from text-primary keeps a consistent 2% brighter band
@@ -871,7 +1111,7 @@ export function IntegratedChatPanel({
             className="flex items-center justify-between h-11 px-3 shrink-0 gap-3"
             style={{
               backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--overlay-faint)",
             }}
           >
             {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} isMergeMode={isMergeMode} />}
@@ -880,71 +1120,76 @@ export function IntegratedChatPanel({
                 ConversationSelector — per 2026-04-19 feedback, the CODEX
                 badge / model / effort / stats popover live in the header
                 row, not in a separate toolbar strip below. */}
-            <div className="ml-auto flex items-center gap-2 min-w-0">
-              <ChatSessionChips
-                contextType={currentContextType as ContextType}
-                contextId={ideationSessionId || selectedTaskId || null}
-                isAgentActive={isAgentActive}
-                conversationId={effectiveConversationId}
-                providerHarness={activeConversationMeta?.providerHarness ?? null}
-                providerSessionId={activeConversationMeta?.providerSessionId ?? null}
-                upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
-                providerProfile={activeConversationMeta?.providerProfile ?? null}
-                fallbackConversation={activeConversationMeta}
-                fallbackMessages={sortedMessages}
-                {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
-              />
+            {!hideHeaderSessionControls && (
+              <div className="ml-auto flex items-center gap-2 min-w-0">
+                <ChatSessionChips
+                  contextType={currentContextType as ContextType}
+                  contextId={ideationSessionId || selectedTaskId || null}
+                  isAgentActive={isAgentActive}
+                  conversationId={effectiveConversationId}
+                  providerHarness={activeConversationMeta?.providerHarness ?? null}
+                  providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+                  upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
+                  providerProfile={activeConversationMeta?.providerProfile ?? null}
+                  fallbackConversation={activeConversationMeta}
+                  fallbackMessages={sortedMessages}
+                  {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
+                />
 
-              {/* Conversation Selector */}
-              <ConversationSelector
-              contextType={
-                ideationSessionId
-                  ? "ideation"
-                  : isMergeMode
-                    ? "merge"
-                    : isExecutionMode
-                      ? "task_execution"
-                      : isReviewMode
-                        ? "review"
-                        : selectedTaskId
-                          ? "task"
-                          : "project"
-              }
-              contextId={ideationSessionId || selectedTaskId || projectId}
-              conversations={conversations.data ?? []}
-              activeConversationId={activeConversationId}
-              onSelectConversation={handleSelectConversation}
-              onNewConversation={handleNewConversation}
-              isLoading={conversations.isLoading}
-            />
-            </div>
+                {/* Conversation Selector */}
+                <ConversationSelector
+                  contextType={
+                    ideationSessionId
+                      ? "ideation"
+                      : isMergeMode
+                        ? "merge"
+                        : isExecutionMode
+                          ? "task_execution"
+                          : isReviewMode
+                            ? "review"
+                            : selectedTaskId
+                              ? "task"
+                              : "project"
+                  }
+                  contextId={ideationSessionId || selectedTaskId || projectId}
+                  conversations={conversations.data ?? []}
+                  activeConversationId={activeConversationId}
+                  onSelectConversation={handleSelectConversation}
+                  onNewConversation={handleNewConversation}
+                  isLoading={conversations.isLoading}
+                />
+              </div>
+            )}
           </div>
+          {headerSubContent ?? null}
 
           {/* Session Toolbar — houses StatusActivityBadge + optional back
               action. Provider-context chips are now rendered inline in
               the integrated-chat-header (above), so suppress them here
               via `hideProviderContext` to avoid duplication. */}
-          <ChatSessionToolbar
-            isAgentActive={isAgentActive}
-            agentType={agentType}
-            contextType={currentContextType as ContextType}
-            contextId={ideationSessionId || selectedTaskId || null}
-            agentStatus={isHistoryMode ? "idle" : agentStatus}
-            storeKey={storeContextKey}
-            conversationId={effectiveConversationId}
-            providerHarness={activeConversationMeta?.providerHarness ?? null}
-            providerSessionId={activeConversationMeta?.providerSessionId ?? null}
-            upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
-            providerProfile={activeConversationMeta?.providerProfile ?? null}
-            fallbackConversation={activeConversationMeta}
-            fallbackMessages={sortedMessages}
-            hideProviderContext
-            {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
-            {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
-          />
+          {!hideSessionToolbar && (
+            <ChatSessionToolbar
+              isAgentActive={isAgentActive}
+              agentType={agentType}
+              contextType={currentContextType as ContextType}
+              contextId={ideationSessionId || selectedTaskId || null}
+              agentStatus={isHistoryMode ? "idle" : agentStatus}
+              storeKey={storeContextKey}
+              conversationId={effectiveConversationId}
+              providerHarness={activeConversationMeta?.providerHarness ?? null}
+              providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+              upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
+              providerProfile={activeConversationMeta?.providerProfile ?? null}
+              fallbackConversation={activeConversationMeta}
+              fallbackMessages={sortedMessages}
+              hideProviderContext
+              {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
+              {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
+            />
+          )}
 
           {/* Team Context Bar (team mode only) */}
-          {isTeamActive && teammates.length > 0 && (
+          {showTeamUi && teammates.length > 0 && (
             <TeamContextBar
               contextKey={storeContextKey}
               activeFilter={teamFilter}
@@ -970,6 +1215,10 @@ export function IntegratedChatPanel({
             <div className="flex-1 flex items-center justify-center" data-testid="integrated-chat-messages">
               <LoadingState />
             </div>
+          ) : shouldDeferTranscriptHydration ? (
+            <ConversationTranscriptPlaceholders
+              contentWidthClassName={contentWidthClassName}
+            />
           ) : isEmpty ? (
             <div className="flex-1 flex items-center justify-center" data-testid="integrated-chat-messages">
               {emptyState ??
@@ -984,10 +1233,16 @@ export function IntegratedChatPanel({
               ref={virtuosoRef}
               messages={sortedMessages}
               conversationId={effectiveConversationId}
+              initialPaintCoverKey={
+                transcriptPaintCoverConversationId === transcriptConversationId
+                  ? transcriptPaintCoverConversationId
+                  : null
+              }
+              onInitialPaintReady={handleTranscriptInitialPaintReady}
               firstItemIndex={
-                ideationSessionId && !isTeammateTab
-                  ? ideationConversationHistory.loadedStartIndex
-                  : 0
+                isTeammateTab
+                  ? teammateConversationHistory.loadedStartIndex
+                  : primaryConversationHistory.loadedStartIndex
               }
               failedRun={failedRunProp}
               onDismissFailedRun={setDismissedErrorId}
@@ -998,24 +1253,26 @@ export function IntegratedChatPanel({
               streamingContentBlocks={streamingContentBlocks}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
               isFinalizing={isFinalizing}
-              teamFilter={activeTeam ? teamFilter : undefined}
-              contextKey={activeTeam ? storeContextKey : undefined}
+              teamFilter={showTeamUi && activeTeam ? teamFilter : undefined}
+              contextKey={showTeamUi && activeTeam ? storeContextKey : undefined}
               providerHarness={activeConversationMeta?.providerHarness ?? null}
               providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+              contentWidthClassName={contentWidthClassName}
+              topInsetClassName={transcriptTopInsetClassName}
               hasOlderMessages={
-                !!ideationSessionId &&
-                !isTeammateTab &&
-                ideationConversationHistory.hasOlderMessages
+                isTeammateTab
+                  ? teammateConversationHistory.hasOlderMessages
+                  : primaryConversationHistory.hasOlderMessages
               }
               isFetchingOlderMessages={
-                !!ideationSessionId &&
-                !isTeammateTab &&
-                ideationConversationHistory.isFetchingOlderMessages
+                isTeammateTab
+                  ? teammateConversationHistory.isFetchingOlderMessages
+                  : primaryConversationHistory.isFetchingOlderMessages
               }
               onLoadOlderMessages={
-                ideationSessionId && !isTeammateTab
-                  ? ideationConversationHistory.fetchOlderMessages
-                  : undefined
+                isTeammateTab
+                  ? teammateConversationHistory.fetchOlderMessages
+                  : primaryConversationHistory.fetchOlderMessages
               }
             />
           )}
@@ -1037,42 +1294,69 @@ export function IntegratedChatPanel({
             );
             return otherToolCalls.length > 0 ? (
               <div className="shrink-0 px-3 pb-2">
-                <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} toolCallStartTimes={toolCallStartTimes} />
+                <div className={conversationContentShellClassName}>
+                  <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} toolCallStartTimes={toolCallStartTimes} />
+                </div>
               </div>
             ) : null;
           })()}
 
           {/* Team Plan Approval (shown when lead requests plan approval) */}
-          {pendingPlan && (
-            <TeamPlanApproval
-              plan={pendingPlan}
-              contextKey={storeContextKey}
-            />
+          {showTeamUi && pendingPlan && (
+            <div className="px-3">
+              <div className={conversationContentShellClassName}>
+                <TeamPlanApproval
+                  plan={pendingPlan}
+                  contextKey={storeContextKey}
+                />
+              </div>
+            </div>
           )}
 
           {/* Child Session Notification - shows when follow-up is created (ideation mode only) */}
           {ideationSessionId && !isHistoryMode && (
-            <ChildSessionNotification
-              sessionId={ideationSessionId}
-            />
+            <div className="px-3">
+              <div className={conversationContentShellClassName}>
+                <ChildSessionNotification
+                  sessionId={ideationSessionId}
+                />
+              </div>
+            </div>
           )}
+            <ChildSessionTranscriptModal
+              sessionId={childSessionModalId}
+              open={!!childSessionModalId}
+              onOpenChange={(isOpen) => {
+                if (!isOpen) {
+                  setChildSessionModalId(null);
+                }
+              }}
+            />
           </ChildSessionNavigationContext.Provider>
 
           {/* Previous Run Banner - shown when viewing stale agent conversation */}
           {isAgentContext && !isHistoryMode && agentStatus === "idle" && agentRunQuery.data?.status !== "running" && !isSending && sortedMessages.length > 0 && !isRecentlyActive && (
-            <PreviousRunBanner
-              agentRunStatus={agentRunQuery.data?.status ?? null}
-              contextType={isMergeMode ? "merge" : isReviewMode ? "review" : "execution"}
-            />
+            <div className="px-3">
+              <div className={conversationContentShellClassName}>
+                <PreviousRunBanner
+                  agentRunStatus={agentRunQuery.data?.status ?? null}
+                  contextType={isMergeMode ? "merge" : isReviewMode ? "review" : "execution"}
+                />
+              </div>
+            </div>
           )}
 
           {/* Team Filter Tabs (team mode — above input area) */}
-          {isTeamActive && teammates.length > 0 && (
-            <TeamFilterTabs
-              teammates={teammates}
-              activeFilter={teamFilter}
-              onFilterChange={setTeamFilter}
-            />
+          {showTeamUi && teammates.length > 0 && (
+            <div className="px-3">
+              <div className={conversationContentShellClassName}>
+                <TeamFilterTabs
+                  teammates={teammates}
+                  activeFilter={teamFilter}
+                  onFilterChange={setTeamFilter}
+                />
+              </div>
+            </div>
           )}
 
           {/* Input Area — same theme-agnostic tint as header for symmetric
@@ -1086,59 +1370,99 @@ export function IntegratedChatPanel({
               borderTop: "1px solid var(--border-subtle)",
             }}
           >
-            {/* Queued Messages - unified queue with context-aware keys */}
-            {queuedMessages.length > 0 && (
-              <div className="p-3 pb-0">
-                <QueuedMessageList
-                  messages={queuedMessages}
-                  onEdit={handleEditQueuedMessage}
-                  onDelete={handleDeleteQueuedMessage}
+            <div
+              data-testid="integrated-chat-input-shell"
+              className={conversationContentShellClassName}
+            >
+              {/* Queued Messages - unified queue with context-aware keys */}
+              {queuedMessages.length > 0 && (
+                <div className="p-3 pb-0">
+                  <QueuedMessageList
+                    messages={queuedMessages}
+                    onEdit={handleEditQueuedMessage}
+                    onDelete={handleDeleteQueuedMessage}
+                  />
+                </div>
+              )}
+
+              {/* Question Input Banner - renders above ChatInput when question is active */}
+              {(activeQuestion || answeredQuestion) && (
+                <QuestionInputBanner
+                  key={activeQuestion?.requestId ?? 'answered'}
+                  question={activeQuestion ?? null}
+                  selectedIndices={selectedOptions}
+                  onChipClick={handleChipClick}
+                  onDismiss={dismissQuestion}
+                  answeredValue={answeredQuestion}
+                  onDismissAnswered={clearAnswered}
                 />
+              )}
+
+              {/* Chat Input — wrapper padding matches ExecutionControlBar's
+                  outer `p-2` so the top border of the composer aligns with
+                  the top border of the execution bar across the split pane. */}
+              <div className="p-2">
+                {renderComposer ? (
+                  renderComposer({
+                    onSend: activeQuestion ? handleQuestionSend : handleSend,
+                    onStop: handleStopAgentWrapper,
+                    agentStatus,
+                    isSending: isSending || isSubmittingAnswer,
+                    hasQueuedMessages: queuedMessages.length > 0,
+                    onEditLastQueued: handleEditLastQueuedWrapper,
+                    isReadOnly: isHistoryMode,
+                    placeholder: getContextConfig(currentContextType).placeholder,
+                    autoFocus: autoFocusInput,
+                    enableAttachments: !!activeConversationId && !isHistoryMode,
+                    attachments,
+                    onFilesSelected: uploadFiles,
+                    onRemoveAttachment: removeAttachment,
+                    attachmentsUploading: uploading,
+                    effectiveModel,
+                    providerHarness:
+                      activeConversationMeta?.providerHarness ??
+                      fallbackProviderHarness ??
+                      null,
+                    ...(activeQuestion
+                      ? {
+                          value: questionInputValue,
+                          onChange: setQuestionInputValue,
+                          questionMode: {
+                            optionCount: activeQuestion.options.length,
+                            multiSelect: activeQuestion.multiSelect,
+                            onMatchedOptions: handleMatchedOptions,
+                          },
+                        }
+                      : {}),
+                  })
+                ) : (
+                  <ChatInput
+                    onSend={activeQuestion ? handleQuestionSend : handleSend}
+                    onStop={handleStopAgentWrapper}
+                    agentStatus={agentStatus}
+                    isSending={isSending || isSubmittingAnswer}
+                    hasQueuedMessages={queuedMessages.length > 0}
+                    onEditLastQueued={handleEditLastQueuedWrapper}
+                    isReadOnly={isHistoryMode}
+                    placeholder={getContextConfig(currentContextType).placeholder}
+                    showHelperText={showHelperTextAlways}
+                    {...(activeQuestion ? {
+                      value: questionInputValue,
+                      onChange: setQuestionInputValue,
+                      questionMode: {
+                        optionCount: activeQuestion.options.length,
+                        multiSelect: activeQuestion.multiSelect,
+                        onMatchedOptions: handleMatchedOptions,
+                      },
+                    } : {})}
+                    autoFocus={autoFocusInput}
+                    enableAttachments={!!activeConversationId && !isHistoryMode}
+                    attachments={attachments}
+                    onFilesSelected={uploadFiles}
+                    onRemoveAttachment={removeAttachment}
+                  />
+                )}
               </div>
-            )}
-
-            {/* Question Input Banner - renders above ChatInput when question is active */}
-            {(activeQuestion || answeredQuestion) && (
-              <QuestionInputBanner
-                key={activeQuestion?.requestId ?? 'answered'}
-                question={activeQuestion ?? null}
-                selectedIndices={selectedOptions}
-                onChipClick={handleChipClick}
-                onDismiss={dismissQuestion}
-                answeredValue={answeredQuestion}
-                onDismissAnswered={clearAnswered}
-              />
-            )}
-
-            {/* Chat Input — wrapper padding matches ExecutionControlBar's
-                outer `p-2` so the top border of the composer aligns with
-                the top border of the execution bar across the split pane. */}
-            <div className="p-2">
-              <ChatInput
-                onSend={activeQuestion ? handleQuestionSend : handleSend}
-                onStop={handleStopAgentWrapper}
-                agentStatus={agentStatus}
-                isSending={isSending || isSubmittingAnswer}
-                hasQueuedMessages={queuedMessages.length > 0}
-                onEditLastQueued={handleEditLastQueuedWrapper}
-                isReadOnly={isHistoryMode}
-                placeholder={getContextConfig(currentContextType).placeholder}
-                showHelperText={showHelperTextAlways}
-                {...(activeQuestion ? {
-                  value: questionInputValue,
-                  onChange: setQuestionInputValue,
-                  questionMode: {
-                    optionCount: activeQuestion.options.length,
-                    multiSelect: activeQuestion.multiSelect,
-                    onMatchedOptions: handleMatchedOptions,
-                  },
-                } : {})}
-                autoFocus={autoFocusInput}
-                enableAttachments={!!activeConversationId && !isHistoryMode}
-                attachments={attachments}
-                onFilesSelected={uploadFiles}
-                onRemoveAttachment={removeAttachment}
-              />
             </div>
           </div>
         </div>

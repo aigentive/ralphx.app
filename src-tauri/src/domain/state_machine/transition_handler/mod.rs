@@ -56,7 +56,9 @@ pub use merge_completion::{
     clear_pending_cleanup_metadata, deferred_merge_cleanup, has_no_code_changes_metadata,
     has_pending_cleanup_metadata, set_no_code_changes_metadata, set_pending_cleanup_metadata,
 };
-pub(crate) use merge_coordination::{update_plan_from_main_isolated, PlanUpdateResult};
+pub(crate) use merge_coordination::{
+    update_plan_from_main_isolated, update_source_from_target, PlanUpdateResult, SourceUpdateResult,
+};
 pub use merge_helpers::resolve_merge_branches;
 pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata, MetadataUpdate};
 

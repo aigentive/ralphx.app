@@ -5,25 +5,26 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::RwLock;
 
-use crate::application::chat_service::{ChatService, SendMessageOptions, uses_execution_slot};
+use crate::application::chat_service::{uses_execution_slot, ChatService, SendMessageOptions};
 use crate::application::reconciliation::UserRecoveryAction;
 use crate::application::team_state_tracker::TeamStateTracker;
 use crate::application::{AppState, ReconciliationRunner, TaskTransitionService};
 use crate::domain::entities::{
-    ChatContextType, IdeationSessionStatus, InternalStatus, ProjectId, Task, TaskId,
     app_state::ExecutionHaltMode, task_step::StepProgressSummary, types::IdeationSessionId,
+    ChatContextType, ChatConversationId, IdeationSessionStatus, InternalStatus, ProjectId, Task,
+    TaskId,
 };
 use crate::domain::execution::ExecutionSettings;
-use crate::domain::execution::{ScopedExecutionSubject, count_execution_status};
 use crate::domain::execution::{
-    ExecutionStatusInput, build_execution_status_response, build_running_ideation_session,
-    build_running_process, elapsed_seconds_for_status,
+    build_execution_status_response, build_running_ideation_session, build_running_process,
+    elapsed_seconds_for_status, ExecutionStatusInput,
 };
+use crate::domain::execution::{count_execution_status, ScopedExecutionSubject};
 use crate::domain::services::QueueKey;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::get_trigger_origin;
@@ -31,10 +32,9 @@ use crate::domain::state_machine::transition_handler::get_trigger_origin;
 mod state;
 
 pub use state::{
-    AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES, ActiveProjectState, ExecutionCommandResponse,
-    ExecutionSettingsResponse, ExecutionState, ExecutionStatusResponse,
-    GlobalExecutionSettingsResponse, UpdateExecutionSettingsInput,
-    UpdateGlobalExecutionSettingsInput,
+    ActiveProjectState, ExecutionCommandResponse, ExecutionSettingsResponse, ExecutionState,
+    ExecutionStatusResponse, GlobalExecutionSettingsResponse, UpdateExecutionSettingsInput,
+    UpdateGlobalExecutionSettingsInput, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
 
 use state::*;
@@ -47,21 +47,21 @@ use control_helpers::*;
 
 mod recovery;
 
-pub use recovery::{
-    CategorizedResume, RestartResult, ResumeCategory, ResumeValidationResult,
-    ResumeValidationWarning, categorize_resume_state,
-};
 use recovery::{
     build_reconciler_for_recovery, build_transition_service_for_recovery, validate_resume,
+};
+pub use recovery::{
+    categorize_resume_state, CategorizedResume, RestartResult, ResumeCategory,
+    ResumeValidationResult, ResumeValidationWarning,
 };
 
 mod running;
 
-pub use running::{
-    RunningIdeationSession, RunningProcess, RunningProcessesResponse,
-    context_matches_running_status_for_gc,
-};
 use running::prune_stale_execution_registry_entries;
+pub use running::{
+    context_matches_running_status_for_gc, RunningIdeationSession, RunningProcess,
+    RunningProcessesResponse,
+};
 
 mod scheduling;
 use scheduling::schedule_ready_tasks_for_project;
@@ -70,40 +70,25 @@ mod lifecycle;
 
 pub(crate) use lifecycle::prepare_resumed_task_for_entry_actions;
 pub use lifecycle::{
-    pause_execution,
-    resume_execution,
-    stop_execution,
-    __cmd__pause_execution,
-    __cmd__resume_execution,
-    __cmd__stop_execution,
+    __cmd__pause_execution, __cmd__resume_execution, __cmd__stop_execution, pause_execution,
+    resume_execution, stop_execution,
 };
 
 mod settings;
 
 pub use settings::{
-    set_max_concurrent,
-    get_execution_settings,
-    update_execution_settings,
-    set_active_project,
-    get_active_project,
-    get_global_execution_settings,
-    update_global_execution_settings,
-    __cmd__set_max_concurrent,
-    __cmd__get_execution_settings,
-    __cmd__update_execution_settings,
-    __cmd__set_active_project,
-    __cmd__get_active_project,
-    __cmd__get_global_execution_settings,
-    __cmd__update_global_execution_settings,
+    __cmd__get_active_project, __cmd__get_execution_settings, __cmd__get_global_execution_settings,
+    __cmd__set_active_project, __cmd__set_max_concurrent, __cmd__update_execution_settings,
+    __cmd__update_global_execution_settings, get_active_project, get_execution_settings,
+    get_global_execution_settings, set_active_project, set_max_concurrent,
+    update_execution_settings, update_global_execution_settings,
 };
 
 mod status_queries;
 
 pub use status_queries::{
-    get_execution_status,
+    __cmd__get_execution_status, __cmd__get_running_processes, get_execution_status,
     get_running_processes,
-    __cmd__get_execution_status,
-    __cmd__get_running_processes,
 };
 
 /// Recover a task execution after a stop request
@@ -120,8 +105,7 @@ pub async fn recover_task_execution(
     app: tauri::AppHandle,
 ) -> Result<bool, String> {
     let task_id = crate::domain::entities::TaskId::from_string(task_id);
-    let reconciler =
-        build_reconciler_for_recovery(&app_state, Arc::clone(&execution_state), app);
+    let reconciler = build_reconciler_for_recovery(&app_state, Arc::clone(&execution_state), app);
 
     Ok(reconciler.recover_execution_stop(&task_id).await)
 }
@@ -141,8 +125,7 @@ pub async fn resolve_recovery_prompt(
         "cancel" => UserRecoveryAction::Cancel,
         _ => return Err("Invalid recovery action".to_string()),
     };
-    let reconciler =
-        build_reconciler_for_recovery(&app_state, Arc::clone(&execution_state), app);
+    let reconciler = build_reconciler_for_recovery(&app_state, Arc::clone(&execution_state), app);
 
     let task = match app_state.task_repo.get_by_id(&task_id).await {
         Ok(Some(task)) => task,
@@ -152,8 +135,6 @@ pub async fn resolve_recovery_prompt(
 
     Ok(reconciler.apply_user_recovery_action(&task, action).await)
 }
-
-
 
 /// Smart resume for stopped tasks.
 ///
@@ -277,7 +258,6 @@ pub async fn restart_task(
         resumed_to_status: categorized.target_status.as_str().to_string(),
     })
 }
-
 
 #[cfg(test)]
 mod tests;

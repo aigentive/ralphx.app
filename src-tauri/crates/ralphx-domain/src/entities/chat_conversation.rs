@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use crate::agents::{AgentHarnessKind, ProviderSessionRef};
 
-use super::{DelegatedSessionId, IdeationSessionId, ProjectId, TaskId};
+use super::{
+    AgentConversationWorkspaceMode, DelegatedSessionId, IdeationSessionId, ProjectId, TaskId,
+};
 
 /// Unique identifier for a chat conversation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -223,6 +225,8 @@ pub struct ChatConversation {
     pub upstream_provider: Option<String>,
     /// Optional runtime/profile selector for the upstream provider.
     pub provider_profile: Option<String>,
+    /// Current project-agent mode for Agents conversations.
+    pub agent_mode: Option<AgentConversationWorkspaceMode>,
     /// Auto-generated or user-set title for this conversation
     pub title: Option<String>,
     /// Number of messages in this conversation
@@ -233,6 +237,8 @@ pub struct ChatConversation {
     pub created_at: DateTime<Utc>,
     /// When this conversation was last updated
     pub updated_at: DateTime<Utc>,
+    /// When this conversation was archived (soft-deleted). None = active.
+    pub archived_at: Option<DateTime<Utc>>,
     /// ID of the prior execution's conversation (for TaskExecution re-runs only).
     /// Enables UI navigation between execution generations.
     pub parent_conversation_id: Option<String>,
@@ -258,11 +264,13 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -285,11 +293,13 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -312,11 +322,13 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -339,11 +351,13 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -367,11 +381,13 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -394,11 +410,13 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -421,11 +439,13 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -492,10 +512,33 @@ impl ChatConversation {
         self.updated_at = Utc::now();
     }
 
+    pub fn set_agent_mode(&mut self, mode: Option<AgentConversationWorkspaceMode>) {
+        self.agent_mode = mode;
+        self.updated_at = Utc::now();
+    }
+
     /// Set or update the conversation title
     pub fn set_title(&mut self, title: impl Into<String>) {
         self.title = Some(title.into());
         self.updated_at = Utc::now();
+    }
+
+    /// Archive this conversation.
+    pub fn archive(&mut self) {
+        let now = Utc::now();
+        self.archived_at = Some(now);
+        self.updated_at = now;
+    }
+
+    /// Restore this conversation from archive.
+    pub fn restore(&mut self) {
+        self.archived_at = None;
+        self.updated_at = Utc::now();
+    }
+
+    /// Returns true when this conversation is archived.
+    pub fn is_archived(&self) -> bool {
+        self.archived_at.is_some()
     }
 
     /// Check if this conversation has a Claude session (can use --resume)

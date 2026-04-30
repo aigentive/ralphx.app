@@ -4,17 +4,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { AcceptModal } from "./AcceptModal";
-import { getGitBranches } from "@/api/projects";
 import type { TaskProposal, DependencyGraph } from "@/types/ideation";
-
-vi.mock("@/api/projects", () => ({
-  getGitBranches: vi.fn().mockResolvedValue(["main", "develop"]),
-}));
 
 function render(ui: ReactElement) {
   const queryClient = new QueryClient({
@@ -224,7 +219,7 @@ describe("AcceptModal", () => {
   describe("Feature Branch Info", () => {
     it("shows informational text about mandatory feature branches", () => {
       render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByText(/A feature branch will be created from the base branch below/i)).toBeInTheDocument();
+      expect(screen.getByText(/A feature branch will be created from the session base below/i)).toBeInTheDocument();
     });
 
     it("shows merge-to-main task info", () => {
@@ -232,199 +227,43 @@ describe("AcceptModal", () => {
       expect(screen.getByText(/merge-to-main task is added automatically/i)).toBeInTheDocument();
     });
 
-    it("renders base branch input always visible", async () => {
-      render(<AcceptModal {...defaultProps} workingDirectory="/some/path" baseBranch="main" />);
-      await waitFor(() => {
-        expect(screen.getByTestId("base-branch-input")).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("Branch Loading Spinner", () => {
-    it("shows loading spinner while branches are being fetched", async () => {
-      let resolveGetBranches!: (branches: string[]) => void;
-      vi.mocked(getGitBranches).mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveGetBranches = resolve;
-        })
-      );
-
-      render(
-        <AcceptModal
-          {...defaultProps}
-          workingDirectory="/some/path"
-          baseBranch="main"
-        />
-      );
-
-      expect(screen.getByTestId("branch-loading-spinner")).toBeInTheDocument();
-
-      resolveGetBranches(["main", "develop"]);
-
-      await waitFor(() => {
-        expect(screen.queryByTestId("branch-loading-spinner")).not.toBeInTheDocument();
-      });
+    it("renders selected session base as read-only context", () => {
+      render(<AcceptModal {...defaultProps} baseBranch="main" />);
+      expect(screen.getByTestId("session-base-readonly")).toHaveTextContent("main");
+      expect(screen.queryByTestId("base-branch-input")).not.toBeInTheDocument();
     });
 
-    it("hides loading spinner after branches load with error", async () => {
-      let rejectGetBranches!: (err: Error) => void;
-      vi.mocked(getGitBranches).mockReturnValueOnce(
-        new Promise((_, reject) => {
-          rejectGetBranches = reject;
-        })
-      );
-
-      render(
-        <AcceptModal
-          {...defaultProps}
-          workingDirectory="/some/path"
-          baseBranch="main"
-        />
-      );
-
-      expect(screen.getByTestId("branch-loading-spinner")).toBeInTheDocument();
-
-      rejectGetBranches(new Error("no git repo"));
-
-      await waitFor(() => {
-        expect(screen.queryByTestId("branch-loading-spinner")).not.toBeInTheDocument();
-      });
-    });
-
-    it("does not show loading spinner when workingDirectory is not provided", () => {
-      render(
-        <AcceptModal
-          {...defaultProps}
-        />
-      );
-
-      expect(screen.queryByTestId("branch-loading-spinner")).not.toBeInTheDocument();
-    });
-  });
-
-  describe("Base Branch Selector", () => {
-    it("degrades to free-text when get_git_branches rejects", async () => {
-      vi.mocked(getGitBranches).mockRejectedValueOnce(new Error("no git repo"));
-
-      render(
-        <AcceptModal
-          {...defaultProps}
-          workingDirectory="/some/path"
-          baseBranch="main"
-        />
-      );
-
-      // Wait for error state
-      await waitFor(() => {
-        expect(screen.getByTestId("branch-load-error")).toBeInTheDocument();
-      });
-
-      // Input should still be visible and editable with the default value
-      const input = screen.getByTestId("base-branch-input");
-      expect(input).toBeInTheDocument();
-      expect(input).toHaveValue("main");
-    });
-
-    it("always shows branch selector (not conditional on feature branch toggle)", async () => {
-      render(
-        <AcceptModal
-          {...defaultProps}
-          workingDirectory="/some/path"
-          baseBranch="develop"
-        />
-      );
-
-      await waitFor(() => {
-        expect(screen.getByTestId("base-branch-input")).toBeInTheDocument();
-      });
-    });
-
-    it("sends baseBranchOverride in accept options", async () => {
-      vi.mocked(getGitBranches).mockResolvedValueOnce(["main", "develop", "feature/test"]);
-
+    it("uses session analysis base display when available", async () => {
       const onAccept = vi.fn();
       render(
         <AcceptModal
           {...defaultProps}
-          workingDirectory="/some/path"
           baseBranch="main"
           onAccept={onAccept}
+          session={{
+            id: "session-1",
+            planArtifactId: "artifact-1",
+            sessionPurpose: "general",
+            verificationStatus: "verified",
+            verificationInProgress: false,
+            analysisBaseRef: "feature/analysis",
+            analysisBaseDisplayName: "Current branch (feature/analysis)",
+          }}
         />
       );
 
-      // Change branch to develop
-      const input = screen.getByTestId("base-branch-input");
-      await userEvent.clear(input);
-      await userEvent.type(input, "develop");
+      expect(screen.getByTestId("session-base-readonly")).toHaveTextContent(
+        "Current branch (feature/analysis)",
+      );
 
-      // Click accept
       const acceptButton = screen.getByRole("button", { name: /accept plan/i });
       await userEvent.click(acceptButton);
 
       expect(onAccept).toHaveBeenCalledWith(
         expect.objectContaining({
-          baseBranchOverride: "develop",
+          baseBranchOverride: "feature/analysis",
         })
       );
-    });
-
-    it("allows accept when typed branch does not exist locally (backend auto-creates)", async () => {
-      vi.mocked(getGitBranches).mockResolvedValueOnce(["main", "develop", "feature/test"]);
-
-      const onAccept = vi.fn();
-      render(
-        <AcceptModal
-          {...defaultProps}
-          workingDirectory="/some/path"
-          baseBranch="main"
-          onAccept={onAccept}
-        />
-      );
-
-      const input = screen.getByTestId("base-branch-input");
-      await userEvent.clear(input);
-      await userEvent.type(input, "Branch-override");
-
-      // No validation error for non-existent branch
-      expect(screen.queryByTestId("branch-validation-error")).not.toBeInTheDocument();
-
-      const acceptButton = screen.getByRole("button", { name: /accept plan/i });
-      expect(acceptButton).not.toBeDisabled();
-      await userEvent.click(acceptButton);
-
-      expect(onAccept).toHaveBeenCalledWith(
-        expect.objectContaining({
-          baseBranchOverride: "Branch-override",
-        })
-      );
-    });
-
-    it("disables accept button when branch input is empty", async () => {
-      vi.mocked(getGitBranches).mockResolvedValueOnce(["main", "develop"]);
-
-      const onAccept = vi.fn();
-      render(
-        <AcceptModal
-          {...defaultProps}
-          workingDirectory="/some/path"
-          baseBranch="main"
-          onAccept={onAccept}
-        />
-      );
-
-      // Wait for branches to load
-      await waitFor(() => {
-        expect(screen.queryByTestId("branch-loading-spinner")).not.toBeInTheDocument();
-      });
-
-      const input = screen.getByTestId("base-branch-input");
-      await userEvent.clear(input);
-
-      // Button should be disabled with empty branch input
-      const acceptButton = screen.getByRole("button", { name: /accept plan/i });
-      expect(acceptButton).toBeDisabled();
-      await userEvent.click(acceptButton);
-      expect(onAccept).not.toHaveBeenCalled();
     });
 
     it("sends baseBranchOverride with default baseBranch value when not changed", async () => {
@@ -614,7 +453,8 @@ describe("AcceptModal", () => {
 
     it("has proper labels for form controls", () => {
       render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByLabelText(/Base branch/i)).toBeInTheDocument();
+      expect(screen.getByText("Session base")).toBeInTheDocument();
+      expect(screen.getByTestId("session-base-readonly")).toBeInTheDocument();
     });
 
     it("warnings have role=alert", () => {

@@ -5,13 +5,26 @@
  * This mock provides command handlers that return proper mock data.
  */
 
-import { mockWorkflowsApi, mockProjectsApi, mockGetGitBranches, mockGetGitDefaultBranch } from "@/api-mock/projects";
+import {
+  mockWorkflowsApi,
+  mockProjectsApi,
+  mockGetGitBranches,
+  mockGetGitCurrentBranch,
+  mockGetGitDefaultBranch,
+} from "@/api-mock/projects";
 import { mockTasksApi } from "@/api-mock/tasks";
 import { mockTaskGraphApi } from "@/api-mock/task-graph";
 import {
+  mockCreateConversation,
+  mockGetAgentConversationWorkspace,
   mockGetConversation,
   mockGetConversationStats,
+  mockListAgentConversationWorkspacePublicationEvents,
   mockListConversations,
+  mockListConversationsPage,
+  mockPublishAgentConversationWorkspace,
+  mockStartAgentConversation,
+  mockSwitchAgentConversationMode,
 } from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
 import { mockIdeationApi } from "@/api-mock/ideation";
@@ -19,6 +32,122 @@ import { mockExecutionApi } from "@/api-mock/execution";
 import { mockPlanBranchApi, toSnakeCasePlanBranch } from "@/api-mock/plan-branch";
 import { mockPlanApi } from "@/api-mock/plan";
 import type { ContextType } from "@/types/chat-conversation";
+import type { ChatConversation } from "@/types/chat-conversation";
+import type { ChatMessageResponse } from "@/api/chat";
+
+function toSnakeConversation(conversation: ChatConversation) {
+  return {
+    id: conversation.id,
+    context_type: conversation.contextType,
+    context_id: conversation.contextId,
+    claude_session_id: conversation.claudeSessionId,
+    provider_session_id: conversation.providerSessionId,
+    provider_harness: conversation.providerHarness,
+    upstream_provider: conversation.upstreamProvider,
+    provider_profile: conversation.providerProfile,
+    agent_mode: conversation.agentMode,
+    title: conversation.title,
+    message_count: conversation.messageCount,
+    last_message_at: conversation.lastMessageAt,
+    created_at: conversation.createdAt,
+    updated_at: conversation.updatedAt,
+    archived_at: conversation.archivedAt,
+  };
+}
+
+function toSnakeMessage(message: ChatMessageResponse) {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    metadata: message.metadata,
+    tool_calls: message.toolCalls,
+    content_blocks: message.contentBlocks,
+    sender: message.sender,
+    attribution_source: message.attributionSource,
+    provider_harness: message.providerHarness,
+    provider_session_id: message.providerSessionId,
+    upstream_provider: message.upstreamProvider,
+    provider_profile: message.providerProfile,
+    logical_model: message.logicalModel,
+    effective_model_id: message.effectiveModelId,
+    logical_effort: message.logicalEffort,
+    effective_effort: message.effectiveEffort,
+    input_tokens: message.inputTokens,
+    output_tokens: message.outputTokens,
+    cache_creation_tokens: message.cacheCreationTokens,
+    cache_read_tokens: message.cacheReadTokens,
+    estimated_usd: message.estimatedUsd,
+    created_at: message.createdAt,
+  };
+}
+
+async function getMockConversationPayload(conversationId: string) {
+  const { conversation, messages } = await mockGetConversation(conversationId);
+  return {
+    conversation: toSnakeConversation(conversation),
+    messages: messages.map(toSnakeMessage),
+  };
+}
+
+const mockWorkspaceFileChanges = [
+  {
+    path: "frontend/src/components/agents/AgentsView.tsx",
+    status: "modified",
+    additions: 48,
+    deletions: 14,
+  },
+  {
+    path: "frontend/src/components/agents/AgentComposerSurface.tsx",
+    status: "modified",
+    additions: 72,
+    deletions: 21,
+  },
+  {
+    path: "frontend/tests/visual/views/agents/agents.spec.ts",
+    status: "added",
+    additions: 260,
+    deletions: 0,
+  },
+  {
+    path: "src-tauri/src/application/agent_workspace/publisher.rs",
+    status: "modified",
+    additions: 31,
+    deletions: 9,
+  },
+  {
+    path: "config/harnesses/codex.yaml",
+    status: "modified",
+    additions: 6,
+    deletions: 3,
+  },
+] as const;
+
+const mockWorkspaceCommits = [
+  {
+    sha: "abc123def4567890abc123def4567890abc123de",
+    short_sha: "abc123d",
+    message: "Update agent workspace",
+    author: "Agent",
+    timestamp: "2026-04-26T09:00:00Z",
+  },
+] as const;
+
+function mockWorkspaceFileDiff(filePath: string) {
+  const language = filePath.endsWith(".tsx")
+    ? "tsx"
+    : filePath.endsWith(".rs")
+      ? "rust"
+      : filePath.endsWith(".yaml") || filePath.endsWith(".yml")
+        ? "yaml"
+        : "text";
+  return {
+    file_path: filePath,
+    old_content: `// Previous mock content for ${filePath}\nexport const previous = true;\n`,
+    new_content: `// Updated mock content for ${filePath}\nexport const previous = false;\nexport const reviewed = true;\n`,
+    language,
+  };
+}
 
 /**
  * Command handlers map - routes Tauri commands to mock implementations
@@ -54,6 +183,7 @@ const commandHandlers: Record<
   list_projects: async () => mockProjectsApi.list(),
   get_project: async (args) => mockProjectsApi.get(args.projectId as string),
   get_git_branches: async (args) => mockGetGitBranches(args.workingDirectory as string),
+  get_git_current_branch: async (args) => mockGetGitCurrentBranch(args.workingDirectory as string),
   get_git_default_branch: async (args) => mockGetGitDefaultBranch(args.workingDirectory as string),
 
   // Plan commands
@@ -144,8 +274,274 @@ const commandHandlers: Record<
       args.contextType as ContextType,
       args.contextId as string
     ),
+  list_agent_conversations_page: async (args) => {
+    const response = await mockListConversationsPage(
+      args.contextType as ContextType,
+      args.contextId as string,
+      args.limit as number,
+      (args.offset as number | undefined) ?? 0,
+      (args.includeArchived as boolean | undefined) ?? false,
+      args.search as string | undefined,
+      (args.archivedOnly as boolean | undefined) ?? false
+    );
+
+    return {
+      conversations: response.conversations.map((conversation) => ({
+        id: conversation.id,
+        context_type: conversation.contextType,
+        context_id: conversation.contextId,
+        claude_session_id: conversation.claudeSessionId,
+        provider_session_id: conversation.providerSessionId,
+        provider_harness: conversation.providerHarness,
+        upstream_provider: conversation.upstreamProvider,
+        provider_profile: conversation.providerProfile,
+        agent_mode: conversation.agentMode,
+        title: conversation.title,
+        message_count: conversation.messageCount,
+        last_message_at: conversation.lastMessageAt,
+        created_at: conversation.createdAt,
+        updated_at: conversation.updatedAt,
+        archived_at: conversation.archivedAt,
+      })),
+      limit: response.limit,
+      offset: response.offset,
+      total: response.total,
+      has_more: response.hasMore,
+    };
+  },
   get_conversation: async (args) =>
     mockGetConversation(args.conversationId as string),
+  get_agent_conversation: async (args) =>
+    getMockConversationPayload(args.conversationId as string),
+  get_agent_conversation_messages_page: async (args) => {
+    const limit = (args.limit as number | undefined) ?? 50;
+    const offset = (args.offset as number | undefined) ?? 0;
+    const payload = await getMockConversationPayload(args.conversationId as string);
+    const messages = payload.messages.slice(offset, offset + limit);
+    return {
+      conversation: payload.conversation,
+      messages,
+      limit,
+      offset,
+      total_message_count: payload.messages.length,
+      has_older: offset + messages.length < payload.messages.length,
+    };
+  },
+  get_agent_conversation_workspace: async (args) => {
+    const workspace = await mockGetAgentConversationWorkspace(args.conversationId as string);
+    if (!workspace) {
+      return null;
+    }
+    return {
+      conversation_id: workspace.conversationId,
+      project_id: workspace.projectId,
+      mode: workspace.mode,
+      base_ref_kind: workspace.baseRefKind,
+      base_ref: workspace.baseRef,
+      base_display_name: workspace.baseDisplayName,
+      base_commit: workspace.baseCommit,
+      branch_name: workspace.branchName,
+      worktree_path: workspace.worktreePath,
+      linked_ideation_session_id: workspace.linkedIdeationSessionId,
+      linked_plan_branch_id: workspace.linkedPlanBranchId,
+      publication_pr_number: workspace.publicationPrNumber,
+      publication_pr_url: workspace.publicationPrUrl,
+      publication_pr_status: workspace.publicationPrStatus,
+      publication_push_status: workspace.publicationPushStatus,
+      status: workspace.status,
+      created_at: workspace.createdAt,
+      updated_at: workspace.updatedAt,
+    };
+  },
+  list_agent_conversation_workspace_publication_events: async (args) => {
+    const events = await mockListAgentConversationWorkspacePublicationEvents(
+      args.conversationId as string
+    );
+    return events.map((event) => ({
+      id: event.id,
+      conversation_id: event.conversationId,
+      step: event.step,
+      status: event.status,
+      summary: event.summary,
+      classification: event.classification,
+      created_at: event.createdAt,
+    }));
+  },
+  publish_agent_conversation_workspace: async (args) => {
+    const result = await mockPublishAgentConversationWorkspace(args.conversationId as string);
+    const workspace = result.workspace;
+    return {
+      workspace: workspace
+        ? {
+            conversation_id: workspace.conversationId,
+            project_id: workspace.projectId,
+            mode: workspace.mode,
+            base_ref_kind: workspace.baseRefKind,
+            base_ref: workspace.baseRef,
+            base_display_name: workspace.baseDisplayName,
+            base_commit: workspace.baseCommit,
+            branch_name: workspace.branchName,
+            worktree_path: workspace.worktreePath,
+            linked_ideation_session_id: workspace.linkedIdeationSessionId,
+            linked_plan_branch_id: workspace.linkedPlanBranchId,
+            publication_pr_number: workspace.publicationPrNumber,
+            publication_pr_url: workspace.publicationPrUrl,
+            publication_pr_status: workspace.publicationPrStatus,
+            publication_push_status: workspace.publicationPushStatus,
+            status: workspace.status,
+            created_at: workspace.createdAt,
+            updated_at: workspace.updatedAt,
+          }
+        : null,
+      commit_sha: result.commitSha,
+      pushed: result.pushed,
+      created_pr: result.createdPr,
+      pr_number: result.prNumber,
+      pr_url: result.prUrl,
+    };
+  },
+  get_agent_conversation_workspace_file_changes: async () =>
+    mockWorkspaceFileChanges.map((change) => ({ ...change })),
+  get_agent_conversation_workspace_file_diff: async (args) =>
+    mockWorkspaceFileDiff(args.filePath as string),
+  get_agent_conversation_workspace_commits: async () => ({
+    commits: mockWorkspaceCommits.map((commit) => ({ ...commit })),
+  }),
+  get_agent_conversation_workspace_commit_file_changes: async () =>
+    mockWorkspaceFileChanges.map((change) => ({ ...change })),
+  get_agent_conversation_workspace_commit_file_diff: async (args) =>
+    mockWorkspaceFileDiff(args.filePath as string),
+  create_agent_conversation: async (args) => {
+    const input = args.input as {
+      contextType: ContextType;
+      contextId: string;
+      title?: string;
+    };
+    const conversation = await mockCreateConversation(
+      input.contextType,
+      input.contextId,
+      input.title
+    );
+    return {
+      id: conversation.id,
+      context_type: conversation.contextType,
+      context_id: conversation.contextId,
+      claude_session_id: conversation.claudeSessionId,
+      provider_session_id: conversation.providerSessionId,
+      provider_harness: conversation.providerHarness,
+      upstream_provider: conversation.upstreamProvider,
+      provider_profile: conversation.providerProfile,
+      agent_mode: conversation.agentMode,
+      title: conversation.title,
+      message_count: conversation.messageCount,
+      last_message_at: conversation.lastMessageAt,
+      created_at: conversation.createdAt,
+      updated_at: conversation.updatedAt,
+      archived_at: conversation.archivedAt,
+    };
+  },
+  start_agent_conversation: async (args) => {
+    const input = args.input as Parameters<typeof mockStartAgentConversation>[0];
+    const result = await mockStartAgentConversation(input);
+    const conversation = result.conversation;
+    const workspace = result.workspace;
+    return {
+      conversation: {
+        id: conversation.id,
+        context_type: conversation.contextType,
+        context_id: conversation.contextId,
+        claude_session_id: conversation.claudeSessionId,
+        provider_session_id: conversation.providerSessionId,
+        provider_harness: conversation.providerHarness,
+        upstream_provider: conversation.upstreamProvider,
+        provider_profile: conversation.providerProfile,
+        agent_mode: conversation.agentMode,
+        title: conversation.title,
+        message_count: conversation.messageCount,
+        last_message_at: conversation.lastMessageAt,
+        created_at: conversation.createdAt,
+        updated_at: conversation.updatedAt,
+        archived_at: conversation.archivedAt,
+      },
+      workspace: workspace
+        ? {
+            conversation_id: workspace.conversationId,
+            project_id: workspace.projectId,
+            mode: workspace.mode,
+            base_ref_kind: workspace.baseRefKind,
+            base_ref: workspace.baseRef,
+            base_display_name: workspace.baseDisplayName,
+            base_commit: workspace.baseCommit,
+            branch_name: workspace.branchName,
+            worktree_path: workspace.worktreePath,
+            linked_ideation_session_id: workspace.linkedIdeationSessionId,
+            linked_plan_branch_id: workspace.linkedPlanBranchId,
+            publication_pr_number: workspace.publicationPrNumber,
+            publication_pr_url: workspace.publicationPrUrl,
+            publication_pr_status: workspace.publicationPrStatus,
+            publication_push_status: workspace.publicationPushStatus,
+            status: workspace.status,
+            created_at: workspace.createdAt,
+            updated_at: workspace.updatedAt,
+          }
+        : null,
+      send_result: {
+        conversation_id: result.sendResult.conversationId,
+        agent_run_id: result.sendResult.agentRunId,
+        is_new_conversation: result.sendResult.isNewConversation,
+        was_queued: result.sendResult.wasQueued,
+        queued_as_pending: result.sendResult.queuedAsPending,
+        queued_message_id: result.sendResult.queuedMessageId,
+      },
+    };
+  },
+  switch_agent_conversation_mode: async (args) => {
+    const input = args.input as Parameters<typeof mockSwitchAgentConversationMode>[0];
+    const result = await mockSwitchAgentConversationMode(input);
+    const conversation = result.conversation;
+    const workspace = result.workspace;
+    return {
+      conversation: {
+        id: conversation.id,
+        context_type: conversation.contextType,
+        context_id: conversation.contextId,
+        claude_session_id: conversation.claudeSessionId,
+        provider_session_id: conversation.providerSessionId,
+        provider_harness: conversation.providerHarness,
+        upstream_provider: conversation.upstreamProvider,
+        provider_profile: conversation.providerProfile,
+        agent_mode: conversation.agentMode,
+        title: conversation.title,
+        message_count: conversation.messageCount,
+        last_message_at: conversation.lastMessageAt,
+        created_at: conversation.createdAt,
+        updated_at: conversation.updatedAt,
+        archived_at: conversation.archivedAt,
+      },
+      workspace: workspace
+        ? {
+            conversation_id: workspace.conversationId,
+            project_id: workspace.projectId,
+            mode: workspace.mode,
+            base_ref_kind: workspace.baseRefKind,
+            base_ref: workspace.baseRef,
+            base_display_name: workspace.baseDisplayName,
+            base_commit: workspace.baseCommit,
+            branch_name: workspace.branchName,
+            worktree_path: workspace.worktreePath,
+            linked_ideation_session_id: workspace.linkedIdeationSessionId,
+            linked_plan_branch_id: workspace.linkedPlanBranchId,
+            publication_pr_number: workspace.publicationPrNumber,
+            publication_pr_url: workspace.publicationPrUrl,
+            publication_pr_status: workspace.publicationPrStatus,
+            publication_push_status: workspace.publicationPushStatus,
+            status: workspace.status,
+            created_at: workspace.createdAt,
+            updated_at: workspace.updatedAt,
+          }
+        : null,
+    };
+  },
   get_agent_conversation_stats: async (args) => {
     const stats = await mockGetConversationStats(args.conversationId as string);
     if (!stats) {
@@ -212,6 +608,39 @@ const commandHandlers: Record<
       })),
     };
   },
+  open_agent_terminal: async (args) => {
+    const input = args.input as {
+      conversationId: string;
+      terminalId?: string;
+    };
+    return mockAgentTerminalSnapshot(input.conversationId, input.terminalId);
+  },
+  write_agent_terminal: async () => undefined,
+  resize_agent_terminal: async (args) => {
+    const input = args.input as {
+      conversationId: string;
+      terminalId?: string;
+    };
+    return mockAgentTerminalSnapshot(input.conversationId, input.terminalId);
+  },
+  clear_agent_terminal: async (args) => {
+    const input = args.input as {
+      conversationId: string;
+      terminalId?: string;
+    };
+    return {
+      ...mockAgentTerminalSnapshot(input.conversationId, input.terminalId),
+      history: "",
+    };
+  },
+  restart_agent_terminal: async (args) => {
+    const input = args.input as {
+      conversationId: string;
+      terminalId?: string;
+    };
+    return mockAgentTerminalSnapshot(input.conversationId, input.terminalId);
+  },
+  close_agent_terminal: async () => undefined,
 
   // Ideation commands
   list_ideation_sessions: async (args) => {
@@ -324,7 +753,10 @@ const commandHandlers: Record<
     mockTaskGraphApi.getDependencyGraph(
       args.projectId as string,
       args.includeArchived as boolean | undefined,
-      args.executionPlanId as string | null | undefined ?? args.ideationSessionId as string | null | undefined ?? null
+      (args.executionPlanId as string | null | undefined) ?? null,
+      (args.sessionId as string | null | undefined)
+        ?? (args.ideationSessionId as string | null | undefined)
+        ?? null
     ),
   get_task_timeline_events: async (args) =>
     mockTaskGraphApi.getTimelineEvents(
@@ -473,6 +905,24 @@ const commandHandlers: Record<
   // Health check
   health_check: async () => ({ status: "ok" }),
 };
+
+function mockAgentTerminalSnapshot(
+  conversationId: string,
+  terminalId = "default"
+) {
+  return {
+    conversationId,
+    terminalId,
+    cwd: "/tmp/ralphx/mock-agent-worktree",
+    workspaceBranch: "ralphx/mock/agent-conversation",
+    status: "running",
+    pid: 42_001,
+    history: "",
+    exitCode: null,
+    exitSignal: null,
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 /**
  * Mock invoke function

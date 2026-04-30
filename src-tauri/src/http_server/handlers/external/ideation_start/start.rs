@@ -1,5 +1,16 @@
 use super::*;
+use crate::application::ideation_workspace::{
+    prepare_ideation_analysis_state, prepare_ideation_analysis_state_from_agent_workspace,
+    IdeationAnalysisBaseSelection,
+};
 use crate::application::ideation_service::build_default_ideation_session_title;
+use crate::domain::entities::{
+    AgentConversationWorkspace, AgentConversationWorkspaceMode, ChatConversationId,
+    IdeationAnalysisState, Project,
+};
+use crate::http_server::handlers::external_auth::TAURI_MCP_HEADER;
+
+const PARENT_CONVERSATION_HEADER: &str = "x-ralphx-parent-conversation-id";
 
 #[derive(Debug, Deserialize)]
 pub struct StartIdeationRequest {
@@ -28,6 +39,8 @@ pub struct StartIdeationResponse {
     pub agent_spawned: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_spawn_blocked_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_initial_prompt: Option<String>,
     /// All active external sessions for the project (for agent visibility)
     pub existing_active_sessions: Vec<ExternalSessionSummary>,
     /// True if this response reuses an existing session due to idempotency key match
@@ -44,6 +57,120 @@ pub struct StartIdeationResponse {
     /// Human-readable hint message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_branch: Option<String>,
+}
+
+struct ParentWorkspaceBinding {
+    conversation_id: ChatConversationId,
+    workspace: AgentConversationWorkspace,
+    analysis: IdeationAnalysisState,
+}
+
+fn is_tauri_mcp_request(headers: &HeaderMap) -> bool {
+    headers
+        .get(TAURI_MCP_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value == "1")
+        .unwrap_or(false)
+}
+
+fn parent_conversation_id_from_headers(headers: &HeaderMap) -> Option<ChatConversationId> {
+    if !is_tauri_mcp_request(headers) {
+        return None;
+    }
+
+    headers
+        .get(PARENT_CONVERSATION_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| ChatConversationId::from_string(value.to_string()))
+}
+
+async fn resolve_parent_workspace_binding(
+    state: &HttpServerState,
+    project: &Project,
+    parent_conversation_id: Option<ChatConversationId>,
+) -> Result<Option<ParentWorkspaceBinding>, HttpError> {
+    let Some(conversation_id) = parent_conversation_id else {
+        return Ok(None);
+    };
+
+    let conversation = state
+        .app_state
+        .chat_conversation_repo
+        .get_by_id(&conversation_id)
+        .await
+        .map_err(|error| {
+            error!(
+                "Failed to load parent conversation {} for external ideation workspace binding: {}",
+                conversation_id.as_str(),
+                error
+            );
+            HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some("Failed to load parent conversation".to_string()),
+            }
+        })?
+        .ok_or_else(|| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some("Parent conversation not found".to_string()),
+        })?;
+
+    if conversation.context_type != ChatContextType::Project
+        || conversation.context_id != project.id.as_str()
+    {
+        return Err(HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some(
+                "Parent conversation does not belong to the requested project".to_string(),
+            ),
+        });
+    }
+
+    let workspace = state
+        .app_state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation_id)
+        .await
+        .map_err(|error| {
+            error!(
+                "Failed to load parent conversation workspace {}: {}",
+                conversation_id.as_str(),
+                error
+            );
+            HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some("Failed to load parent conversation workspace".to_string()),
+            }
+        })?
+        .ok_or_else(|| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some("Parent conversation has no agent workspace".to_string()),
+        })?;
+
+    if workspace.mode != AgentConversationWorkspaceMode::Ideation {
+        return Err(HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some("Parent conversation workspace is not in ideation mode".to_string()),
+        });
+    }
+
+    let analysis = prepare_ideation_analysis_state_from_agent_workspace(project, &workspace)
+        .await
+        .map_err(|error| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some(error.to_string()),
+        })?;
+
+    Ok(Some(ParentWorkspaceBinding {
+        conversation_id,
+        workspace,
+        analysis,
+    }))
 }
 
 /// POST /api/external/start_ideation
@@ -78,6 +205,13 @@ pub async fn start_ideation_http(
         message: e.message,
     })?;
 
+    let parent_workspace_binding = resolve_parent_workspace_binding(
+        &state,
+        &project,
+        parent_conversation_id_from_headers(&headers),
+    )
+    .await?;
+
     let api_key_id = headers
         .get(crate::http_server::handlers::external_auth::EXTERNAL_KEY_ID_HEADER)
         .and_then(|v| v.to_str().ok())
@@ -110,12 +244,15 @@ pub async fn start_ideation_http(
                 status: existing.status.to_string(),
                 agent_spawned: false,
                 agent_spawn_blocked_reason: None,
+                pending_initial_prompt: existing.pending_initial_prompt.clone(),
                 existing_active_sessions: active_sessions,
                 exists: Some(true),
                 duplicate_detected: None,
                 similarity_score: None,
                 next_action: "poll_status".to_string(),
                 hint: Some("Idempotent retry: returning existing session.".to_string()),
+                parent_conversation_id: None,
+                workspace_branch: None,
             }));
         }
     }
@@ -180,15 +317,33 @@ pub async fn start_ideation_http(
                 status: matched_session.status.to_string(),
                 agent_spawned: false,
                 agent_spawn_blocked_reason: None,
+                pending_initial_prompt: matched_session.pending_initial_prompt.clone(),
                 existing_active_sessions: active_summaries,
                 exists: None,
                 duplicate_detected: Some(true),
                 similarity_score: Some(score),
                 next_action: "use_existing_session".to_string(),
                 hint: Some(hint_msg),
+                parent_conversation_id: None,
+                workspace_branch: None,
             }));
         }
     }
+
+    let session_id = IdeationSessionId::new();
+    let analysis = match parent_workspace_binding.as_ref() {
+        Some(binding) => binding.analysis.clone(),
+        None => prepare_ideation_analysis_state(
+            &project,
+            &session_id,
+            IdeationAnalysisBaseSelection::default(),
+        )
+        .await
+        .map_err(|error| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some(error.to_string()),
+        })?,
+    };
 
     let mut session_builder = match req.title.clone() {
         None => IdeationSession::new_with_title(
@@ -197,6 +352,8 @@ pub async fn start_ideation_http(
         ),
         Some(t) => IdeationSession::new_with_title(project_id.clone(), t),
     };
+    session_builder.id = session_id;
+    session_builder.analysis = analysis;
     session_builder.origin = SessionOrigin::External;
     session_builder.external_activity_phase = Some("created".to_string());
     if let Some(ref key_id) = api_key_id {
@@ -234,6 +391,7 @@ pub async fn start_ideation_http(
                         status: existing.status.to_string(),
                         agent_spawned: false,
                         agent_spawn_blocked_reason: None,
+                        pending_initial_prompt: existing.pending_initial_prompt.clone(),
                         existing_active_sessions: active_summaries,
                         exists: Some(true),
                         duplicate_detected: None,
@@ -243,6 +401,8 @@ pub async fn start_ideation_http(
                             "Idempotent retry (concurrent): returning existing session."
                                 .to_string(),
                         ),
+                        parent_conversation_id: None,
+                        workspace_branch: None,
                     }));
                 }
             }
@@ -265,6 +425,26 @@ pub async fn start_ideation_http(
     };
 
     let session_id_str = created.id.to_string();
+
+    if let Some(binding) = parent_workspace_binding.as_ref() {
+        state
+            .app_state
+            .agent_conversation_workspace_repo
+            .update_links(&binding.conversation_id, Some(&created.id), None)
+            .await
+            .map_err(|error| {
+                error!(
+                    "Failed to link parent conversation workspace {} to external ideation session {}: {}",
+                    binding.conversation_id.as_str(),
+                    created.id.as_str(),
+                    error
+                );
+                HttpError {
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    message: Some("Failed to link parent workspace".to_string()),
+                }
+            })?;
+    }
 
     {
         let repo = Arc::clone(&state.app_state.ideation_session_repo);
@@ -337,6 +517,7 @@ pub async fn start_ideation_http(
 
     let mut agent_spawned = false;
     let mut agent_spawn_blocked_reason: Option<String> = None;
+    let mut pending_initial_prompt: Option<String> = None;
     if let Some(ref prompt_str) = effective_prompt {
         let chat_service = build_chat_service(&state.app_state, &state.execution_state);
 
@@ -353,7 +534,14 @@ pub async fn start_ideation_http(
             .await
         {
             Ok(result) if result.was_queued => {
-                agent_spawned = true;
+                if result.queued_as_pending {
+                    pending_initial_prompt = Some(prompt_str.clone());
+                    agent_spawn_blocked_reason = Some(
+                        "execution paused; ideation prompt saved for resume".to_string(),
+                    );
+                } else {
+                    agent_spawned = true;
+                }
             }
             Ok(_) => {
                 agent_spawned = true;
@@ -375,16 +563,37 @@ pub async fn start_ideation_http(
         }
     }
 
+    let deferred_for_resume = pending_initial_prompt.is_some();
+
     Ok(Json(StartIdeationResponse {
         session_id: session_id_str,
         status: "ideating".to_string(),
         agent_spawned,
         agent_spawn_blocked_reason,
+        pending_initial_prompt,
         existing_active_sessions: existing_summaries,
         exists: None,
         duplicate_detected: None,
         similarity_score: None,
-        next_action: "poll_status".to_string(),
-        hint: Some("Poll v1_get_ideation_status to track agent progress.".to_string()),
+        next_action: if agent_spawned {
+            "poll_status".to_string()
+        } else if deferred_for_resume {
+            "wait_for_resume".to_string()
+        } else {
+            "poll_status".to_string()
+        },
+        hint: Some(if agent_spawned {
+            "Poll v1_get_ideation_status to track agent progress.".to_string()
+        } else if deferred_for_resume {
+            "The ideation prompt is saved, but execution is paused. Resume execution to launch the run.".to_string()
+        } else {
+            "Poll v1_get_ideation_status to track agent progress.".to_string()
+        }),
+        parent_conversation_id: parent_workspace_binding
+            .as_ref()
+            .map(|binding| binding.conversation_id.as_str().to_string()),
+        workspace_branch: parent_workspace_binding
+            .as_ref()
+            .map(|binding| binding.workspace.branch_name.clone()),
     }))
 }

@@ -1,8 +1,9 @@
 use super::*;
 use crate::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    ChatContextType, ChatConversation, ConversationAttributionBackfillState,
-    ConversationAttributionBackfillSummary, IdeationSessionId,
+    AgentConversationWorkspaceMode, ChatContextType, ChatConversation,
+    ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
+    IdeationSessionId,
 };
 use std::sync::Arc;
 
@@ -38,12 +39,77 @@ impl ChatConversationRepository for MockChatConversationRepository {
         context_type: ChatContextType,
         context_id: &str,
     ) -> AppResult<Vec<ChatConversation>> {
+        self.get_by_context_filtered(context_type, context_id, false)
+            .await
+    }
+
+    async fn get_by_context_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+    ) -> AppResult<Vec<ChatConversation>> {
         Ok(self
             .conversations
             .iter()
-            .filter(|c| c.context_type == context_type && c.context_id == context_id)
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && (include_archived || c.archived_at.is_none())
+            })
             .cloned()
             .collect())
+    }
+
+    async fn get_by_context_page_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+        archived_only: bool,
+        offset: u32,
+        limit: u32,
+        search: Option<&str>,
+    ) -> AppResult<ChatConversationPage> {
+        let mut conversations: Vec<ChatConversation> = self
+            .conversations
+            .iter()
+            .filter(|conversation| {
+                conversation.context_type == context_type
+                    && conversation.context_id == context_id
+                    && (include_archived || conversation.archived_at.is_none())
+                    && (!archived_only || conversation.archived_at.is_some())
+                    && search.map_or(true, |term| {
+                        let normalized = term.trim().to_lowercase();
+                        let title = conversation
+                            .title
+                            .as_deref()
+                            .unwrap_or("Untitled agent")
+                            .to_lowercase();
+                        title.contains(&normalized)
+                    })
+            })
+            .cloned()
+            .collect();
+        conversations.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+
+        let total_count = conversations.len() as i64;
+        let start = offset as usize;
+        let end = start
+            .saturating_add(limit as usize)
+            .min(conversations.len());
+        let page_conversations = if start >= conversations.len() {
+            Vec::new()
+        } else {
+            conversations[start..end].to_vec()
+        };
+
+        Ok(ChatConversationPage {
+            conversations: page_conversations,
+            total_count,
+            offset,
+            limit,
+        })
     }
 
     async fn get_active_for_context(
@@ -54,7 +120,11 @@ impl ChatConversationRepository for MockChatConversationRepository {
         Ok(self
             .conversations
             .iter()
-            .filter(|c| c.context_type == context_type && c.context_id == context_id)
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && c.archived_at.is_none()
+            })
             .max_by_key(|c| c.created_at)
             .cloned())
     }
@@ -80,7 +150,23 @@ impl ChatConversationRepository for MockChatConversationRepository {
         Ok(())
     }
 
+    async fn update_agent_mode(
+        &self,
+        _id: &ChatConversationId,
+        _mode: Option<AgentConversationWorkspaceMode>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn update_title(&self, _id: &ChatConversationId, _title: &str) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn archive(&self, _id: &ChatConversationId) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn restore(&self, _id: &ChatConversationId) -> AppResult<()> {
         Ok(())
     }
 

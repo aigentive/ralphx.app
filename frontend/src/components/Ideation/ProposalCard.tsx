@@ -16,6 +16,7 @@ import {
 import { FileEdit, Eye, ChevronDown, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { withAlpha } from "@/lib/theme-colors";
+import { buildProposalPreview } from "@/lib/proposal-text";
 import type { TaskProposal } from "@/types/ideation";
 import { PRIORITY_CONFIG } from "./PlanningView.constants";
 
@@ -207,7 +208,9 @@ export const ProposalCard = React.memo(function ProposalCard({
             className="text-[12px] mt-1.5 line-clamp-2 leading-relaxed"
             style={{ color: "var(--text-secondary)" }}
           >
-            {proposal.description || "No description"}
+            {proposal.description
+              ? buildProposalPreview(proposal.description)
+              : "No description"}
           </p>
 
           {/* Tags */}

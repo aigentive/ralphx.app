@@ -352,7 +352,11 @@ async fn test_toctou_pruner_deletes_placeholder_then_update_reinserts() {
 
     // Step 1: Claim the slot
     let result = registry
-        .try_register(key.clone(), "conv-toctou".to_string(), "run-toctou".to_string())
+        .try_register(
+            key.clone(),
+            "conv-toctou".to_string(),
+            "run-toctou".to_string(),
+        )
         .await;
     assert!(result.is_ok());
     assert!(registry.is_running(&key).await);
@@ -436,7 +440,9 @@ async fn test_try_register_blocks_concurrent_claim() {
 #[ignore = "requires lsof process-enumeration capability"]
 async fn test_kill_worktree_processes_async_completes_within_timeout() {
     // Use a temp dir that exists but has no processes — lsof should return quickly
-    let tmp = std::env::temp_dir().join("ralphx_test_lsof_async");
+    let tmp_dir = tempfile::TempDir::new().expect("create temp dir");
+    let tmp = tmp_dir.path().join("ralphx_test_lsof_async");
+    // codeql[rust/path-injection]
     let _ = std::fs::create_dir_all(&tmp);
 
     let start = std::time::Instant::now();
@@ -450,6 +456,7 @@ async fn test_kill_worktree_processes_async_completes_within_timeout() {
         elapsed
     );
 
+    // codeql[rust/path-injection]
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -457,7 +464,8 @@ async fn test_kill_worktree_processes_async_completes_within_timeout() {
 #[ignore = "requires lsof process-enumeration capability"]
 async fn test_kill_worktree_processes_async_nonexistent_path() {
     // Non-existent path — should not panic, just log debug
-    let bogus = std::path::PathBuf::from("/tmp/ralphx_test_nonexistent_worktree_path_12345");
+    let bogus = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../.artifacts/tests/ralphx_test_nonexistent_worktree_path_12345");
     kill_worktree_processes_async(&bogus, 2, false).await;
     // If we get here without panic, the test passes
 }
@@ -467,7 +475,9 @@ async fn test_kill_worktree_processes_async_nonexistent_path() {
 async fn test_kill_worktree_processes_async_timeout_returns_quickly() {
     // Test that the timeout mechanism works by using a very short timeout (1s).
     // Even if lsof somehow takes longer, we should return within ~1s.
-    let tmp = std::env::temp_dir().join("ralphx_test_lsof_timeout");
+    let tmp_dir = tempfile::TempDir::new().expect("create temp dir");
+    let tmp = tmp_dir.path().join("ralphx_test_lsof_timeout");
+    // codeql[rust/path-injection]
     let _ = std::fs::create_dir_all(&tmp);
 
     let start = std::time::Instant::now();
@@ -481,6 +491,7 @@ async fn test_kill_worktree_processes_async_timeout_returns_quickly() {
         elapsed
     );
 
+    // codeql[rust/path-injection]
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -661,14 +672,12 @@ async fn test_await_process_death_graceful_exit() {
     // Wait for it to finish naturally
     let _ = child.wait();
 
-    let survivors = await_process_death(
-        &[pid],
-        std::time::Duration::from_secs(2),
-        false,
-    )
-    .await;
+    let survivors = await_process_death(&[pid], std::time::Duration::from_secs(2), false).await;
 
-    assert!(survivors.is_empty(), "Already-dead process should not be a survivor");
+    assert!(
+        survivors.is_empty(),
+        "Already-dead process should not be a survivor"
+    );
 }
 
 #[tokio::test]
@@ -797,11 +806,8 @@ async fn test_kill_process_immediate_kills_process_group_children() {
         std::process::Command::new("bash")
             .args(["-c", "sleep 60 & sleep 60 & wait"])
             .pre_exec(|| {
-                nix::unistd::setpgid(
-                    nix::unistd::Pid::from_raw(0),
-                    nix::unistd::Pid::from_raw(0),
-                )
-                .map_err(|e| std::io::Error::other(e))
+                nix::unistd::setpgid(nix::unistd::Pid::from_raw(0), nix::unistd::Pid::from_raw(0))
+                    .map_err(|e| std::io::Error::other(e))
             })
             .spawn()
             .expect("spawn bash parent")
@@ -913,9 +919,15 @@ async fn test_kill_worktree_processes_async_escalates_to_sigkill() {
 async fn test_memory_list_by_context_type_returns_only_matching() {
     let registry = MemoryRunningAgentRegistry::new();
 
-    registry.set_running(RunningAgentKey::new("ideation", "s1")).await;
-    registry.set_running(RunningAgentKey::new("ideation", "s2")).await;
-    registry.set_running(RunningAgentKey::new("task_execution", "t1")).await;
+    registry
+        .set_running(RunningAgentKey::new("ideation", "s1"))
+        .await;
+    registry
+        .set_running(RunningAgentKey::new("ideation", "s2"))
+        .await;
+    registry
+        .set_running(RunningAgentKey::new("task_execution", "t1"))
+        .await;
 
     let ideation = registry.list_by_context_type("ideation").await.unwrap();
     assert_eq!(ideation.len(), 2);
@@ -923,7 +935,10 @@ async fn test_memory_list_by_context_type_returns_only_matching() {
         assert_eq!(key.context_type, "ideation");
     }
 
-    let task_exec = registry.list_by_context_type("task_execution").await.unwrap();
+    let task_exec = registry
+        .list_by_context_type("task_execution")
+        .await
+        .unwrap();
     assert_eq!(task_exec.len(), 1);
     assert_eq!(task_exec[0].0.context_id, "t1");
 }
@@ -931,7 +946,9 @@ async fn test_memory_list_by_context_type_returns_only_matching() {
 #[tokio::test]
 async fn test_memory_list_by_context_type_returns_empty_when_no_match() {
     let registry = MemoryRunningAgentRegistry::new();
-    registry.set_running(RunningAgentKey::new("task_execution", "t1")).await;
+    registry
+        .set_running(RunningAgentKey::new("task_execution", "t1"))
+        .await;
 
     let result = registry.list_by_context_type("ideation").await.unwrap();
     assert!(result.is_empty());
@@ -958,7 +975,11 @@ async fn test_rapid_restart_dedup_try_register_ideation() {
 
     // First recovery attempt claims the slot.
     let r1 = registry
-        .try_register(key.clone(), "conv-ideation-1".to_string(), "run-1".to_string())
+        .try_register(
+            key.clone(),
+            "conv-ideation-1".to_string(),
+            "run-1".to_string(),
+        )
         .await;
     assert!(r1.is_ok(), "First recovery attempt should claim the slot");
 
@@ -969,7 +990,11 @@ async fn test_rapid_restart_dedup_try_register_ideation() {
 
     // Second concurrent recovery attempt for the same session_id must be rejected.
     let r2 = registry
-        .try_register(key.clone(), "conv-ideation-2".to_string(), "run-2".to_string())
+        .try_register(
+            key.clone(),
+            "conv-ideation-2".to_string(),
+            "run-2".to_string(),
+        )
         .await;
     assert!(
         r2.is_err(),

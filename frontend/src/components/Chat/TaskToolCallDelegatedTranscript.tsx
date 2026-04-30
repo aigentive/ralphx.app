@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { chatKeys, useConversation } from "@/hooks/useChat";
+import {
+  invalidateConversationDataQueries,
+  useConversationHistoryWindow,
+} from "@/hooks/useChat";
 import { useEventBus } from "@/providers/EventProvider";
 import { TaskCardTranscriptView } from "./TaskCardTranscript";
 import { buildTaskCardTranscriptEntriesFromConversation } from "./TaskCardTranscript.utils";
@@ -31,7 +34,9 @@ export function TaskToolCallDelegatedTranscript({
 }) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
-  const delegatedConversation = useConversation(conversationId);
+  const delegatedConversation = useConversationHistoryWindow(conversationId, {
+    pageSize: 40,
+  });
   const messages = delegatedConversation.data?.messages ?? [];
 
   useEffect(() => {
@@ -39,9 +44,7 @@ export function TaskToolCallDelegatedTranscript({
       if (payload.conversation_id !== conversationId) {
         return;
       }
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversation(conversationId),
-      });
+      invalidateConversationDataQueries(queryClient, conversationId);
     };
 
     const unsubscribers = [

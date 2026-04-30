@@ -8,7 +8,6 @@ import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   SectionTitle,
-  DetailCard,
   StatusBanner,
   StatusPill,
   TwoColumnLayout,
@@ -207,9 +206,7 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
         {/* Review History */}
         <section data-testid="review-history-section">
           <SectionTitle>Review History</SectionTitle>
-          <DetailCard>
-            <ReviewTimeline history={history} stateTransitions={stateTransitions} />
-          </DetailCard>
+          <ReviewTimeline history={history} stateTransitions={stateTransitions} />
         </section>
 
         {/* Actions (hidden in historical mode) */}

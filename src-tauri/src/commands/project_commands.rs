@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::time::Duration;
 
-use crate::application::{AppState, TaskTransitionService};
+use crate::application::{AppState, GitService, TaskTransitionService};
 use crate::commands::execution_commands::ActiveProjectState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -269,8 +269,13 @@ pub async fn create_project(
         .map_err(|e| e.to_string())?;
 
     // Fire-and-forget: spawn project analyzer to detect build systems
-    spawn_project_analyzer(&state, created.id.as_str(), &created.working_directory, state.app_handle.clone())
-        .await;
+    spawn_project_analyzer(
+        &state,
+        created.id.as_str(),
+        &created.working_directory,
+        state.app_handle.clone(),
+    )
+    .await;
 
     Ok(ProjectResponse::from(created))
 }
@@ -419,65 +424,38 @@ pub async fn get_git_default_branch(working_directory: String) -> Result<String,
         return Err("Not a git repository".to_string());
     }
 
-    // Try 1: origin/HEAD symbolic ref (most reliable for repos with a remote)
-    let output = Command::new("git")
-        .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
-        .current_dir(&working_directory)
-        .output();
+    GitService::detect_default_branch(std::path::Path::new(&working_directory))
+        .await
+        .map_err(|e| e.to_string())
+}
 
-    if let Ok(output) = output {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            // Output is like "refs/remotes/origin/main" -> extract "main"
-            if let Some(branch) = stdout.trim().strip_prefix("refs/remotes/origin/") {
-                return Ok(branch.to_string());
-            }
-        }
+/// Get the currently checked-out local branch for a git repository.
+#[tauri::command]
+pub async fn get_git_current_branch(working_directory: String) -> Result<String, String> {
+    if !std::path::Path::new(&working_directory).exists() {
+        return Err(format!("Directory does not exist: {}", working_directory));
     }
 
-    // Try 2: Check if main branch exists
-    let output = Command::new("git")
-        .args(["rev-parse", "--verify", "refs/heads/main"])
-        .current_dir(&working_directory)
-        .output();
-
-    if let Ok(output) = output {
-        if output.status.success() {
-            return Ok("main".to_string());
-        }
+    if !is_git_initialized(&working_directory) {
+        return Err("Not a git repository".to_string());
     }
 
-    // Try 3: Check if master branch exists
     let output = Command::new("git")
-        .args(["rev-parse", "--verify", "refs/heads/master"])
-        .current_dir(&working_directory)
-        .output();
-
-    if let Ok(output) = output {
-        if output.status.success() {
-            return Ok("master".to_string());
-        }
-    }
-
-    // Try 4: Get the first branch alphabetically
-    let output = Command::new("git")
-        .args(["branch", "--format=%(refname:short)"])
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(&working_directory)
         .output()
-        .map_err(|e| format!("Failed to list branches: {}", e))?;
+        .map_err(|e| format!("Failed to execute git: {}", e))?;
 
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if let Some(first_branch) = stdout.lines().next() {
-            let branch = first_branch.trim();
-            if !branch.is_empty() {
-                return Ok(branch.to_string());
-            }
-        }
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git current branch failed: {}", stderr));
     }
 
-    // No branches found (empty repo with no commits)
-    Err("No branches found in repository".to_string())
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() || branch == "HEAD" {
+        return Err("Repository is not currently on a local branch".to_string());
+    }
+    Ok(branch)
 }
 
 /// Get git branches for a working directory
@@ -499,8 +477,9 @@ pub async fn get_git_branches(working_directory: String) -> Result<Vec<String>, 
     let branches: Vec<String> = stdout
         .lines()
         .filter_map(|line| {
-            // Remove leading whitespace and asterisk (for current branch)
-            let trimmed = line.trim().trim_start_matches("* ");
+            // Remove Git's leading branch markers:
+            // '*' = current branch, '+' = branch checked out in another worktree.
+            let trimmed = line.trim().trim_start_matches(&['*', '+'][..]).trim_start();
             // Handle remote branches like "remotes/origin/main" -> just "main"
             if let Some(remote_branch) = trimmed.strip_prefix("remotes/origin/") {
                 // Skip HEAD pointer
@@ -655,7 +634,13 @@ pub async fn reanalyze_project(id: String, state: State<'_, AppState>) -> Result
         .await
         .map_err(|e| e.to_string())?;
 
-    spawn_project_analyzer(&state, &id, &project.working_directory, state.app_handle.clone()).await;
+    spawn_project_analyzer(
+        &state,
+        &id,
+        &project.working_directory,
+        state.app_handle.clone(),
+    )
+    .await;
 
     Ok(())
 }

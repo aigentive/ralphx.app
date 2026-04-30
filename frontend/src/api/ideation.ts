@@ -12,11 +12,14 @@ import {
   DependencyGraphResponseSchema,
   ApplyProposalsResultResponseSchema,
   CreateChildSessionResponseSchema,
+  LatestChildSessionIdResponseSchema,
   ParentSessionContextResponseSchema,
   VerificationResponseSchema,
+  SessionListResponseSchema,
 } from "./ideation.schemas";
 import {
   transformSession,
+  transformSessionList,
   transformProposal,
   transformSessionWithData,
   transformPriorityAssessment,
@@ -28,6 +31,10 @@ import {
 } from "./ideation.transforms";
 export { toTaskProposal } from "./ideation.transforms";
 import type {
+  SessionGroupKey,
+  SessionListResponse,
+} from "../types/ideation";
+import type {
   IdeationSessionResponse,
   TaskProposalResponse,
   SessionWithDataResponse,
@@ -37,7 +44,9 @@ import type {
   CreateProposalInput,
   UpdateProposalInput,
   ApplyProposalsInput,
+  IdeationAnalysisBaseSelection,
   CreateChildSessionResponse,
+  LatestChildSessionIdResponse,
   ParentSessionContextResponse,
   CreateChildSessionInput,
   VerificationStatusResponse,
@@ -57,7 +66,9 @@ export type {
   CreateProposalInput,
   UpdateProposalInput,
   ApplyProposalsInput,
+  IdeationAnalysisBaseSelection,
   CreateChildSessionResponse,
+  LatestChildSessionIdResponse,
   ParentSessionContextResponse,
   CreateChildSessionInput,
   VerificationStatusResponse,
@@ -139,6 +150,7 @@ export const ideationApi = {
       seedTaskId?: string,
       teamMode?: string,
       teamConfig?: { maxTeammates: number; modelCeiling: string; budgetLimit?: number | undefined; compositionMode: string },
+      analysisBase?: IdeationAnalysisBaseSelection,
     ): Promise<IdeationSessionResponse> => {
       const raw = await typedInvoke(
         "create_ideation_session",
@@ -147,6 +159,11 @@ export const ideationApi = {
             project_id: projectId,
             title,
             seed_task_id: seedTaskId,
+            ...(analysisBase !== undefined && {
+              analysis_base_ref_kind: analysisBase.kind,
+              analysis_base_ref: analysisBase.ref,
+              analysis_base_display_name: analysisBase.displayName,
+            }),
             ...(teamMode !== undefined && { team_mode: teamMode }),
             ...(teamConfig !== undefined && {
               team_config: {
@@ -203,6 +220,27 @@ export const ideationApi = {
         z.array(IdeationSessionResponseSchema)
       );
       return raw.map(transformSession);
+    },
+
+    listByGroup: async (
+      projectId: string,
+      group: SessionGroupKey,
+      offset = 0,
+      limit = 200,
+      search?: string
+    ): Promise<SessionListResponse> => {
+      const raw = await typedInvoke(
+        "list_sessions_by_group",
+        {
+          projectId,
+          group,
+          offset,
+          limit,
+          ...(search ? { search } : {}),
+        },
+        SessionListResponseSchema
+      );
+      return transformSessionList(raw);
     },
 
     /**
@@ -295,6 +333,27 @@ export const ideationApi = {
         z.array(IdeationSessionResponseSchema)
       );
       return raw.map(transformSession);
+    },
+
+    getLatestChildSessionId: async (
+      sessionId: string,
+      purpose?: "general" | "verification",
+      options: { includeArchived?: boolean } = {}
+    ): Promise<LatestChildSessionIdResponse> => {
+      const raw = await typedInvoke(
+        "get_latest_child_session_id",
+        {
+          sessionId,
+          purpose: purpose ?? null,
+          includeArchived: options.includeArchived ?? true,
+        },
+        LatestChildSessionIdResponseSchema
+      );
+      return {
+        sessionId: raw.session_id,
+        purpose: raw.purpose ?? null,
+        latestChildSessionId: raw.latest_child_session_id,
+      };
     },
   },
 

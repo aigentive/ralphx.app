@@ -397,7 +397,7 @@ impl Default for ReconciliationConfig {
             reviewing_max_wall_clock_minutes: 30,
             qa_max_wall_clock_minutes: 15,
             pre_merge_cleanup_timeout_secs: 60,
-            attempt_merge_deadline_secs: 60,
+            attempt_merge_deadline_secs: 120,
             validation_deadline_secs: 1200,
             merge_registry_grace_period_secs: 60,
             validation_retry_min_cooldown_secs: 120,
@@ -826,6 +826,10 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     }
     if let Some(v) = lookup("RALPHX_UI_BATTLE_MODE") {
         cfg.ui_feature_flags.battle_mode = matches!(v.to_lowercase().as_str(), "true" | "1");
+    }
+    if let Some(v) = lookup("RALPHX_UI_TEAM_MODE") {
+        cfg.ui_feature_flags.team_mode =
+            matches!(v.to_lowercase().as_str(), "true" | "1");
     }
 }
 

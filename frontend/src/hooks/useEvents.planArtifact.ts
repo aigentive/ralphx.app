@@ -57,6 +57,15 @@ export function usePlanArtifactEvents() {
 
   useEffect(() => {
     const unsubscribes: Unsubscribe[] = [];
+    const invalidateAgentArtifacts = (
+      ...artifactIds: Array<string | null | undefined>
+    ) => {
+      for (const artifactId of new Set(artifactIds.filter(Boolean) as string[])) {
+        queryClientRef.current.invalidateQueries({
+          queryKey: ["agents", "artifact", artifactId],
+        });
+      }
+    };
 
     // Listen for created events
     unsubscribes.push(
@@ -115,6 +124,7 @@ export function usePlanArtifactEvents() {
           queryClientRef.current.invalidateQueries({
             queryKey: ideationKeys.sessionWithData(sessionId),
           });
+          invalidateAgentArtifacts(artifact.id);
         }
       })
     );
@@ -171,6 +181,7 @@ export function usePlanArtifactEvents() {
             queryClientRef.current.invalidateQueries({
               queryKey: ideationKeys.sessionWithData(sessionId),
             });
+            invalidateAgentArtifacts(artifact.id, artifactId, previousArtifactId);
             return;
           }
 
@@ -213,6 +224,7 @@ export function usePlanArtifactEvents() {
               queryClientRef.current.invalidateQueries({
                 queryKey: ideationKeys.sessionWithData(session.id),
               });
+              invalidateAgentArtifacts(artifact.id, artifactId, previousArtifactId);
             }
           }
 

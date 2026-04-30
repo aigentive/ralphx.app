@@ -4,9 +4,11 @@
  * Tests attachment rendering integration with MessageAttachments component
  */
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { MessageItem } from "./MessageItem";
 import {
   makeContentText,
@@ -15,6 +17,14 @@ import {
   makeMessageItemProps,
   makeToolCall,
 } from "./__tests__/chatRenderFixtures";
+
+function renderMessageItem(ui: ReactElement) {
+  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>);
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("MessageItem - Attachment Integration", () => {
   const baseProps = makeMessageItemProps({
@@ -32,7 +42,7 @@ describe("MessageItem - Attachment Integration", () => {
   ];
 
   it("renders MessageAttachments for user messages with attachments", () => {
-    render(
+    renderMessageItem(
       <MessageItem {...baseProps} role="user" attachments={mockAttachments} />
     );
 
@@ -46,7 +56,7 @@ describe("MessageItem - Attachment Integration", () => {
   });
 
   it("does NOT render MessageAttachments for user messages without attachments", () => {
-    render(<MessageItem {...baseProps} role="user" />);
+    renderMessageItem(<MessageItem {...baseProps} role="user" />);
 
     // No attachment chips should be present
     const chips = screen.queryAllByTestId("attachment-chip");
@@ -54,7 +64,7 @@ describe("MessageItem - Attachment Integration", () => {
   });
 
   it("does NOT render MessageAttachments for user messages with empty attachments array", () => {
-    render(<MessageItem {...baseProps} role="user" attachments={[]} />);
+    renderMessageItem(<MessageItem {...baseProps} role="user" attachments={[]} />);
 
     // No attachment chips should be present
     const chips = screen.queryAllByTestId("attachment-chip");
@@ -62,7 +72,7 @@ describe("MessageItem - Attachment Integration", () => {
   });
 
   it("does NOT render MessageAttachments for assistant messages even if attachments prop is passed", () => {
-    render(
+    renderMessageItem(
       <MessageItem
         {...baseProps}
         role="assistant"
@@ -76,7 +86,7 @@ describe("MessageItem - Attachment Integration", () => {
   });
 
   it("MessageAttachments appear above the text bubble for user messages", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem {...baseProps} role="user" attachments={mockAttachments} />
     );
 
@@ -110,7 +120,7 @@ describe("MessageItem - Attachment Integration", () => {
   it("works with content blocks rendering", () => {
     const contentBlocks = [makeContentText("First block"), makeContentText("Second block")];
 
-    render(
+    renderMessageItem(
       <MessageItem
         {...baseProps}
         role="user"
@@ -137,7 +147,7 @@ describe("MessageItem - Attachment Integration", () => {
       }),
     ];
 
-    render(
+    renderMessageItem(
       <MessageItem
         {...baseProps}
         role="assistant"
@@ -155,7 +165,7 @@ describe("MessageItem - Attachment Integration", () => {
   });
 
   it("renders provider metadata for assistant messages when available", () => {
-    render(
+    renderMessageItem(
       <MessageItem
         {...baseProps}
         role="assistant"
@@ -183,9 +193,53 @@ describe("MessageItem - Attachment Integration", () => {
   });
 });
 
+describe("MessageItem - copy affordance", () => {
+  it("renders an always-visible copy button next to the assistant timestamp", () => {
+    renderMessageItem(<MessageItem {...makeMessageItemProps({ role: "assistant", content: "Hello world" })} />);
+
+    const meta = screen.getByTestId("message-meta");
+    const copyButton = screen.getByTestId("message-copy-button");
+
+    expect(meta).toContainElement(copyButton);
+    expect(copyButton).toHaveAttribute("aria-label", "Copy message");
+  });
+
+  it("renders the same inline copy button for user messages", () => {
+    renderMessageItem(<MessageItem {...makeMessageItemProps({ role: "user", content: "Hello world" })} />);
+
+    expect(screen.getByTestId("message-meta")).toContainElement(
+      screen.getByTestId("message-copy-button")
+    );
+  });
+
+  it("shows a tooltip on the inline copy button", async () => {
+    const user = userEvent.setup();
+    renderMessageItem(<MessageItem {...makeMessageItemProps({ role: "assistant", content: "Hello world" })} />);
+
+    await user.hover(screen.getByTestId("message-copy-button"));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Copy message");
+  });
+});
+
+describe("MessageItem - timestamp display", () => {
+  it("renders human-diff timestamp text with the absolute timestamp as a native title", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
+    const createdAt = new Date(2026, 3, 25, 14, 33, 0).toISOString();
+
+    renderMessageItem(
+      <MessageItem {...makeMessageItemProps({ createdAt, content: "Hello world" })} />
+    );
+
+    const timestamp = screen.getByText("2 hours ago");
+    expect(timestamp).toHaveAttribute("title", "Apr 25, 2026, 2:33 PM");
+  });
+});
+
 describe("MessageItem - list spacing", () => {
   it("removes trailing bottom margin for the last rendered message", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem
         role="assistant"
         content="Last message"
@@ -200,7 +254,7 @@ describe("MessageItem - list spacing", () => {
   });
 
   it("keeps standard bottom margin for non-terminal messages", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem
         role="assistant"
         content="Middle message"
@@ -235,7 +289,7 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
       }),
     ];
 
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content="" createdAt={createdAt} contentBlocks={contentBlocks} />
     );
 
@@ -270,7 +324,7 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
       }),
     ];
 
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content="" createdAt={createdAt} contentBlocks={contentBlocks} />
     );
 
@@ -297,7 +351,7 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
       }),
     ];
 
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content="" createdAt={createdAt} contentBlocks={contentBlocks} />
     );
 
@@ -326,7 +380,7 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
       }),
     ];
 
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content="" createdAt={createdAt} contentBlocks={contentBlocks} />
     );
 
@@ -415,7 +469,7 @@ describe("MessageItem - persisted delegation replay", () => {
       }),
     ];
 
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem
         role="assistant"
         content=""
@@ -467,7 +521,7 @@ describe("MessageItem - persisted delegation replay", () => {
       }),
     ];
 
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem
         role="assistant"
         content=""
@@ -501,7 +555,7 @@ describe("MessageItem - persisted delegation replay", () => {
       }),
     ];
 
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem
         role="assistant"
         content=""
@@ -520,7 +574,7 @@ describe("MessageItem - Empty content guard (legacy rendering path)", () => {
   const createdAt = new Date().toISOString();
 
   it("does NOT render TextBubble for assistant with empty content", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content="" createdAt={createdAt} />
     );
 
@@ -530,7 +584,7 @@ describe("MessageItem - Empty content guard (legacy rendering path)", () => {
   });
 
   it("does NOT render TextBubble for assistant with whitespace-only content", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content="   " createdAt={createdAt} />
     );
 
@@ -540,7 +594,7 @@ describe("MessageItem - Empty content guard (legacy rendering path)", () => {
 
   it("does NOT render TextBubble for assistant with newline-only content", () => {
     // Use curly braces so JSX treats the value as a JS expression (escape sequences)
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content={"\n\t  \n"} createdAt={createdAt} />
     );
 
@@ -549,7 +603,7 @@ describe("MessageItem - Empty content guard (legacy rendering path)", () => {
   });
 
   it("renders TextBubble for assistant with non-empty content", () => {
-    render(
+    renderMessageItem(
       <MessageItem role="assistant" content="Hello there" createdAt={createdAt} />
     );
 
@@ -557,7 +611,7 @@ describe("MessageItem - Empty content guard (legacy rendering path)", () => {
   });
 
   it("renders TextBubble for user even when content is empty (user always shows)", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="user" content="" createdAt={createdAt} />
     );
 
@@ -575,7 +629,7 @@ describe("MessageItem - Empty content guard (legacy rendering path)", () => {
         result: "content",
       }),
     ];
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content="" createdAt={createdAt} toolCalls={toolCalls} />
     );
 

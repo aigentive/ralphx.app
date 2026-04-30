@@ -9,7 +9,7 @@ import { CheckCircle2, RotateCcw, Bot, User, Settings, ExternalLink } from "luci
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import type { StateTransition } from "@/api/tasks";
 import { navigateToIdeationSession } from "@/lib/navigation";
-import { statusTint, withAlpha } from "@/lib/theme-colors";
+import { withAlpha } from "@/lib/theme-colors";
 import { ReviewFeedbackBody } from "@/components/reviews/ReviewFeedbackBody";
 import { getReviewerTypeLabel } from "@/lib/review-feedback";
 
@@ -134,25 +134,19 @@ function TimelineItem({
   const hasContent = hasSummary || hasNotes;
 
   const getConfig = () => {
-    if (isApproved) {
-      return {
-        Icon: CheckCircle2,
-        color: "var(--status-success)",
-        bgColor: "var(--status-success-muted)",
-        lineColor: "var(--status-success-border)",
-      };
-    }
     if (isChangesRequested) {
       return {
         Icon: RotateCcw,
-        color: "var(--status-warning)",
-        bgColor: "var(--status-warning-muted)",
-        lineColor: "var(--status-warning-border)",
+        color: "color-mix(in srgb, var(--status-warning) 76%, var(--text-muted))",
+        bgColor: "var(--overlay-moderate)",
+        lineColor: withAlpha("var(--text-muted)", 20),
       };
     }
     return {
       Icon: CheckCircle2,
-      color: "var(--text-muted)",
+      color: isApproved
+        ? "color-mix(in srgb, var(--status-success) 76%, var(--text-muted))"
+        : "var(--text-muted)",
       bgColor: "var(--overlay-moderate)",
       lineColor: withAlpha("var(--text-muted)", 20),
     };
@@ -161,6 +155,14 @@ function TimelineItem({
   const config = getConfig();
   const ReviewerIcon = isHuman ? User : isSystem ? Settings : Bot;
   const reviewerLabel = getReviewerTypeLabel(entry.reviewer).replace(" Review", "");
+  const previewClassName = [
+    "text-[13px] text-text-primary leading-relaxed",
+    "[&_.prose]:!text-text-primary [&_.prose]:text-[13px] [&_.prose]:leading-relaxed",
+    "[&_p]:!text-text-primary [&_p]:text-[13px] [&_p]:leading-relaxed",
+    "[&_li]:!text-text-primary [&_ul]:!text-text-primary [&_ol]:!text-text-primary",
+    "[&_li]:text-[13px] [&_ul]:text-[13px] [&_ol]:text-[13px]",
+    "[&_code]:!text-text-primary [&_code]:text-[12px]",
+  ].join(" ");
 
   const getLabel = () => {
     if (attemptNumber !== undefined && isChangesRequested) {
@@ -179,7 +181,14 @@ function TimelineItem({
   };
 
   return (
-    <div className="flex gap-3">
+    <div
+      className="flex gap-3 px-3 py-3"
+      style={
+        !isLast
+          ? { borderBottom: "1px solid var(--border-subtle)" }
+          : undefined
+      }
+    >
       {/* Timeline connector — dimmed for stale reviews */}
       <div
         className="flex flex-col items-center"
@@ -202,20 +211,26 @@ function TimelineItem({
       </div>
 
       {/* Content */}
-      <div className="flex-1 pb-4">
+      <div className="flex-1">
         {/* Main content — dimmed for stale reviews */}
         <div style={isStale ? { opacity: 0.6 } : undefined}>
           <div className="flex items-center gap-2">
             <ReviewerIcon
               className="w-3.5 h-3.5"
-              style={{ color: isHuman ? "var(--status-success)" : isSystem ? "var(--status-warning)" : "var(--status-info)" }}
+              style={{
+                color: isHuman
+                  ? "color-mix(in srgb, var(--status-success) 70%, var(--text-muted))"
+                  : isSystem
+                    ? "color-mix(in srgb, var(--status-warning) 70%, var(--text-muted))"
+                    : "color-mix(in srgb, var(--status-info) 70%, var(--text-muted))",
+              }}
             />
-            <span className="text-[12px] font-semibold text-text-primary/75">
+            <span className="text-[12px] font-semibold text-text-primary/70">
               {getLabel()}
             </span>
             {entryContext && (
               <span
-                className="text-[11px] text-text-primary/40 truncate min-w-0 max-w-[220px]"
+                className="text-[10px] text-text-primary/40 truncate min-w-0 max-w-[220px]"
                 title={entryContext}
               >
                 {entryContext}
@@ -225,14 +240,14 @@ function TimelineItem({
               <span
                 className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
                 style={{
-                  backgroundColor: statusTint("success", 12),
-                  color: "var(--status-success)",
+                  backgroundColor: "var(--overlay-weak)",
+                  color: "var(--text-muted)",
                 }}
               >
                 Superseded
               </span>
             )}
-            <span className="text-[11px] text-text-primary/40 ml-auto">
+            <span className="text-[10px] text-text-primary/40 ml-auto">
               {formatRelativeTime(entry.created_at)}
             </span>
           </div>
@@ -244,14 +259,15 @@ function TimelineItem({
                 dialogTitle="Full review feedback"
                 dialogDescription="Full review feedback in a scrollable view."
                 fullButtonLabel="View full feedback"
-                previewClassName="text-[12px] text-text-primary/50 leading-relaxed"
+                fullButtonClassName="text-[12px]"
+                previewClassName={previewClassName}
               />
 
               {entry.followup_session_id && (
                 <div className="mt-3 flex items-center justify-between gap-2 rounded-lg px-2.5 py-2"
                   style={{
-                    backgroundColor: "var(--accent-muted)",
-                    border: `1px solid ${statusTint("accent", 14)}`,
+                    backgroundColor: "var(--overlay-weak)",
+                    border: "1px solid var(--border-subtle)",
                   }}
                 >
                   <div className="min-w-0">
@@ -268,7 +284,7 @@ function TimelineItem({
                     className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-opacity hover:opacity-80"
                     style={{
                       color: "var(--accent-primary)",
-                      backgroundColor: statusTint("accent", 12),
+                      backgroundColor: "var(--overlay-faint)",
                     }}
                   >
                     <ExternalLink className="w-3 h-3" />
@@ -285,7 +301,7 @@ function TimelineItem({
           <div className="pl-5 mt-1.5 flex items-center gap-1 flex-wrap">
             {resolutionTrail.map((item, i) => (
               <Fragment key={`${item.label}-${i}`}>
-                <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                   {item.label}{" "}
                   <span style={{ color: "var(--text-muted)" }}>
                     ({formatRelativeTime(item.timestamp)})
@@ -293,7 +309,7 @@ function TimelineItem({
                 </span>
                 {i < resolutionTrail.length - 1 && (
                   <span
-                    className="text-[11px]"
+                    className="text-[10px]"
                     style={{ color: "var(--text-muted)" }}
                   >
                     →

@@ -1,5 +1,6 @@
 pub mod activity_event;
 pub mod agent_run;
+pub mod agent_conversation_workspace;
 pub mod event_type;
 pub mod api_key;
 pub mod app_state;
@@ -40,6 +41,10 @@ pub use agent_run::{
     AgentRun, AgentRunAttribution, AgentRunId, AgentRunStatus, AgentRunUsage,
     InterruptedConversation,
 };
+pub use agent_conversation_workspace::{
+    AgentConversationWorkspace, AgentConversationWorkspaceMode,
+    AgentConversationWorkspacePublicationEvent, AgentConversationWorkspaceStatus,
+};
 pub use event_type::{EventType, ParseEventTypeError};
 pub use api_key::{
     ApiKey, AuditLogEntry, PERMISSION_ADMIN, PERMISSION_CREATE_PROJECT, PERMISSION_MAX,
@@ -68,8 +73,9 @@ pub use execution_plan::{ExecutionPlan, ExecutionPlanStatus, ParseExecutionPlanS
 pub use ideation::{
     build_child_session, matching_blocker_followup_session, AcceptanceStatus, BusinessValueFactor,
     ChatMessage, ChatMessageAttribution, ChatMessageUsage, ChildSessionDraftInput, Complexity, ComplexityFactor, CriticalPathFactor,
-    DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSession,
-    IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
+    DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode,
+    IdeationAnalysisBaseRefKind, IdeationAnalysisState, IdeationAnalysisWorkspaceKind,
+    IdeationSession, IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
     ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
     ParseProposalCategoryError, ParseProposalStatusError, ParseVerificationStatusError, Priority,
     PriorityAssessment, PriorityAssessmentFactors, PriorityFactors, ProposalCategory,

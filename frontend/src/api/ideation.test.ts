@@ -211,6 +211,32 @@ describe("ideationApi.sessions", () => {
       expect(calledInput).not.toHaveProperty("team_mode");
       expect(calledInput).not.toHaveProperty("team_config");
     });
+
+    it("sends analysis base selection when provided", async () => {
+      const session = createMockSessionRaw();
+      mockInvoke.mockResolvedValue(session);
+
+      await ideationApi.sessions.create(
+        "project-1",
+        "Title",
+        undefined,
+        undefined,
+        undefined,
+        {
+          kind: "current_branch",
+          ref: "feature/current",
+          displayName: "Current branch (feature/current)",
+        },
+      );
+
+      expect(mockInvoke).toHaveBeenCalledWith("create_ideation_session", {
+        input: expect.objectContaining({
+          analysis_base_ref_kind: "current_branch",
+          analysis_base_ref: "feature/current",
+          analysis_base_display_name: "Current branch (feature/current)",
+        }),
+      });
+    });
   });
 
   describe("get", () => {
@@ -282,6 +308,33 @@ describe("ideationApi.sessions", () => {
     });
   });
 
+  describe("getLatestChildSessionId", () => {
+    it("should call get_latest_child_session_id with purpose and archive options", async () => {
+      mockInvoke.mockResolvedValue({
+        session_id: "session-1",
+        purpose: "verification",
+        latest_child_session_id: "child-1",
+      });
+
+      const result = await ideationApi.sessions.getLatestChildSessionId(
+        "session-1",
+        "verification",
+        { includeArchived: true },
+      );
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_latest_child_session_id", {
+        sessionId: "session-1",
+        purpose: "verification",
+        includeArchived: true,
+      });
+      expect(result).toEqual({
+        sessionId: "session-1",
+        purpose: "verification",
+        latestChildSessionId: "child-1",
+      });
+    });
+  });
+
   describe("list", () => {
     it("should call list_ideation_sessions with project_id", async () => {
       mockInvoke.mockResolvedValue([createMockSessionRaw()]);
@@ -314,6 +367,47 @@ describe("ideationApi.sessions", () => {
       const result = await ideationApi.sessions.list("project-1");
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe("listByGroup", () => {
+    it("should call list_sessions_by_group and transform sessions", async () => {
+      mockInvoke.mockResolvedValue({
+        sessions: [
+          {
+            ...createMockSessionRaw({
+              id: "archived-session",
+              title: "Archived agent",
+              status: "archived",
+              archived_at: "2026-04-22T12:00:00Z",
+            }),
+            progress: null,
+            parentSessionTitle: null,
+            verificationChildCount: 2,
+            hasPendingPrompt: false,
+          },
+        ],
+        total: 1,
+        hasMore: false,
+        offset: 0,
+      });
+
+      const result = await ideationApi.sessions.listByGroup(
+        "project-1",
+        "archived"
+      );
+
+      expect(mockInvoke).toHaveBeenCalledWith("list_sessions_by_group", {
+        projectId: "project-1",
+        group: "archived",
+        offset: 0,
+        limit: 200,
+      });
+      expect(result.sessions[0]?.id).toBe("archived-session");
+      expect(result.sessions[0]?.title).toBe("Archived agent");
+      expect(result.sessions[0]?.archivedAt).toBe("2026-04-22T12:00:00Z");
+      expect(result.sessions[0]?.verificationChildCount).toBe(2);
+      expect(result.hasMore).toBe(false);
     });
   });
 

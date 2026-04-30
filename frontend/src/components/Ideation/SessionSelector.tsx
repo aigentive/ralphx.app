@@ -159,7 +159,7 @@ export function SessionSelector({
         className="px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         style={{
           backgroundColor: "var(--accent-primary)",
-          color: "var(--bg-base)",
+          color: "var(--text-on-accent)",
         }}
       >
         New Session

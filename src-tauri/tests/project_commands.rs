@@ -5,11 +5,11 @@ use std::sync::Arc;
 use common::MockGithubService;
 use ralphx_lib::application::services::PrPollerRegistry;
 use ralphx_lib::application::AppState;
-use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::commands::project_commands::*;
+use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    ArtifactId, GitMode, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchStatus, Project,
-    ProjectId, Task, TaskCategory, TaskId, MergeValidationMode,
+    ArtifactId, GitMode, IdeationSessionId, InternalStatus, MergeValidationMode, PlanBranch,
+    PlanBranchStatus, Project, ProjectId, Task, TaskCategory, TaskId,
 };
 use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
 use ralphx_lib::domain::services::github_service::GithubServiceTrait;
@@ -442,10 +442,7 @@ mod ipc_contract {
         assert_eq!(input.working_directory, Some("/new/path".to_string()));
         assert_eq!(input.git_mode, Some("local".to_string()));
         assert_eq!(input.base_branch, Some("develop".to_string()));
-        assert_eq!(
-            input.merge_validation_mode,
-            Some("strict".to_string())
-        );
+        assert_eq!(input.merge_validation_mode, Some("strict".to_string()));
         assert_eq!(input.merge_strategy, Some("rebase_squash".to_string()));
     }
 
@@ -504,7 +501,10 @@ async fn test_update_project_persists_worktree_parent_directory() {
     let state = setup_test_state();
 
     let project = Project::new("Test".to_string(), "/test/path".to_string());
-    assert!(project.worktree_parent_directory.is_none(), "default should be None");
+    assert!(
+        project.worktree_parent_directory.is_none(),
+        "default should be None"
+    );
     let created = state.project_repo.create(project).await.unwrap();
 
     let mut updated = created.clone();
@@ -711,14 +711,7 @@ mod mode_switch_tests {
         let execution_state = Arc::new(ExecutionState::new());
         let app_handle = create_mock_app_handle();
 
-        reconcile_pr_mode_switch(
-            &pid,
-            true,
-            &state,
-            &execution_state,
-            app_handle,
-        )
-        .await;
+        reconcile_pr_mode_switch(&pid, true, &state, &execution_state, app_handle).await;
 
         let branch_after = plan_branch_repo
             .get_by_id(&branch_id)
@@ -733,8 +726,8 @@ mod mode_switch_tests {
         let task_after = task_repo.get_by_id(&merge_task_id).await.unwrap().unwrap();
         assert_eq!(
             task_after.internal_status,
-            InternalStatus::Merging,
-            "PendingMerge merge task should re-enter via the PR path"
+            InternalStatus::WaitingOnPr,
+            "PendingMerge merge task should enter the GitHub PR wait state"
         );
         assert!(
             mock_github.push_calls() > 0,
@@ -862,7 +855,10 @@ async fn test_ensure_git_initialized_no_commits() {
         .expect("git init");
     configure_git_identity(tmp.path());
 
-    assert!(tmp.path().join(".git").exists(), "precondition: .git exists");
+    assert!(
+        tmp.path().join(".git").exists(),
+        "precondition: .git exists"
+    );
     assert!(!has_commits(tmp.path()), "precondition: no commits");
 
     ensure_git_initialized_async(path_str)

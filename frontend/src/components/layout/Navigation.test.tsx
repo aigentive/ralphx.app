@@ -31,8 +31,13 @@ vi.mock("@/stores/projectStore", () => ({
 }));
 
 // Mock useProjectStats — avoids needing QueryClientProvider in Navigation tests
+let mockTaskCount = 0;
 vi.mock("@/hooks/useProjectStats", () => ({
-  useProjectStats: vi.fn(() => ({ data: undefined, isLoading: false, isError: false })),
+  useProjectStats: vi.fn(() => ({
+    data: { taskCount: mockTaskCount },
+    isLoading: false,
+    isError: false,
+  })),
 }));
 
 // Feature flags mock — default all enabled
@@ -51,22 +56,64 @@ vi.mock("@/components/ui/tooltip", () => ({
 
 describe("Navigation", () => {
   const defaultProps = {
-    currentView: "kanban" as const,
+    currentView: "agents" as const,
     onViewChange: vi.fn(),
   };
 
   beforeEach(() => {
     mockState = { activeTeams: {} };
     mockFeatureFlags = { activityPage: true, extensibilityPage: true };
+    mockTaskCount = 0;
   });
 
   it("renders all nav items", () => {
     render(<Navigation {...defaultProps} />);
 
+    expect(screen.getByTestId("nav-agents")).toBeInTheDocument();
     expect(screen.getByTestId("nav-ideation")).toBeInTheDocument();
     expect(screen.getByTestId("nav-kanban")).toBeInTheDocument();
     expect(screen.getByTestId("nav-graph")).toBeInTheDocument();
     expect(screen.getByTestId("nav-activity")).toBeInTheDocument();
+  });
+
+  it("renders Agents first in the main navbar", () => {
+    render(<Navigation {...defaultProps} />);
+
+    const nav = screen.getByRole("navigation");
+    const navItemIds = Array.from(nav.querySelectorAll("[data-testid]")).map((element) =>
+      element.getAttribute("data-testid")
+    );
+
+    expect(navItemIds.slice(0, 4)).toEqual([
+      "nav-agents",
+      "nav-ideation",
+      "nav-graph",
+      "nav-kanban",
+    ]);
+  });
+
+  it("orders the shortcut-backed main views as Agents, Ideation, Graph, Kanban, Insights", () => {
+    mockTaskCount = 10;
+
+    render(<Navigation {...defaultProps} />);
+
+    const nav = screen.getByRole("navigation");
+    const navItemIds = Array.from(nav.querySelectorAll("[data-testid]")).map((element) =>
+      element.getAttribute("data-testid")
+    );
+
+    expect(navItemIds.slice(0, 5)).toEqual([
+      "nav-agents",
+      "nav-ideation",
+      "nav-graph",
+      "nav-kanban",
+      "nav-insights",
+    ]);
+    expect(screen.getByText("⌘1")).toBeInTheDocument();
+    expect(screen.getByText("⌘2")).toBeInTheDocument();
+    expect(screen.getByText("⌘3")).toBeInTheDocument();
+    expect(screen.getByText("⌘4")).toBeInTheDocument();
+    expect(screen.getByText("⌘5")).toBeInTheDocument();
   });
 
   it("shows team pill when hasActiveTeam is true", () => {
@@ -107,13 +154,14 @@ describe("Navigation", () => {
 
 describe("Navigation — feature flag filtering", () => {
   const defaultProps = {
-    currentView: "kanban" as const,
+    currentView: "agents" as const,
     onViewChange: vi.fn(),
   };
 
   beforeEach(() => {
     mockState = { activeTeams: {} };
     mockFeatureFlags = { activityPage: true, extensibilityPage: true };
+    mockTaskCount = 0;
   });
 
   it("renders activity and extensibility nav items when flags are enabled", () => {
@@ -157,9 +205,62 @@ describe("Navigation — feature flag filtering", () => {
 
     render(<Navigation {...defaultProps} />);
 
+    expect(screen.getByTestId("nav-agents")).toBeInTheDocument();
     expect(screen.getByTestId("nav-ideation")).toBeInTheDocument();
     expect(screen.getByTestId("nav-graph")).toBeInTheDocument();
     expect(screen.getByTestId("nav-kanban")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-settings")).toBeInTheDocument();
+  });
+});
+
+describe("Navigation — hideViews (welcome mode)", () => {
+  const defaultProps = {
+    currentView: "agents" as const,
+    onViewChange: vi.fn(),
+    onOpenSettings: vi.fn(),
+  };
+
+  beforeEach(() => {
+    mockState = { activeTeams: {} };
+    mockFeatureFlags = { activityPage: true, extensibilityPage: true };
+    mockTaskCount = 10;
+  });
+
+  it("hides every view nav item when hideViews is true", () => {
+    render(<Navigation {...defaultProps} hideViews />);
+
+    expect(screen.queryByTestId("nav-agents")).toBeNull();
+    expect(screen.queryByTestId("nav-ideation")).toBeNull();
+    expect(screen.queryByTestId("nav-graph")).toBeNull();
+    expect(screen.queryByTestId("nav-kanban")).toBeNull();
+    expect(screen.queryByTestId("nav-insights")).toBeNull();
+    expect(screen.queryByTestId("nav-activity")).toBeNull();
+    expect(screen.queryByTestId("nav-extensibility")).toBeNull();
+  });
+
+  it("still renders the Settings button when hideViews is true", () => {
+    render(<Navigation {...defaultProps} hideViews />);
+
+    expect(screen.getByTestId("nav-settings")).toBeInTheDocument();
+  });
+
+  it("hides the active team pill even when teams are active", () => {
+    mockState = {
+      activeTeams: {
+        "ctx-1": { teammates: { "t-1": {}, "t-2": {} } },
+      },
+    };
+
+    render(<Navigation {...defaultProps} hideViews />);
+
+    // Team count chip should not render
+    expect(screen.queryByText("2")).toBeNull();
+  });
+
+  it("renders all view items when hideViews is false (default)", () => {
+    render(<Navigation {...defaultProps} />);
+
+    expect(screen.getByTestId("nav-agents")).toBeInTheDocument();
     expect(screen.getByTestId("nav-settings")).toBeInTheDocument();
   });
 });

@@ -7,10 +7,24 @@ use async_trait::async_trait;
 
 use crate::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::entities::{
-    ChatContextType, ChatConversation, ChatConversationId, ConversationAttributionBackfillState,
-    ConversationAttributionBackfillSummary,
+    AgentConversationWorkspaceMode, ChatContextType, ChatConversation, ChatConversationId,
+    ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
 };
 use crate::error::AppResult;
+
+#[derive(Clone, Debug)]
+pub struct ChatConversationPage {
+    pub conversations: Vec<ChatConversation>,
+    pub total_count: i64,
+    pub offset: u32,
+    pub limit: u32,
+}
+
+impl ChatConversationPage {
+    pub fn has_more(&self) -> bool {
+        i64::from(self.offset) + (self.conversations.len() as i64) < self.total_count
+    }
+}
 
 /// Repository trait for ChatConversation persistence.
 /// Implementations can use SQLite, PostgreSQL, in-memory, etc.
@@ -28,6 +42,27 @@ pub trait ChatConversationRepository: Send + Sync {
         context_type: ChatContextType,
         context_id: &str,
     ) -> AppResult<Vec<ChatConversation>>;
+
+    /// Get all conversations for a specific context, optionally including archived rows.
+    async fn get_by_context_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+    ) -> AppResult<Vec<ChatConversation>>;
+
+    /// Get a page of conversations for a specific context, optionally including
+    /// archived rows and filtering by title.
+    async fn get_by_context_page_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+        archived_only: bool,
+        offset: u32,
+        limit: u32,
+        search: Option<&str>,
+    ) -> AppResult<ChatConversationPage>;
 
     /// Get the active (most recent) conversation for a context
     async fn get_active_for_context(
@@ -54,6 +89,13 @@ pub trait ChatConversationRepository: Send + Sync {
         provider_profile: Option<&str>,
     ) -> AppResult<()>;
 
+    /// Update the current Agents mode for a project conversation.
+    async fn update_agent_mode(
+        &self,
+        id: &ChatConversationId,
+        mode: Option<AgentConversationWorkspaceMode>,
+    ) -> AppResult<()>;
+
     /// Compatibility helper for legacy Claude-specific callers.
     async fn update_claude_session_id(
         &self,
@@ -77,6 +119,12 @@ pub trait ChatConversationRepository: Send + Sync {
 
     /// Update conversation title
     async fn update_title(&self, id: &ChatConversationId, title: &str) -> AppResult<()>;
+
+    /// Archive a conversation.
+    async fn archive(&self, id: &ChatConversationId) -> AppResult<()>;
+
+    /// Restore an archived conversation.
+    async fn restore(&self, id: &ChatConversationId) -> AppResult<()>;
 
     /// Update message count and last message timestamp
     /// This is typically called by a database trigger, but can be manually updated if needed

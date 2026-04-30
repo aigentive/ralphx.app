@@ -28,6 +28,66 @@ impl GitService {
         Ok(())
     }
 
+    /// Detect a repository's default branch.
+    ///
+    /// Fallback chain matches the project settings UI:
+    /// `origin/HEAD` -> `main` -> `master` -> first local branch.
+    pub async fn detect_default_branch(repo: &Path) -> AppResult<String> {
+        let origin_head = git_cmd::run(&["symbolic-ref", "refs/remotes/origin/HEAD"], repo).await?;
+        if origin_head.status.success() {
+            let stdout = String::from_utf8_lossy(&origin_head.stdout);
+            if let Some(branch) = stdout.trim().strip_prefix("refs/remotes/origin/") {
+                if !branch.is_empty() {
+                    return Ok(branch.to_string());
+                }
+            }
+        }
+
+        for branch in ["main", "master"] {
+            let ref_name = format!("refs/heads/{branch}");
+            let output = git_cmd::run(&["rev-parse", "--verify", &ref_name], repo).await?;
+            if output.status.success() {
+                return Ok(branch.to_string());
+            }
+        }
+
+        let output = git_cmd::run(&["branch", "--format=%(refname:short)"], repo).await?;
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Some(branch) = stdout
+                .lines()
+                .map(str::trim)
+                .find(|branch| !branch.is_empty())
+            {
+                return Ok(branch.to_string());
+            }
+        }
+
+        Err(AppError::GitOperation(
+            "No branches found in repository".to_string(),
+        ))
+    }
+
+    /// Resolve the default branch for project workflows.
+    ///
+    /// Explicit project settings win; otherwise this uses the same automatic
+    /// detection chain as the Settings UI before falling back to `main`.
+    pub async fn resolve_project_default_branch(
+        repo: &Path,
+        configured_base_branch: Option<&str>,
+    ) -> String {
+        if let Some(branch) = configured_base_branch
+            .map(str::trim)
+            .filter(|branch| !branch.is_empty())
+        {
+            return branch.to_string();
+        }
+
+        Self::detect_default_branch(repo)
+            .await
+            .unwrap_or_else(|_| "main".to_string())
+    }
+
     /// Create a new branch pointing at a specific commit SHA
     ///
     /// Unlike `create_branch` which branches from another branch name,

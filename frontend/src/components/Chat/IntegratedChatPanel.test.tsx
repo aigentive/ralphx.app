@@ -15,16 +15,25 @@ import { act } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntegratedChatPanel } from "./IntegratedChatPanel";
 import { PreviousRunBanner } from "./IntegratedChatPanel.components";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { chatApi } from "@/api/chat";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 
+vi.mock("@/hooks/useTeamModeAvailability", () => ({
+  useTeamModeAvailability: () => ({
+    ideationTeamModeAvailable: true,
+    executionTeamModeAvailable: true,
+    isAvailableForContext: () => true,
+  }),
+}));
+
 // ============================================================================
 // Hoisted mutable state for useChat mock (vi.hoisted runs before vi.mock)
 // ============================================================================
 
-const { useChatMockState } = vi.hoisted(() => {
+const { useChatMockState, useChatCalls, historyWindowCalls } = vi.hoisted(() => {
   const useChatMockState = {
     messages: [] as Array<{ id: string; role: string; content: string; createdAt: string; toolCalls: null; contentBlocks: null }>,
     conversation: null as { contextType: string; contextId: string } | null,
@@ -43,7 +52,11 @@ const { useChatMockState } = vi.hoisted(() => {
       loadedStartIndex?: number;
     } | undefined,
   };
-  return { useChatMockState };
+  return {
+    useChatMockState,
+    useChatCalls: [] as unknown[][],
+    historyWindowCalls: [] as unknown[][],
+  };
 });
 
 // ============================================================================
@@ -68,7 +81,9 @@ vi.mock("@/providers/EventProvider", () => ({
 
 // Mock useChat hook — reads from useChatMockState so individual tests can inject messages
 vi.mock("@/hooks/useChat", () => ({
-  useChat: () => ({
+  useChat: (...args: unknown[]) => {
+    useChatCalls.push(args);
+    return {
     messages: {
       data: { messages: useChatMockState.messages, conversation: useChatMockState.conversation },
       isLoading: false,
@@ -77,20 +92,27 @@ vi.mock("@/hooks/useChat", () => ({
     conversations: { data: useChatMockState.conversations, isLoading: false },
     switchConversation: vi.fn(),
     createConversation: vi.fn(),
-  }),
-  useConversation: () => ({
+    };
+  },
+  useConversation: (...args: unknown[]) => {
+    historyWindowCalls.push(["useConversation", ...args]);
+    return {
     data: undefined,
     isLoading: false,
     error: null,
-  }),
-  useConversationHistoryWindow: () => ({
+    };
+  },
+  useConversationHistoryWindow: (...args: unknown[]) => {
+    historyWindowCalls.push(args);
+    return {
     data: useChatMockState.historyData,
     isLoading: false,
     isFetchingOlderMessages: false,
     hasOlderMessages: false,
     loadedStartIndex: useChatMockState.historyData?.loadedStartIndex ?? 0,
     fetchOlderMessages: vi.fn(),
-  }),
+    };
+  },
   chatKeys: {
     all: ["chat"],
     conversationList: (type: string, id: string) => ["chat", "conversations", type, id],
@@ -123,8 +145,10 @@ const mockChatPanelContext = {
   autoSelectConversation: vi.fn(),
 };
 
+const mockUseChatPanelContext = vi.fn(() => mockChatPanelContext);
+
 vi.mock("@/hooks/useChatPanelContext", () => ({
-  useChatPanelContext: () => mockChatPanelContext,
+  useChatPanelContext: (...args: unknown[]) => mockUseChatPanelContext(...args),
 }));
 
 // Mock useChatActions (replaces useIntegratedChatHandlers)
@@ -224,7 +248,7 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
   const queryClient = createTestQueryClient();
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <TooltipProvider delayDuration={0}>{children}</TooltipProvider>
     </QueryClientProvider>
   );
 }
@@ -242,6 +266,8 @@ describe("IntegratedChatPanel", () => {
     useChatMockState.conversation = null;
     useChatMockState.conversations = [];
     useChatMockState.historyData = undefined;
+    useChatCalls.length = 0;
+    historyWindowCalls.length = 0;
 
     // Reset stores
     act(() => {
@@ -269,6 +295,120 @@ describe("IntegratedChatPanel", () => {
     mockChatPanelContext.currentContextType = "task";
     mockChatPanelContext.currentContextId = "task-1";
     mockChatPanelContext.activeConversationId = null;
+  });
+
+  describe("task selection override", () => {
+    it("can ignore the global selected task when host surfaces keep chat pinned to project context", () => {
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel
+            projectId="project-1"
+            selectedTaskIdOverride={null}
+          />
+        </TestWrapper>
+      );
+
+      expect(mockUseChatPanelContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "project-1",
+          selectedTaskId: undefined,
+        })
+      );
+    });
+  });
+
+  describe("transcript pagination", () => {
+    it("uses the tail-window conversation query for primary transcripts and skips the full active query", async () => {
+      mockChatPanelContext.storeContextKey = "project:project-1";
+      mockChatPanelContext.currentContextType = "project";
+      mockChatPanelContext.currentContextId = "project-1";
+      mockChatPanelContext.activeConversationId = "conv-1";
+      useChatMockState.conversations = [{ id: "conv-1" }];
+      useChatMockState.historyData = {
+        conversation: {
+          id: "conv-1",
+          contextType: "project",
+          contextId: "project-1",
+          providerHarness: "codex",
+          providerSessionId: "thread-1",
+          upstreamProvider: null,
+          providerProfile: null,
+        },
+        messages: [
+          {
+            id: "msg-tail",
+            role: "assistant",
+            content: "Latest loaded message",
+            createdAt: "2026-04-23T09:00:00Z",
+            toolCalls: null,
+            contentBlocks: null,
+          },
+        ],
+        loadedStartIndex: 25,
+      };
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel
+            projectId="project-1"
+            selectedTaskIdOverride={null}
+            storeContextKeyOverride="project:project-1"
+          />
+        </TestWrapper>
+      );
+
+      expect(useChatCalls.at(-1)?.[1]).toEqual(
+        expect.objectContaining({ skipActiveConversationQuery: true })
+      );
+      expect(historyWindowCalls).toEqual(
+        expect.arrayContaining([
+          [
+            "conv-1",
+            expect.objectContaining({
+              enabled: true,
+              pageSize: 40,
+            }),
+          ],
+        ])
+      );
+      expect(await screen.findByText("Latest loaded message")).toBeInTheDocument();
+    });
+  });
+
+  describe("content width wrapper", () => {
+    it("applies the centered max-width shell when a host surface opts in", () => {
+      mockChatPanelContext.activeConversationId = "conv-1";
+      useChatMockState.conversations = [{ id: "conv-1" }];
+      useChatMockState.conversation = {
+        contextType: "project",
+        contextId: "project-1",
+        providerHarness: "codex",
+        providerSessionId: "thread-1",
+        upstreamProvider: null,
+        providerProfile: null,
+      };
+      useChatMockState.messages = [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "Need a plan for this change",
+          createdAt: "2026-04-23T09:00:00Z",
+          toolCalls: null,
+          contentBlocks: null,
+        },
+      ];
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel
+            projectId="project-1"
+            contentWidthClassName="max-w-[980px]"
+          />
+        </TestWrapper>
+      );
+
+      expect(screen.getByTestId("integrated-chat-input-shell")).toHaveClass("max-w-[980px]");
+    });
   });
 
   describe("Stop button visibility", () => {
@@ -597,6 +737,56 @@ describe("IntegratedChatPanel", () => {
 
       expect(screen.getByTestId("chat-input")).toBeInTheDocument();
     });
+
+    it("renders a custom composer when provided", () => {
+      mockChatPanelContext.activeConversationId = "conv-1";
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel
+            projectId="project-1"
+            renderComposer={({ enableAttachments }) => (
+              <div data-testid="custom-composer">
+                {enableAttachments ? "attachments-enabled" : "attachments-disabled"}
+              </div>
+            )}
+          />
+        </TestWrapper>
+      );
+
+      expect(screen.getByTestId("custom-composer")).toHaveTextContent("attachments-enabled");
+      expect(screen.queryByTestId("chat-input")).not.toBeInTheDocument();
+    });
+
+    it("first paints visual conversation placeholders before hydrating existing messages", async () => {
+      mockChatPanelContext.activeConversationId = "conv-1";
+      useChatMockState.conversations = [{ id: "conv-1" }];
+      useChatMockState.conversation = { contextType: "task", contextId: "task-1" };
+      useChatMockState.messages = [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "Existing conversation content",
+          createdAt: "2026-04-23T09:00:00Z",
+          toolCalls: null,
+          contentBlocks: null,
+        },
+      ];
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      expect(screen.getByTestId("chat-transcript-placeholders")).toBeInTheDocument();
+      expect(screen.queryByText("Existing conversation content")).not.toBeInTheDocument();
+
+      await waitFor(() =>
+        expect(screen.getByText("Existing conversation content")).toBeInTheDocument()
+      );
+      expect(screen.queryByTestId("chat-transcript-placeholders")).not.toBeInTheDocument();
+    });
   });
 
   describe("File attachments", () => {
@@ -876,7 +1066,7 @@ describe("IntegratedChatPanel", () => {
       useChatMockState.conversations = [{ id: "conv-1" }];
     });
 
-    it("sorts messages by timestamp even when isAgentRunning is true", () => {
+    it("sorts messages by timestamp even when isAgentRunning is true", async () => {
       // msg-b has LATER timestamp but appears first in array (simulates out-of-order DB response)
       useChatMockState.messages = [
         { id: "msg-b", role: "user", content: "Second message", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
@@ -895,13 +1085,15 @@ describe("IntegratedChatPanel", () => {
       );
 
       // "First message" (earlier timestamp) must appear before "Second message" in DOM
-      const html = container.innerHTML;
-      expect(html.indexOf("First message")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("Second message")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("First message")).toBeLessThan(html.indexOf("Second message"));
+      await waitFor(() => {
+        const html = container.innerHTML;
+        expect(html.indexOf("First message")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("Second message")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("First message")).toBeLessThan(html.indexOf("Second message"));
+      });
     });
 
-    it("sorts messages by timestamp when isSending is true", () => {
+    it("sorts messages by timestamp when isSending is true", async () => {
       useChatMockState.messages = [
         { id: "msg-b", role: "user", content: "Second message", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
         { id: "msg-a", role: "user", content: "First message", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
@@ -917,13 +1109,15 @@ describe("IntegratedChatPanel", () => {
         </TestWrapper>
       );
 
-      const html = container.innerHTML;
-      expect(html.indexOf("First message")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("Second message")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("First message")).toBeLessThan(html.indexOf("Second message"));
+      await waitFor(() => {
+        const html = container.innerHTML;
+        expect(html.indexOf("First message")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("Second message")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("First message")).toBeLessThan(html.indexOf("Second message"));
+      });
     });
 
-    it("uses id as stable tiebreaker when two messages share the same timestamp", () => {
+    it("uses id as stable tiebreaker when two messages share the same timestamp", async () => {
       const sameTime = new Date(2026, 0, 1, 12, 0).toISOString();
       // "msg-z" sorts after "msg-a" lexically — it should appear SECOND in sorted output
       useChatMockState.messages = [
@@ -938,10 +1132,12 @@ describe("IntegratedChatPanel", () => {
       );
 
       // "msg-a" < "msg-z" lexically → "Aaa response" should appear first
-      const html = container.innerHTML;
-      expect(html.indexOf("Aaa response")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("Zzz response")).toBeGreaterThanOrEqual(0);
-      expect(html.indexOf("Aaa response")).toBeLessThan(html.indexOf("Zzz response"));
+      await waitFor(() => {
+        const html = container.innerHTML;
+        expect(html.indexOf("Aaa response")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("Zzz response")).toBeGreaterThanOrEqual(0);
+        expect(html.indexOf("Aaa response")).toBeLessThan(html.indexOf("Zzz response"));
+      });
     });
   });
 });
@@ -1197,7 +1393,7 @@ describe("PreviousRunBanner visibility in IntegratedChatPanel", () => {
   });
 
   describe("ideation history hydration", () => {
-    it("renders ideation messages from the paged history window even when the full conversation query is skipped", () => {
+    it("renders ideation messages from the paged history window even when the full conversation query is skipped", async () => {
       const sessionId = "ideation-session-1";
       const conversationId = "ideation-conv-1";
 
@@ -1238,7 +1434,7 @@ describe("PreviousRunBanner visibility in IntegratedChatPanel", () => {
         </TestWrapper>
       );
 
-      expect(screen.getByText("latest ideation message")).toBeInTheDocument();
+      expect(await screen.findByText("latest ideation message")).toBeInTheDocument();
       expect(screen.queryByText("Start the conversation")).not.toBeInTheDocument();
     });
   });

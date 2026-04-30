@@ -136,7 +136,10 @@ export function useChatAutoScroll({
         behavior: preferredScrollBehavior,
       });
     } else {
-      messagesEndRef.current?.scrollIntoView({ behavior: preferredScrollBehavior });
+      const endMarker = messagesEndRef.current;
+      if (endMarker && typeof endMarker.scrollIntoView === "function") {
+        endMarker.scrollIntoView({ behavior: preferredScrollBehavior });
+      }
     }
   }, [preferredScrollBehavior, virtuosoRef]);
 

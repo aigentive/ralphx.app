@@ -177,23 +177,25 @@ async fn test_pr_mode_with_existing_pr_number_calls_push_and_mark_ready() {
         result
     );
 
-    let state = mock_github.state();
-    assert_eq!(
-        state.push_branch_calls, 1,
-        "push_branch should be called once"
-    );
-    assert_eq!(
-        state.mark_pr_ready_calls, 1,
-        "mark_pr_ready should be called once"
-    );
-    assert_eq!(
-        state.update_pr_details_calls, 1,
-        "PR details should be refreshed before marking ready"
-    );
-    assert_eq!(
-        state.create_draft_pr_calls, 0,
-        "create_draft_pr should NOT be called when pr_number already exists"
-    );
+    {
+        let state = mock_github.state();
+        assert_eq!(
+            state.push_branch_calls, 1,
+            "push_branch should be called once"
+        );
+        assert_eq!(
+            state.mark_pr_ready_calls, 1,
+            "mark_pr_ready should be called once"
+        );
+        assert_eq!(
+            state.update_pr_details_calls, 1,
+            "PR details should be refreshed before marking ready"
+        );
+        assert_eq!(
+            state.create_draft_pr_calls, 0,
+            "create_draft_pr should NOT be called when pr_number already exists"
+        );
+    }
     let updated_task = task_repo
         .get_by_id(&task_id)
         .await
@@ -664,16 +666,17 @@ async fn test_regular_plan_task_merged_state_creates_draft_pr_after_first_merge(
         result
     );
 
-    let state = mock_github.state();
-    assert_eq!(
-        state.push_branch_calls, 1,
-        "first merged plan task should push the plan branch"
-    );
-    assert_eq!(
-        state.create_draft_pr_calls, 1,
-        "first merged plan task should create the draft PR once the plan branch has reviewable changes"
-    );
-    drop(state);
+    {
+        let state = mock_github.state();
+        assert_eq!(
+            state.push_branch_calls, 1,
+            "first merged plan task should push the plan branch"
+        );
+        assert_eq!(
+            state.create_draft_pr_calls, 1,
+            "first merged plan task should create the draft PR once the plan branch has reviewable changes"
+        );
+    }
 
     let updated_plan_branch = plan_branch_repo
         .get_by_id(&branch_id)
@@ -813,16 +816,17 @@ async fn test_regular_plan_task_completion_creates_draft_pr_after_first_local_me
         result
     );
 
-    let state = mock_github.state();
-    assert_eq!(
-        state.push_branch_calls, 1,
-        "programmatic local plan-task merge should push the plan branch"
-    );
-    assert_eq!(
-        state.create_draft_pr_calls, 1,
-        "programmatic local plan-task merge should create the first draft PR"
-    );
-    drop(state);
+    {
+        let state = mock_github.state();
+        assert_eq!(
+            state.push_branch_calls, 1,
+            "programmatic local plan-task merge should push the plan branch"
+        );
+        assert_eq!(
+            state.create_draft_pr_calls, 1,
+            "programmatic local plan-task merge should create the first draft PR"
+        );
+    }
 
     let final_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
     assert_eq!(final_task.internal_status, InternalStatus::Merged);
@@ -914,21 +918,22 @@ async fn test_regular_plan_task_completion_pushes_existing_pr_after_local_merge(
         result
     );
 
-    let state = mock_github.state();
-    assert_eq!(
-        state.push_branch_calls, 1,
-        "programmatic local plan-task merge should push existing PR branch updates"
-    );
-    assert_eq!(
-        state.create_draft_pr_calls, 0,
-        "existing PR-backed branches should sync instead of creating another PR"
-    );
-    assert_eq!(
-        state.last_push_branch_name.as_deref(),
-        Some(branch_name),
-        "push should target the plan branch"
-    );
-    drop(state);
+    {
+        let state = mock_github.state();
+        assert_eq!(
+            state.push_branch_calls, 1,
+            "programmatic local plan-task merge should push existing PR branch updates"
+        );
+        assert_eq!(
+            state.create_draft_pr_calls, 0,
+            "existing PR-backed branches should sync instead of creating another PR"
+        );
+        assert_eq!(
+            state.last_push_branch_name.as_deref(),
+            Some(branch_name),
+            "push should target the plan branch"
+        );
+    }
 
     let updated_plan_branch = plan_branch_repo
         .get_by_id(&branch_id)
@@ -991,16 +996,17 @@ async fn test_regular_plan_task_merged_state_pushes_existing_pr_after_local_upda
         result
     );
 
-    let state = mock_github.state();
-    assert_eq!(
-        state.push_branch_calls, 1,
-        "existing PR branches should be pushed again when new local plan-branch work lands"
-    );
-    assert_eq!(
-        state.create_draft_pr_calls, 0,
-        "existing PR branches should sync instead of recreating the PR"
-    );
-    drop(state);
+    {
+        let state = mock_github.state();
+        assert_eq!(
+            state.push_branch_calls, 1,
+            "existing PR branches should be pushed again when new local plan-branch work lands"
+        );
+        assert_eq!(
+            state.create_draft_pr_calls, 0,
+            "existing PR branches should sync instead of recreating the PR"
+        );
+    }
 
     let updated_plan_branch = plan_branch_repo
         .get_by_id(&branch_id)

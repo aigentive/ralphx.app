@@ -572,8 +572,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         // SIGTERM old processes before spawning new ones.
         // Now uses process-tree kill (children first, then parent).
         let killed = self.running_agent_registry.stop_all().await;
-        let interrupted_agent_contexts: HashSet<RunningAgentKey> =
-            killed.iter().cloned().collect();
+        let interrupted_agent_contexts: HashSet<RunningAgentKey> = killed.iter().cloned().collect();
         if !killed.is_empty() {
             info!(
                 count = killed.len(),
@@ -744,12 +743,11 @@ impl<R: Runtime> StartupJobRunner<R> {
         // before spawning other agents. This ensures main branch is in a clean state
         // before worker/reviewer agents start. PendingMerge first so fast-path
         // programmatic merges complete before agent-based merges.
-        const MERGE_RECOVERY_STATES: &[InternalStatus] =
-            &[
-                InternalStatus::PendingMerge,
-                InternalStatus::Merging,
-                InternalStatus::WaitingOnPr,
-            ];
+        const MERGE_RECOVERY_STATES: &[InternalStatus] = &[
+            InternalStatus::PendingMerge,
+            InternalStatus::Merging,
+            InternalStatus::WaitingOnPr,
+        ];
 
         info!("Phase 1: Merge-first recovery — processing merge states before agent spawning");
 
@@ -1770,7 +1768,9 @@ impl<R: Runtime> StartupJobRunner<R> {
     pub async fn cleanup_stale_git_state(&self, projects: &[crate::domain::entities::Project]) {
         for project in projects {
             let repo_path = Path::new(&project.working_directory);
-            if !repo_path.exists() {
+            if !crate::utils::path_safety::checked_exists(repo_path, "project repository")
+                .unwrap_or(false)
+            {
                 continue;
             }
             if GitService::is_rebase_in_progress(repo_path) {
@@ -1895,7 +1895,9 @@ impl<R: Runtime> StartupJobRunner<R> {
             }
 
             let repo_path = Path::new(&project.working_directory);
-            if !repo_path.exists() {
+            if !crate::utils::path_safety::checked_exists(repo_path, "project repository")
+                .unwrap_or(false)
+            {
                 continue;
             }
 
@@ -1919,10 +1921,20 @@ impl<R: Runtime> StartupJobRunner<R> {
                     };
 
                     let expected = project.task_worktree_path(task.id.as_str());
-                    let expected_exists = expected.exists();
+                    let expected_exists = crate::utils::path_safety::checked_exists(
+                        &expected,
+                        "expected task worktree",
+                    )
+                    .unwrap_or(false);
 
                     let current = task.worktree_path.as_ref().map(std::path::PathBuf::from);
-                    let current_exists = current.as_ref().map(|p| p.exists()).unwrap_or(false);
+                    let current_exists = current
+                        .as_ref()
+                        .map(|p| {
+                            crate::utils::path_safety::checked_exists(p, "stored task worktree")
+                                .unwrap_or(false)
+                        })
+                        .unwrap_or(false);
 
                     let current_merge_like = current
                         .as_ref()
@@ -2085,12 +2097,7 @@ impl<R: Runtime> StartupJobRunner<R> {
 
                 if let Err(e) = self
                     .transition_service
-                    .reroute_commit_hook_merge_failure(
-                        &task.id,
-                        None,
-                        false,
-                        "startup_recovery",
-                    )
+                    .reroute_commit_hook_merge_failure(&task.id, None, false, "startup_recovery")
                     .await
                 {
                     tracing::warn!(

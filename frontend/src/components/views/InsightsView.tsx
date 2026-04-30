@@ -86,7 +86,7 @@ function WeekStartToggle({
           className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
           style={
             value === day
-              ? { backgroundColor: "var(--accent-primary)", color: "var(--text-inverse)" }
+              ? { backgroundColor: "var(--accent-primary)", color: "var(--text-on-accent)" }
               : { color: "var(--text-muted)" }
           }
           title={`Week starts on ${day === 0 ? "Sunday" : "Monday"}`}

@@ -136,6 +136,16 @@ export function transformStepProgressSummary(
   };
 }
 
+export function getCompletableStepProgressCounts(
+  progress: Pick<StepProgressSummary, "completed" | "skipped" | "total">
+): { completed: number; total: number } {
+  const total = Math.max(0, progress.total - progress.skipped);
+  return {
+    completed: Math.min(Math.max(0, progress.completed), total),
+    total,
+  };
+}
+
 // Legacy export for backward compatibility
 export const StepProgressSummarySchema = StepProgressSummaryResponseSchema;
 

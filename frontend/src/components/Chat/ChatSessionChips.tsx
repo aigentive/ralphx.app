@@ -23,6 +23,8 @@ export interface ChatSessionChipsProps {
   providerProfile?: string | null;
   fallbackConversation?: ChatConversation | null | undefined;
   fallbackMessages?: ChatMessageResponse[] | null | undefined;
+  showProviderModel?: boolean;
+  showStats?: boolean;
 }
 
 /**
@@ -43,6 +45,8 @@ export function ChatSessionChips({
   providerProfile,
   fallbackConversation,
   fallbackMessages,
+  showProviderModel = true,
+  showStats = true,
 }: ChatSessionChipsProps) {
   const statsFallbackConversation = useMemo(() => {
     if (fallbackConversation) {
@@ -87,7 +91,7 @@ export function ChatSessionChips({
     fallbackMessages,
   ]);
 
-  const statsQuery = useConversationStats(conversationId ?? null, {
+  const statsQuery = useConversationStats(showStats ? conversationId ?? null : null, {
     fallbackConversation: statsFallbackConversation,
     fallbackMessages,
   });
@@ -101,12 +105,11 @@ export function ChatSessionChips({
     upstreamProvider,
     providerProfile,
   });
-  const showStats = Boolean(stats);
+  const showStatsChip = showStats && Boolean(stats);
   const hasAnyChip =
-    harnessLabel !== null ||
-    modelDisplay != null ||
-    effortKey != null ||
-    showStats;
+    (showProviderModel &&
+      (harnessLabel !== null || modelDisplay != null || effortKey != null)) ||
+    showStatsChip;
 
   if (!hasAnyChip) {
     return null;
@@ -117,7 +120,7 @@ export function ChatSessionChips({
       className="flex min-w-0 items-center gap-2"
       data-testid="chat-session-chips"
     >
-      {harnessLabel && (
+      {showProviderModel && harnessLabel && (
         <span
           className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
           style={harnessStyle}
@@ -128,9 +131,9 @@ export function ChatSessionChips({
           {harnessLabel}
         </span>
       )}
-      {modelDisplay && <ModelChip model={modelDisplay} />}
-      {effortKey && <EffortChip effort={effortKey} />}
-      {showStats && (
+      {showProviderModel && modelDisplay && <ModelChip model={modelDisplay} />}
+      {showProviderModel && effortKey && <EffortChip effort={effortKey} />}
+      {showStatsChip && (
         <ConversationStatsPopover
           conversationId={conversationId ?? null}
           fallbackConversation={statsFallbackConversation}

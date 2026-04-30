@@ -118,11 +118,7 @@ pub async fn get_execution_status(
         // Track active (generating) and idle (waiting_for_input) separately.
         if matches!(context_type, ChatContextType::Ideation) {
             let session_id = IdeationSessionId::from_string(key.context_id.clone());
-            let session = match app_state
-                .ideation_session_repo
-                .get_by_id(&session_id)
-                .await
-            {
+            let session = match app_state.ideation_session_repo.get_by_id(&session_id).await {
                 Ok(Some(s)) => s,
                 _ => continue, // orphaned registry entry — skip
             };

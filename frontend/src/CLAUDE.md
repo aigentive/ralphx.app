@@ -2,6 +2,7 @@
 
 Quality standards: @../../.claude/rules/code-quality-standards.md
 Task detail views: @../../.claude/rules/task-detail-views.md
+Interaction performance: @../../.claude/rules/frontend-interaction-performance.md
 
 ## Stack
 React 19.1 | TS 5.8 | Zustand 5.0+immer | TanStack Query 5.90 | Tailwind 4.1 | Zod 4.3
@@ -119,6 +120,7 @@ Example: "View Registry Pattern" — see @../../.claude/rules/task-detail-views.
 
 - **Chat Context Registry** — `src/lib/chat-context-registry.ts`. Use `buildStoreKey()`, `resolveContextType()`, `getContextConfig()` for all chat context derivations. New context type = add to registry + `CONTEXT_TYPE_VALUES`.
 - **Unified Chat Hooks** — `useChatActions` (send/queue/stop), `useChatEvents` (streaming/tool calls), `useChatRecovery` (polling/sync). Both panels use these.
+- **First-Paint Shells** — heavy panes/drawers/widgets render a lightweight shell immediately, then lazy-load/hydrate content after paint. See @../../.claude/rules/frontend-interaction-performance.md
 
 ### Composition Over Props
 ```tsx

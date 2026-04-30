@@ -43,6 +43,7 @@ interface ProposalsTabContentProps {
   onUndoSync: () => void;
   onDismissSync: () => void;
   onDeleteProposal?: (proposalId: string) => void;
+  hideToolbar?: boolean;
 }
 
 // ============================================================================
@@ -68,6 +69,7 @@ export function ProposalsTabContent({
   onUndoSync,
   onDismissSync,
   onDeleteProposal,
+  hideToolbar = false,
 }: ProposalsTabContentProps) {
   const proposalsScrollRef = useRef<HTMLDivElement>(null);
   const [recentlyUpdatedProposalId, setRecentlyUpdatedProposalId] = useState<string | null>(null);
@@ -171,7 +173,7 @@ export function ProposalsTabContent({
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Proposals toolbar — only when there are proposals */}
-      {proposals.length > 0 && (
+      {!hideToolbar && proposals.length > 0 && (
         <ProposalsToolbar
           proposals={proposals}
           graph={dependencyGraph}

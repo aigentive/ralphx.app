@@ -16,6 +16,9 @@ import type { ChatMessage as ChatMessageType, MessageRole } from "@/types/ideati
 import { AGENT_ORCHESTRATOR } from "@/constants/agents";
 import { withAlpha } from "@/lib/theme-colors";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
+import { shouldHideCompletedProjectOrchestrationToolCall } from "./tool-widgets/ProjectOrchestrationWidget.utils";
+import { MarkdownLink } from "./MessageItem.markdown";
+import { formatHumanTimestamp } from "@/lib/formatters";
 
 // ============================================================================
 // Types
@@ -24,7 +27,7 @@ import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 interface ChatMessageProps {
   /** The message to display */
   message: ChatMessageType;
-  /** Show full timestamp with date instead of just time */
+  /** @deprecated Chat timestamps now use the shared human timestamp format. */
   showFullTimestamp?: boolean;
   /** Compact mode with reduced spacing and no role indicator */
   compact?: boolean;
@@ -66,22 +69,40 @@ function getAccessibleName(role: MessageRole): string {
   return `Message from ${roleLabel}`;
 }
 
-function formatTimestamp(dateString: string, full: boolean): string {
-  const date = new Date(dateString);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
 
-  if (full) {
-    return date.toLocaleString([], {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+function normalizeToolCall(raw: unknown, index: number): ToolCall | null {
+  if (!isRecord(raw)) return null;
+
+  const name = typeof raw.name === "string" ? raw.name : "";
+  if (!name) return null;
+
+  const toolCall: ToolCall = {
+    id: typeof raw.id === "string" && raw.id ? raw.id : `tool-${index}`,
+    name,
+    // Older persisted rows used `input`; current widgets read `arguments`.
+    arguments: raw.arguments ?? raw.input ?? {},
+  };
+
+  if ("result" in raw) {
+    toolCall.result = raw.result;
+  }
+  if (typeof raw.error === "string") {
+    toolCall.error = raw.error;
+  }
+  if (typeof raw.parentToolUseId === "string") {
+    toolCall.parentToolUseId = raw.parentToolUseId;
+  }
+  if (isRecord(raw.diffContext) && typeof raw.diffContext.filePath === "string") {
+    toolCall.diffContext = raw.diffContext as NonNullable<ToolCall["diffContext"]>;
+  }
+  if (isRecord(raw.stats)) {
+    toolCall.stats = raw.stats as NonNullable<ToolCall["stats"]>;
   }
 
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return toolCall;
 }
 
 // ============================================================================
@@ -90,18 +111,7 @@ function formatTimestamp(dateString: string, full: boolean): string {
 
 const markdownComponents = {
   // Style links
-  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="underline hover:no-underline"
-      style={{ color: "var(--accent-primary)" }}
-      {...props}
-    >
-      {children}
-    </a>
-  ),
+  a: MarkdownLink,
   // Style inline code
   code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) => {
     const isBlock = className?.includes("language-");
@@ -239,7 +249,6 @@ function TextBubble({
 
 export function ChatMessage({
   message,
-  showFullTimestamp = false,
   compact = false,
 }: ChatMessageProps) {
   const isUser = message.role === "user";
@@ -247,8 +256,8 @@ export function ChatMessage({
   const spacingClass = compact ? "mb-1" : "mb-3";
 
   const timestamp = useMemo(
-    () => formatTimestamp(message.createdAt, showFullTimestamp),
-    [message.createdAt, showFullTimestamp]
+    () => formatHumanTimestamp(message.createdAt),
+    [message.createdAt]
   );
 
   const accessibleName = useMemo(
@@ -272,11 +281,19 @@ export function ChatMessage({
     if (!message.toolCalls) return [];
     try {
       const parsed = JSON.parse(message.toolCalls);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed)
+        ? parsed
+            .map((toolCall, index) => normalizeToolCall(toolCall, index))
+            .filter((toolCall): toolCall is ToolCall => toolCall !== null)
+        : [];
     } catch {
       return [];
     }
   }, [message.toolCalls]);
+  const visibleToolCalls = useMemo(
+    () => toolCalls.filter((toolCall) => !shouldHideCompletedProjectOrchestrationToolCall(toolCall)),
+    [toolCalls],
+  );
 
   // Use content blocks if available, otherwise fall back to legacy rendering
   const hasContentBlocks = contentBlocks.length > 0;
@@ -319,6 +336,9 @@ export function ChatMessage({
                 arguments: block.arguments,
                 result: block.result,
               };
+              if (shouldHideCompletedProjectOrchestrationToolCall(toolCall)) {
+                return null;
+              }
               return (
                 <div key={`block-${index}`} className="max-w-[85%]">
                   <ToolCallIndicator toolCall={toolCall} />
@@ -339,9 +359,9 @@ export function ChatMessage({
           />
 
           {/* Tool calls (if any) */}
-          {toolCalls.length > 0 && (
+          {visibleToolCalls.length > 0 && (
             <div className="mt-1.5 max-w-[85%] space-y-1.5" data-testid="chat-message-tool-calls">
-              {toolCalls.map((toolCall) => (
+              {visibleToolCalls.map((toolCall) => (
                 <ToolCallIndicator key={toolCall.id} toolCall={toolCall} />
               ))}
             </div>
@@ -353,10 +373,11 @@ export function ChatMessage({
       <time
         data-testid="chat-message-timestamp"
         dateTime={message.createdAt}
+        title={timestamp.title || undefined}
         className="text-[10px] mt-1 px-1 text-text-primary/40"
         role="time"
       >
-        {timestamp}
+        {timestamp.label}
       </time>
     </article>
   );

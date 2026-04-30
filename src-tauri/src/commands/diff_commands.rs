@@ -2,11 +2,28 @@
 //!
 //! Provides file change and diff data for reviewing task execution results.
 
-use crate::application::{AppState, ConflictDiff, DiffService, FileChange, FileDiff};
-use crate::domain::entities::{PlanBranch, Project, Task, TaskId};
+use crate::application::{
+    agent_conversation_workspace::resolve_valid_agent_conversation_workspace_path, AppState,
+    ConflictDiff, DiffService, FileChange, FileDiff, GitService,
+};
+use crate::commands::git_commands::{CommitInfoResponse, TaskCommitsResponse};
+use crate::domain::entities::{ChatConversationId, PlanBranch, Project, Task, TaskId};
 use crate::error::{AppError, AppResult};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use tauri::State;
+
+fn resolve_merge_base(repo: &Path, base: &str, target: &str) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["merge-base", base, target])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
 
 /// Determine the working path for a task.
 ///
@@ -69,6 +86,15 @@ fn plan_branch_review_base_ref(plan_branch: &PlanBranch, project: &Project) -> S
         .to_string()
 }
 
+fn plan_branch_review_diff_base_ref(
+    repo: &Path,
+    plan_branch: &PlanBranch,
+    project: &Project,
+) -> String {
+    let base_ref = plan_branch_review_base_ref(plan_branch, project);
+    resolve_merge_base(repo, &base_ref, &plan_branch.branch_name).unwrap_or(base_ref)
+}
+
 /// Get all files changed by the agent for a task
 #[tauri::command]
 pub async fn get_task_file_changes(
@@ -89,6 +115,7 @@ pub async fn get_task_file_changes_for_state(
 
     let diff_service = DiffService::new();
     let plan_branch = get_branchless_plan_branch(app_state, &task).await?;
+    let repo_path = Path::new(&working_path_str);
     if task.internal_status == crate::domain::entities::InternalStatus::Merged {
         let merge_sha = task.merge_commit_sha.as_deref().or_else(|| {
             plan_branch
@@ -109,7 +136,7 @@ pub async fn get_task_file_changes_for_state(
     }
 
     if let Some(plan_branch) = plan_branch {
-        let base_ref = plan_branch_review_base_ref(&plan_branch, &project);
+        let base_ref = plan_branch_review_diff_base_ref(repo_path, &plan_branch, &project);
         return diff_service.get_file_changes_between_refs(
             &working_path_str,
             &base_ref,
@@ -144,6 +171,7 @@ pub async fn get_file_diff_for_state(
 
     let diff_service = DiffService::new();
     let plan_branch = get_branchless_plan_branch(app_state, &task).await?;
+    let repo_path = Path::new(&working_path_str);
     if task.internal_status == crate::domain::entities::InternalStatus::Merged {
         let merge_sha = task.merge_commit_sha.as_deref().or_else(|| {
             plan_branch
@@ -165,7 +193,7 @@ pub async fn get_file_diff_for_state(
     }
 
     if let Some(plan_branch) = plan_branch {
-        let base_ref = plan_branch_review_base_ref(&plan_branch, &project);
+        let base_ref = plan_branch_review_diff_base_ref(repo_path, &plan_branch, &project);
         return diff_service.get_file_diff_between_refs(
             &file_path,
             &working_path_str,
@@ -175,6 +203,183 @@ pub async fn get_file_diff_for_state(
     }
 
     diff_service.get_file_diff(&file_path, &working_path_str, base_branch)
+}
+
+struct AgentWorkspaceContext {
+    working_path: PathBuf,
+    base_ref: String,
+    /// For plan-branch workspaces, the diff target is the plan branch (not HEAD).
+    diff_target: Option<String>,
+}
+
+async fn get_agent_workspace_context(
+    app_state: &AppState,
+    conversation_id: &ChatConversationId,
+) -> AppResult<AgentWorkspaceContext> {
+    let workspace = app_state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(conversation_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::Validation(format!(
+                "Agent conversation workspace not found for conversation {}",
+                conversation_id
+            ))
+        })?;
+    let project = app_state
+        .project_repo
+        .get_by_id(&workspace.project_id)
+        .await?
+        .ok_or_else(|| AppError::ProjectNotFound(workspace.project_id.as_str().to_string()))?;
+
+    // For ideation workspaces linked to a plan branch, the commits live on the
+    // plan branch, not the workspace's own branch. Use the project root and
+    // resolve the merge-base so the diff only shows changes introduced by the
+    // plan branch (not unrelated base-branch progress).
+    if let Some(plan_branch_id) = &workspace.linked_plan_branch_id {
+        if let Some(plan_branch) = app_state.plan_branch_repo.get_by_id(plan_branch_id).await? {
+            let base_branch = plan_branch_review_base_ref(&plan_branch, &project);
+            let project_path = PathBuf::from(&project.working_directory);
+            let merge_base =
+                resolve_merge_base(&project_path, &base_branch, &plan_branch.branch_name)
+                    .unwrap_or(base_branch);
+            return Ok(AgentWorkspaceContext {
+                working_path: project_path,
+                base_ref: merge_base,
+                diff_target: Some(plan_branch.branch_name.clone()),
+            });
+        }
+    }
+
+    let worktree_path =
+        resolve_valid_agent_conversation_workspace_path(&project, &workspace).await?;
+    let base_commit = workspace.base_commit.clone().ok_or_else(|| {
+        AppError::Validation(format!(
+            "Agent conversation workspace {} is missing its captured base commit",
+            conversation_id
+        ))
+    })?;
+    Ok(AgentWorkspaceContext {
+        working_path: worktree_path,
+        base_ref: base_commit,
+        diff_target: None,
+    })
+}
+
+async fn ensure_agent_workspace_commit_in_range(
+    worktree_path: &Path,
+    base_ref: &str,
+    head_ref: &str,
+    commit_sha: &str,
+) -> AppResult<()> {
+    let commits = GitService::get_commits_between(worktree_path, base_ref, head_ref).await?;
+    if commits
+        .iter()
+        .any(|commit| commit.sha == commit_sha || commit.short_sha == commit_sha)
+    {
+        return Ok(());
+    }
+
+    Err(AppError::Validation(format!(
+        "Commit {} is not part of this agent workspace branch",
+        commit_sha
+    )))
+}
+
+#[tauri::command]
+pub async fn get_agent_conversation_workspace_file_changes(
+    app_state: State<'_, AppState>,
+    conversation_id: String,
+) -> AppResult<Vec<FileChange>> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let working_path = ctx.working_path.to_string_lossy().to_string();
+    let diff_service = DiffService::new();
+    if let Some(target) = &ctx.diff_target {
+        diff_service.get_file_changes_between_refs(&working_path, &ctx.base_ref, target)
+    } else {
+        diff_service.get_worktree_file_changes_from_ref(&working_path, &ctx.base_ref)
+    }
+}
+
+#[tauri::command]
+pub async fn get_agent_conversation_workspace_file_diff(
+    app_state: State<'_, AppState>,
+    conversation_id: String,
+    file_path: String,
+) -> AppResult<FileDiff> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let working_path = ctx.working_path.to_string_lossy().to_string();
+    let diff_service = DiffService::new();
+    if let Some(target) = &ctx.diff_target {
+        diff_service.get_file_diff_between_refs(&file_path, &working_path, &ctx.base_ref, target)
+    } else {
+        diff_service.get_file_diff(&file_path, &working_path, &ctx.base_ref)
+    }
+}
+
+#[tauri::command]
+pub async fn get_agent_conversation_workspace_commits(
+    app_state: State<'_, AppState>,
+    conversation_id: String,
+) -> AppResult<TaskCommitsResponse> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let head_ref = ctx.diff_target.as_deref().unwrap_or("HEAD");
+    let commits =
+        GitService::get_commits_between(&ctx.working_path, &ctx.base_ref, head_ref).await?;
+    Ok(TaskCommitsResponse {
+        commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
+    })
+}
+
+#[tauri::command]
+pub async fn get_agent_conversation_workspace_commit_file_changes(
+    app_state: State<'_, AppState>,
+    conversation_id: String,
+    commit_sha: String,
+) -> AppResult<Vec<FileChange>> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let head_ref = ctx.diff_target.as_deref().unwrap_or("HEAD");
+    ensure_agent_workspace_commit_in_range(&ctx.working_path, &ctx.base_ref, head_ref, &commit_sha)
+        .await?;
+    let working_path = ctx.working_path.to_string_lossy().to_string();
+    let diff_service = DiffService::new();
+    if diff_service.is_merge_commit(&working_path, &commit_sha) {
+        return diff_service.get_file_changes_between_refs(
+            &working_path,
+            &ctx.base_ref,
+            &commit_sha,
+        );
+    }
+    diff_service.get_commit_file_changes(&commit_sha, &working_path)
+}
+
+#[tauri::command]
+pub async fn get_agent_conversation_workspace_commit_file_diff(
+    app_state: State<'_, AppState>,
+    conversation_id: String,
+    commit_sha: String,
+    file_path: String,
+) -> AppResult<FileDiff> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let ctx = get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let head_ref = ctx.diff_target.as_deref().unwrap_or("HEAD");
+    ensure_agent_workspace_commit_in_range(&ctx.working_path, &ctx.base_ref, head_ref, &commit_sha)
+        .await?;
+    let working_path = ctx.working_path.to_string_lossy().to_string();
+    let diff_service = DiffService::new();
+    if diff_service.is_merge_commit(&working_path, &commit_sha) {
+        return diff_service.get_file_diff_between_refs(
+            &file_path,
+            &working_path,
+            &ctx.base_ref,
+            &commit_sha,
+        );
+    }
+    diff_service.get_commit_file_diff(&commit_sha, &file_path, &working_path)
 }
 
 /// Get files changed in a specific commit

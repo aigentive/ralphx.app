@@ -37,13 +37,16 @@ export const taskKeys = {
  * return <TaskList tasks={tasks} />;
  * ```
  */
-export function useTasks(projectId: string) {
+export function useTasks(
+  projectId: string,
+  options: { enabled?: boolean } = {}
+) {
   return useQuery<Task[], Error>({
     queryKey: taskKeys.list(projectId),
     queryFn: async () => {
       const response = await api.tasks.list({ projectId });
       return response.tasks;
     },
-    enabled: Boolean(projectId),
+    enabled: Boolean(projectId) && (options.enabled ?? true),
   });
 }

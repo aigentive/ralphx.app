@@ -347,7 +347,7 @@ export function PlanBrowser({
             className="w-full h-9 text-[13px] font-medium tracking-[-0.01em] border-0 transition-colors duration-150 mb-2"
             style={{
               background: "var(--accent-primary)",
-              color: "var(--text-inverse)",
+              color: "var(--text-on-accent)",
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = withAlpha("var(--accent-primary)", 90);

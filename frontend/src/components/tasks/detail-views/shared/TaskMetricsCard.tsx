@@ -4,46 +4,27 @@
  * Displays step count, review cycles, execution time, and derived complexity
  * tier. Fetches data via `useTaskMetrics` on mount (cached for 5 minutes).
  *
- * Complexity tier colours follow the warm-orange accent palette:
- * - Simple: green
- * - Medium: orange (accent)
- * - Complex: amber
+ * Complexity tier uses neutral task-detail chrome.
  */
 
 import { Loader2, ListChecks, RotateCcw, Timer, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTaskMetrics } from "@/hooks/useTaskMetrics";
 import { deriveComplexityTier, type ComplexityTier } from "@/api/task-metrics";
-import { DetailCard } from "./DetailCard";
-import { statusTint } from "@/lib/theme-colors";
 
 // ── Complexity badge ─────────────────────────────────────────────────────────
 
-const COMPLEXITY_STYLES: Record<
-  ComplexityTier,
-  { bg: string; color: string }
-> = {
-  Simple: {
-    bg: statusTint("success", 12),
-    color: "var(--status-success)",
-  },
-  Medium: {
-    bg: statusTint("accent", 12),
-    color: "var(--accent-primary)",
-  },
-  Complex: {
-    bg: statusTint("warning", 12),
-    color: "var(--status-warning)",
-  },
+const COMPLEXITY_STYLE: { bg: string; color: string } = {
+  bg: "var(--overlay-weak)",
+  color: "var(--text-muted)",
 };
 
 function ComplexityBadge({ tier }: { tier: ComplexityTier }) {
-  const styles = COMPLEXITY_STYLES[tier];
   return (
     <span
       data-testid="complexity-badge"
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
-      style={{ backgroundColor: styles.bg, color: styles.color }}
+      style={{ backgroundColor: COMPLEXITY_STYLE.bg, color: COMPLEXITY_STYLE.color }}
     >
       <Zap className="w-3 h-3" />
       {tier}
@@ -63,7 +44,7 @@ function StatRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 px-3 py-3">
       <div
         className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
         style={{ backgroundColor: "var(--overlay-weak)" }}
@@ -122,60 +103,52 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
 
   const tier = deriveComplexityTier(metrics);
 
-  const divider = (
-    <div
-      className="h-px"
-      style={{ backgroundColor: "var(--overlay-weak)" }}
-    />
-  );
+  const rows = [
+    {
+      icon: ListChecks,
+      label: "Steps",
+      value:
+        metrics.stepCount > 0
+          ? `${metrics.completedStepCount} / ${metrics.stepCount} completed`
+          : "No steps",
+    },
+    {
+      icon: RotateCcw,
+      label: "Reviews",
+      value:
+        metrics.reviewCount > 0
+          ? `${metrics.reviewCount} cycle${metrics.reviewCount !== 1 ? "s" : ""}`
+          : "No reviews",
+    },
+    {
+      icon: Timer,
+      label: "Execution time",
+      value: metrics.executionMinutes > 0 ? formatMinutes(metrics.executionMinutes) : "—",
+    },
+  ];
 
   return (
-    <DetailCard>
-      <div className="space-y-3">
-        {/* Header: complexity tier */}
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-wider text-text-primary/40">
-            Complexity
-          </span>
-          <ComplexityBadge tier={tier} />
-        </div>
-
-        {divider}
-
-        <StatRow
-          icon={ListChecks}
-          label="Steps"
-          value={
-            metrics.stepCount > 0
-              ? `${metrics.completedStepCount} / ${metrics.stepCount} completed`
-              : "No steps"
-          }
-        />
-
-        {divider}
-
-        <StatRow
-          icon={RotateCcw}
-          label="Reviews"
-          value={
-            metrics.reviewCount > 0
-              ? `${metrics.reviewCount} cycle${metrics.reviewCount !== 1 ? "s" : ""}`
-              : "No reviews"
-          }
-        />
-
-        {divider}
-
-        <StatRow
-          icon={Timer}
-          label="Execution time"
-          value={
-            metrics.executionMinutes > 0
-              ? formatMinutes(metrics.executionMinutes)
-              : "—"
-          }
-        />
+    <div>
+      {/* Header: complexity tier */}
+      <div className="flex items-center justify-between px-3 py-3">
+        <span className="text-[11px] uppercase tracking-wider text-text-primary/40">
+          Complexity
+        </span>
+        <ComplexityBadge tier={tier} />
       </div>
-    </DetailCard>
+
+      {rows.map((row, index) => (
+        <div
+          key={row.label}
+          style={
+            index < rows.length - 1
+              ? { borderBottom: "1px solid var(--border-subtle)" }
+              : undefined
+          }
+        >
+          <StatRow icon={row.icon} label={row.label} value={row.value} />
+        </div>
+      ))}
+    </div>
   );
 }

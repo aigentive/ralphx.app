@@ -575,9 +575,13 @@ describe("useChat", () => {
     vi.mocked(chatApi.listConversations).mockResolvedValueOnce(
       mockConversations
     );
-    vi.mocked(chatApi.getConversation).mockResolvedValueOnce(
-      mockConversationData
-    );
+    vi.mocked(chatApi.getConversationMessagesPage).mockResolvedValueOnce({
+      ...mockConversationData,
+      limit: 40,
+      offset: 0,
+      totalMessageCount: 2,
+      hasOlder: false,
+    });
     vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(mockAgentRun);
 
     // Set active conversation in store
@@ -607,7 +611,7 @@ describe("useChat", () => {
     });
 
     expect(result.current.activeConversation.data).toEqual(
-      mockConversationData
+      expect.objectContaining(mockConversationData)
     );
 
     await waitFor(() => {

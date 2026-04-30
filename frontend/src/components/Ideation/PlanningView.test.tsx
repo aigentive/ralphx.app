@@ -23,6 +23,11 @@ vi.mock("@/api/ideation", () => ({
   ideationApi: {
     sessions: {
       getChildren: vi.fn().mockResolvedValue([]),
+      getLatestChildSessionId: vi.fn().mockResolvedValue({
+        sessionId: "session-1",
+        purpose: "verification",
+        latestChildSessionId: null,
+      }),
     },
   },
 }));
@@ -904,10 +909,15 @@ describe("PlanningView", () => {
   });
 
   describe("eager verification child pre-population", () => {
-    const mockGetChildren = ideationApi.sessions.getChildren as ReturnType<typeof vi.fn>;
+    const mockGetLatestChildSessionId = ideationApi.sessions
+      .getLatestChildSessionId as ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
-      mockGetChildren.mockResolvedValue([]);
+      mockGetLatestChildSessionId.mockResolvedValue({
+        sessionId: "session-1",
+        purpose: "verification",
+        latestChildSessionId: null,
+      });
       useIdeationStore.setState({
         lastVerificationChildId: {},
         activeVerificationChildId: {},
@@ -915,11 +925,12 @@ describe("PlanningView", () => {
       });
     });
 
-    it("pre-populates lastVerificationChildId when eager query returns children", async () => {
-      mockGetChildren.mockResolvedValue([
-        { id: "child-abc", createdAt: "2026-01-24T01:00:00Z" },
-        { id: "child-older", createdAt: "2026-01-24T00:00:00Z" },
-      ]);
+    it("pre-populates lastVerificationChildId when eager query returns the latest child id", async () => {
+      mockGetLatestChildSessionId.mockResolvedValue({
+        sessionId: "session-1",
+        purpose: "verification",
+        latestChildSessionId: "child-abc",
+      });
 
       const originalFn = useIdeationStore.getState().setLastVerificationChildId;
       const spy = vi.fn(originalFn);
@@ -942,8 +953,12 @@ describe("PlanningView", () => {
       useIdeationStore.setState({ setLastVerificationChildId: originalFn });
     });
 
-    it("no-ops when eager query returns empty array", async () => {
-      mockGetChildren.mockResolvedValue([]);
+    it("no-ops when eager query returns no latest child id", async () => {
+      mockGetLatestChildSessionId.mockResolvedValue({
+        sessionId: "session-1",
+        purpose: "verification",
+        latestChildSessionId: null,
+      });
 
       const originalFn = useIdeationStore.getState().setLastVerificationChildId;
       const spy = vi.fn();
@@ -967,9 +982,11 @@ describe("PlanningView", () => {
     });
 
     it("does not overwrite lastVerificationChildId already populated by event", async () => {
-      mockGetChildren.mockResolvedValue([
-        { id: "child-from-query", createdAt: "2026-01-24T01:00:00Z" },
-      ]);
+      mockGetLatestChildSessionId.mockResolvedValue({
+        sessionId: "session-1",
+        purpose: "verification",
+        latestChildSessionId: "child-from-query",
+      });
 
       // Pre-populate store as if event-driven path already ran
       useIdeationStore.setState({
@@ -997,8 +1014,8 @@ describe("PlanningView", () => {
       useIdeationStore.setState({ setLastVerificationChildId: originalFn });
     });
 
-    it("does not call getChildren when sessionPurpose is verification", async () => {
-      mockGetChildren.mockClear();
+    it("does not call getLatestChildSessionId when sessionPurpose is verification", async () => {
+      mockGetLatestChildSessionId.mockClear();
 
       await act(async () => {
         render(
@@ -1011,7 +1028,7 @@ describe("PlanningView", () => {
 
       await new Promise((r) => setTimeout(r, 50));
 
-      expect(mockGetChildren).not.toHaveBeenCalled();
+      expect(mockGetLatestChildSessionId).not.toHaveBeenCalled();
     });
   });
 });

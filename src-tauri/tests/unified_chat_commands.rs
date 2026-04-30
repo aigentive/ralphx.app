@@ -1,9 +1,16 @@
+use ralphx_lib::application::{AppState, MockChatService, SendResult};
 use ralphx_lib::commands::unified_chat_commands::{
-    parse_context_type, AgentRunStatusResponse, QueuedMessageResponse, SendAgentMessageResponse,
+    mark_agent_workspace_publish_failure, parse_context_type,
+    send_agent_workspace_publish_repair_message, AgentRunStatusResponse,
+    AgentWorkspaceRepairRuntimeOverrides, QueuedMessageResponse, SendAgentMessageResponse,
 };
-use ralphx_lib::application::SendResult;
-use ralphx_lib::domain::entities::ChatContextType;
+use ralphx_lib::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
+use ralphx_lib::domain::entities::{
+    AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentRun, ChatContextType,
+    ChatConversation, ChatConversationId, IdeationAnalysisBaseRefKind, ProjectId,
+};
 use ralphx_lib::domain::services::QueuedMessage;
+use ralphx_lib::infrastructure::agents::claude::agent_names::AGENT_WORKSPACE_REPAIR;
 
 #[test]
 fn test_parse_context_type() {
@@ -114,6 +121,147 @@ fn test_response_serialization() {
     assert!(json.contains("queued_as_pending"));
 }
 
+fn test_agent_workspace() -> AgentConversationWorkspace {
+    AgentConversationWorkspace::new(
+        ChatConversationId::from_string("00000000-0000-0000-0000-000000000123".to_string()),
+        ProjectId::from_string("project-1".to_string()),
+        AgentConversationWorkspaceMode::Edit,
+        IdeationAnalysisBaseRefKind::CurrentBranch,
+        "feature/agent-screen".to_string(),
+        Some("Current branch (feature/agent-screen)".to_string()),
+        Some("base-sha".to_string()),
+        "ralphx/ralphx/agent-1234".to_string(),
+        "/tmp/agent-1234".to_string(),
+    )
+}
+
+#[tokio::test]
+async fn workspace_publish_repair_message_wakes_same_agent_conversation() {
+    let service = MockChatService::new();
+    let workspace = test_agent_workspace();
+
+    send_agent_workspace_publish_repair_message(
+        &service,
+        &workspace,
+        "Failed to commit: typecheck failed",
+        AgentWorkspaceRepairRuntimeOverrides::default(),
+    )
+    .await
+    .expect("repair handoff should be sent through chat service");
+
+    let messages = service.get_sent_messages().await;
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].contains("Commit & Publish failed"));
+    assert!(messages[0].contains("Failed to commit: typecheck failed"));
+    assert!(messages[0].contains("Workspace branch: ralphx/ralphx/agent-1234"));
+    assert!(messages[0].contains("Base: Current branch (feature/agent-screen)"));
+    assert!(messages[0].contains("Conversation ID: 00000000-0000-0000-0000-000000000123"));
+    assert!(messages[0].contains("complete_agent_workspace_repair"));
+
+    let options = service.get_sent_options().await;
+    assert_eq!(options.len(), 1);
+    assert_eq!(
+        options[0].conversation_id_override,
+        Some(workspace.conversation_id)
+    );
+    assert_eq!(
+        options[0].agent_name_override.as_deref(),
+        Some(AGENT_WORKSPACE_REPAIR)
+    );
+    assert!(options[0].force_new_provider_session);
+    assert!(options[0].preserve_conversation_provider_session_ref);
+}
+
+#[tokio::test]
+async fn workspace_publish_fixable_failure_is_routed_by_backend() {
+    let state = AppState::new_test();
+    let service = MockChatService::new();
+    let workspace = test_agent_workspace();
+
+    mark_agent_workspace_publish_failure(
+        &state,
+        &workspace,
+        "Failed to commit workspace changes: typecheck failed",
+        None,
+        &service,
+    )
+    .await;
+
+    assert_eq!(service.call_count(), 1);
+    let messages = service.get_sent_messages().await;
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].contains("typecheck failed"));
+}
+
+#[tokio::test]
+async fn workspace_publish_repair_inherits_workspace_runtime_but_starts_fresh_session() {
+    let state = AppState::new_test();
+    let service = MockChatService::new();
+    let workspace = test_agent_workspace();
+
+    let mut conversation = ChatConversation::new_project(workspace.project_id.clone());
+    conversation.id = workspace.conversation_id;
+    conversation.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "thread-main".to_string(),
+    });
+    state
+        .chat_conversation_repo
+        .create(conversation)
+        .await
+        .expect("conversation should seed");
+
+    let mut latest_run = AgentRun::new(workspace.conversation_id);
+    latest_run.harness = Some(AgentHarnessKind::Claude);
+    latest_run.logical_model = Some("gpt-5.4".to_string());
+    latest_run.effective_model_id = Some("gpt-5.4-provider".to_string());
+    latest_run.logical_effort = Some(LogicalEffort::High);
+    state
+        .agent_run_repo
+        .create(latest_run)
+        .await
+        .expect("run should seed");
+
+    mark_agent_workspace_publish_failure(
+        &state,
+        &workspace,
+        "Failed to commit workspace changes: merge conflict",
+        None,
+        &service,
+    )
+    .await;
+
+    let options = service.get_sent_options().await;
+    assert_eq!(options.len(), 1);
+    assert_eq!(options[0].harness_override, Some(AgentHarnessKind::Codex));
+    assert_eq!(options[0].model_override.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        options[0].logical_effort_override,
+        Some(LogicalEffort::High)
+    );
+    assert!(options[0].force_new_provider_session);
+    assert!(options[0].preserve_conversation_provider_session_ref);
+}
+
+#[tokio::test]
+async fn workspace_publish_operational_failure_is_not_routed_to_agent() {
+    let state = AppState::new_test();
+    let service = MockChatService::new();
+    let workspace = test_agent_workspace();
+
+    mark_agent_workspace_publish_failure(
+        &state,
+        &workspace,
+        "GitHub integration is not available",
+        None,
+        &service,
+    )
+    .await;
+
+    assert_eq!(service.call_count(), 0);
+    assert!(service.get_sent_messages().await.is_empty());
+}
+
 // ── AgentRunStatusResponse model field tests ──────────────────────────────────
 
 #[test]
@@ -157,6 +305,8 @@ fn test_agent_run_status_response_serializes_model_absent() {
 mod ipc_contract {
     use ralphx_lib::commands::unified_chat_commands::{
         CreateAgentConversationInput, QueueAgentMessageInput, SendAgentMessageInput,
+        StartAgentConversationInput, SwitchAgentConversationModeInput,
+        UpdateAgentConversationTitleInput,
     };
 
     // ── SendAgentMessageInput ───────────────────────────────────────────────
@@ -231,5 +381,33 @@ mod ipc_contract {
             result.is_err(),
             "missing contextId must cause deserialization failure"
         );
+    }
+
+    #[test]
+    fn update_agent_conversation_title_input_deserializes_camel_case() {
+        let json = r#"{"conversationId":"conv-123","title":"Fix title editing"}"#;
+        let input: UpdateAgentConversationTitleInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.conversation_id, "conv-123");
+        assert_eq!(input.title, "Fix title editing");
+    }
+
+    #[test]
+    fn start_agent_conversation_input_accepts_chat_mode_without_base() {
+        let json = r#"{"projectId":"project-1","content":"What changed?","mode":"chat","providerHarness":"codex","modelOverride":"gpt-5.4"}"#;
+        let input: StartAgentConversationInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.project_id, "project-1");
+        assert_eq!(input.mode.as_deref(), Some("chat"));
+        assert!(input.base_ref_kind.is_none());
+        assert!(input.base_ref.is_none());
+    }
+
+    #[test]
+    fn switch_agent_conversation_mode_input_deserializes_camel_case() {
+        let json = r#"{"conversationId":"conv-123","mode":"edit","baseRefKind":"project_default","baseRef":"main","baseDisplayName":"Project default (main)"}"#;
+        let input: SwitchAgentConversationModeInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.conversation_id, "conv-123");
+        assert_eq!(input.mode, "edit");
+        assert_eq!(input.base_ref_kind.as_deref(), Some("project_default"));
+        assert_eq!(input.base_ref.as_deref(), Some("main"));
     }
 }

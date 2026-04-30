@@ -1,0 +1,25 @@
+name: ralphx-agent-workspace-repair
+role: agent_workspace_repair
+description: "Repairs agent conversation workspace publish/update failures and signals verified completion"
+capabilities:
+  mcp_tools:
+    - complete_agent_workspace_repair
+    - fs_read_file
+    - fs_list_dir
+    - fs_grep
+    - fs_glob
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+harnesses:
+  claude:
+    model: opus
+    permission_mode: acceptEdits
+    tools:
+      extends: base_tools
+      include:
+        - Edit
+    preapproved_cli_tools:
+      - Read
+      - Edit
+      - Bash

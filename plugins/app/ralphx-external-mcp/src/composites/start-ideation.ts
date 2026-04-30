@@ -19,6 +19,7 @@ export interface StartIdeationResult {
   status: "started" | "blocked";
   agentSpawned: boolean;
   agentSpawnBlockedReason?: string;
+  pendingInitialPrompt?: string;
   existingActiveSessions?: Array<{
     sessionId: string;
     title?: string;
@@ -31,6 +32,8 @@ export interface StartIdeationResult {
   similarityScore?: number;
   nextAction?: string;
   hint?: string;
+  parentConversationId?: string;
+  workspaceBranch?: string;
 }
 
 interface StartIdeationBackendResponse {
@@ -38,6 +41,7 @@ interface StartIdeationBackendResponse {
   status: string;
   agent_spawned?: boolean;
   agent_spawn_blocked_reason?: string;
+  pending_initial_prompt?: string;
   existing_active_sessions?: Array<{
     session_id: string;
     title?: string;
@@ -50,6 +54,8 @@ interface StartIdeationBackendResponse {
   similarity_score?: number;
   next_action?: string;
   hint?: string;
+  parent_conversation_id?: string;
+  workspace_branch?: string;
 }
 
 /**
@@ -96,6 +102,9 @@ export async function startIdeation(
     ...(b.agent_spawn_blocked_reason !== undefined
       ? { agentSpawnBlockedReason: b.agent_spawn_blocked_reason }
       : {}),
+    ...(b.pending_initial_prompt !== undefined
+      ? { pendingInitialPrompt: b.pending_initial_prompt }
+      : {}),
     ...(b.existing_active_sessions !== undefined
       ? {
           existingActiveSessions: b.existing_active_sessions.map((s) => ({
@@ -114,6 +123,10 @@ export async function startIdeation(
     ...(b.similarity_score !== undefined ? { similarityScore: b.similarity_score } : {}),
     ...(b.next_action !== undefined ? { nextAction: b.next_action } : {}),
     ...(b.hint !== undefined ? { hint: b.hint } : {}),
+    ...(b.parent_conversation_id !== undefined
+      ? { parentConversationId: b.parent_conversation_id }
+      : {}),
+    ...(b.workspace_branch !== undefined ? { workspaceBranch: b.workspace_branch } : {}),
   };
 
   return result;

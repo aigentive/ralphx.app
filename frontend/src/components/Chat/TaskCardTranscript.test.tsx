@@ -135,7 +135,7 @@ describe("TaskCardTranscript", () => {
     expect(entries[1]?.blocks.map((block) => block.type)).toEqual(["text", "tool_call"]);
   });
 
-  it("renders transcript entries through one shared body view", () => {
+  it("renders transcript entries through one shared body view", async () => {
     const entries = [
       buildTaskCardTranscriptEntryFromStreamingTask(
         makeStreamingTask({
@@ -156,7 +156,7 @@ describe("TaskCardTranscript", () => {
     );
 
     expect(screen.getByTestId("shared-task-card-transcript")).toBeInTheDocument();
-    expect(screen.getAllByText("cargo test").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("cargo test")).length).toBeGreaterThan(0);
     expect(screen.getByText("Working…")).toBeInTheDocument();
     expect(screen.getByText("Streaming verification output")).toBeInTheDocument();
   });

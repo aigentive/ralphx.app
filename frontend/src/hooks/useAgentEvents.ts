@@ -8,10 +8,13 @@
  */
 
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
-import type { ChatMessageResponse } from "@/api/chat";
+import type {
+  ChatMessageResponse,
+  ConversationMessagesPageResponse,
+} from "@/api/chat";
 import {
   mergeConversationProviderMetadata,
   type ChatConversation,
@@ -27,16 +30,92 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
+import { buildAgentEventStoreKey } from "@/lib/agent-store-key";
 import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
 import {
   chatKeys,
   invalidateConversationDataQueries,
-  type ConversationHistoryWindowData,
 } from "./useChat";
 import { ideationKeys } from "./useIdeation";
 import { conversationStatsKey } from "./useConversationStats";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
+
+type ConversationHistoryCacheData = InfiniteData<ConversationMessagesPageResponse>;
+
+function isConversationHistoryCacheData(
+  data: ConversationHistoryCacheData | undefined
+): data is ConversationHistoryCacheData {
+  return Boolean(data && Array.isArray(data.pages));
+}
+
+function updateConversationHistoryConversation(
+  data: ConversationHistoryCacheData | undefined,
+  updateConversation: (conversation: ChatConversation) => ChatConversation
+): ConversationHistoryCacheData | undefined {
+  if (!isConversationHistoryCacheData(data)) {
+    return data;
+  }
+
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      conversation: updateConversation(page.conversation),
+    })),
+  };
+}
+
+function appendMessageToConversationHistory(
+  data: ConversationHistoryCacheData | undefined,
+  message: ChatMessageResponse
+): ConversationHistoryCacheData | undefined {
+  if (!isConversationHistoryCacheData(data) || data.pages.length === 0) {
+    return data;
+  }
+
+  if (data.pages.some((page) => page.messages.some((item) => item.id === message.id))) {
+    return data;
+  }
+
+  return {
+    ...data,
+    pages: data.pages.map((page, index) => ({
+      ...page,
+      messages: index === 0 ? [...page.messages, message] : page.messages,
+      totalMessageCount: page.totalMessageCount + 1,
+    })),
+  };
+}
+
+function shouldRouteRunStartSelectionToCallerStoreKey(
+  callerStoreKey: string | undefined,
+  eventStoreKey: string,
+  eventContextId: string
+): boolean {
+  if (!callerStoreKey) {
+    return false;
+  }
+  if (callerStoreKey === eventStoreKey) {
+    return true;
+  }
+
+  const parsedCallerStoreKey = parseStoreKey(callerStoreKey);
+  if (!parsedCallerStoreKey) {
+    return false;
+  }
+
+  // Project store keys are conversation-scoped. A different project key means a
+  // different Agents workspace conversation and must not be overwritten by a
+  // run_started event from another workspace.
+  if (parsedCallerStoreKey.contextType === "project") {
+    return false;
+  }
+
+  // Task detail panels can intentionally bridge related task/task_execution
+  // slots for the same task id.
+  return parsedCallerStoreKey.contextId === eventContextId;
+}
 
 /**
  * Hook to manage agent event listeners
@@ -46,9 +125,8 @@ import { logger } from "@/lib/logger";
  *
  * @param activeConversationId - The currently active conversation ID to filter events
  * @param storeKey - Caller-provided store key for scoped setActiveConversation writes.
- *   When provided, agent:run_started uses this key instead of the event-derived key.
- *   Callers know which panel slot to write to; cross-context events are handled
- *   separately by IntegratedChatPanel's own bus.subscribe handler.
+ *   agent:run_started may use this key only when it targets the same slot or a
+ *   compatible task slot; unrelated project conversation events stay isolated.
  */
 export function useAgentEvents(activeConversationId: string | null, storeKey?: string) {
   const bus = useEventBus();
@@ -106,15 +184,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         }
       );
 
-      queryClient.setQueryData<ConversationHistoryWindowData>(
+      queryClient.setQueryData<ConversationHistoryCacheData>(
         chatKeys.conversationHistory(conversationId),
-        (oldData) => {
-          if (!oldData) return oldData;
-          return {
-            ...oldData,
-            conversation: mergeConversation(oldData.conversation),
-          };
-        }
+        (oldData) => updateConversationHistoryConversation(oldData, mergeConversation)
       );
 
       queryClient.setQueryData<ChatConversation[]>(
@@ -139,6 +211,18 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
       queryClient.invalidateQueries({ queryKey: chatKeys.agentRun(conversationId) });
       invalidateConversationDataQueries(queryClient, conversationId);
       queryClient.invalidateQueries({ queryKey: conversationStatsKey(conversationId) });
+    }
+
+    function invalidateAgentWorkspacePublishQueries(conversationId: string) {
+      queryClient.invalidateQueries({
+        queryKey: ["agents", "conversation-workspace", conversationId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["agents", "conversation-workspace-freshness", conversationId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["agents", "conversation-workspace-publication-events", conversationId],
+      });
     }
 
     // Reverse lookup: when a child verification session terminates, find any parent that has
@@ -210,7 +294,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { context_type, context_id: eventContextId, conversation_id } = payload;
 
         // Build context key from the event payload
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         // Update watchdog timestamp only for initial spawns, not queue re-runs.
         // Queue re-runs emit run_started while already in "generating" state —
@@ -248,10 +336,25 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         // If no active conversation is set, set it to this one
         // This handles the case where a new conversation was just created by the backend.
-        // Use caller-provided storeKey when available — the caller knows which panel slot to
-        // write to. Cross-context events are handled by IntegratedChatPanel's bus.subscribe.
+        // When a caller provides a storeKey, only write to it if the event targets that
+        // same slot or a compatible task slot. Project keys are conversation-scoped, so
+        // blindly writing another project conversation here can poison Agents workspace
+        // selection and render the wrong transcript.
         if (!activeConversationId && conversation_id) {
-          setActiveConversation(storeKeyRef.current ?? eventContextKey, conversation_id);
+          const callerStoreKey = storeKeyRef.current;
+          const activeSelectionStoreKey = callerStoreKey
+            ? shouldRouteRunStartSelectionToCallerStoreKey(
+                callerStoreKey,
+                eventContextKey,
+                eventContextId
+              )
+              ? callerStoreKey
+              : null
+            : eventContextKey;
+
+          if (activeSelectionStoreKey) {
+            setActiveConversation(activeSelectionStoreKey, conversation_id);
+          }
         }
       })
     );
@@ -273,13 +376,33 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         // Heartbeat: update watchdog timestamp on every message (active event flow).
         // Prevents watchdog from firing during normal streaming bursts.
-        const msgContextKey = buildStoreKey(payload.context_type as ContextType, payload.context_id);
+        const msgContextKey = buildAgentEventStoreKey(
+          payload.context_type,
+          payload.context_id,
+          conversation_id
+        );
         updateLastAgentEvent(msgContextKey);
 
         // Always invalidate the conversation query for this message's conversation.
         // This handles both lead and teammate conversations — teammate messages
         // have their own conversation_id that won't match activeConversationId.
         if (role === "user" && conversation_id === activeConversationId) {
+          const newMessage: ChatMessageResponse = {
+            id: message_id,
+            conversationId: conversation_id,
+            sessionId: null,
+            projectId: null,
+            taskId: null,
+            role: role as "user" | "assistant" | "system",
+            content: content || "",
+            metadata: payload.metadata ?? null,
+            parentMessageId: null,
+            createdAt: created_at ?? new Date().toISOString(),
+            toolCalls: null,
+            contentBlocks: null,
+            sender: null,
+          };
+
           // Optimistic append for user messages in the active conversation only
           queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
             chatKeys.conversation(activeConversationId),
@@ -290,55 +413,12 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
                 return oldData;
               }
 
-              const newMessage: ChatMessageResponse = {
-                id: message_id,
-                conversationId: conversation_id,
-                sessionId: null,
-                projectId: null,
-                taskId: null,
-                role: role as "user" | "assistant" | "system",
-                content: content || "",
-                metadata: payload.metadata ?? null,
-                parentMessageId: null,
-                createdAt: created_at ?? new Date().toISOString(),
-                toolCalls: null,
-                contentBlocks: null,
-                sender: null,
-              };
               return { ...oldData, messages: [...existingMessages, newMessage] };
             }
           );
-          queryClient.setQueryData<ConversationHistoryWindowData>(
+          queryClient.setQueryData<ConversationHistoryCacheData>(
             chatKeys.conversationHistory(activeConversationId),
-            (oldData) => {
-              if (!oldData) return oldData;
-              const existingMessages = oldData.messages ?? [];
-              if (existingMessages.some((message) => message.id === message_id)) {
-                return oldData;
-              }
-
-              const newMessage: ChatMessageResponse = {
-                id: message_id,
-                conversationId: conversation_id,
-                sessionId: null,
-                projectId: null,
-                taskId: null,
-                role: role as "user" | "assistant" | "system",
-                content: content || "",
-                metadata: payload.metadata ?? null,
-                parentMessageId: null,
-                createdAt: created_at ?? new Date().toISOString(),
-                toolCalls: null,
-                contentBlocks: null,
-                sender: null,
-              };
-
-              return {
-                ...oldData,
-                messages: [...existingMessages, newMessage],
-                totalMessageCount: (oldData.totalMessageCount ?? existingMessages.length) + 1,
-              };
-            }
+            (oldData) => appendMessageToConversationHistory(oldData, newMessage)
           );
         } else if (conversation_id !== activeConversationId) {
           // Non-active conversation (e.g. teammate messages): invalidate to refetch from DB.
@@ -361,7 +441,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         // Final heartbeat — clears the "stuck" condition before transitioning to idle.
         updateLastAgentEvent(eventContextKey);
@@ -375,6 +459,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
         handleChildTerminationReverseLink(eventContextId);
+        if (context_type === "project") {
+          invalidateAgentWorkspacePublishQueries(conversation_id);
+        }
 
         // NOTE: Queue processing is now handled by the BACKEND
         // The backend automatically processes queued messages via --resume
@@ -392,7 +479,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Agent is still alive but waiting for user input — transition from "generating" to "waiting_for_input"
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         // Heartbeat: agent is alive between turns, reset watchdog timer.
         updateLastAgentEvent(eventContextKey);
@@ -449,7 +540,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { message_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload - unified queue with context-aware keys
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          payload.conversation_id
+        );
         // Remove from frontend optimistic queue by exact ID match
         deleteQueuedMessage(eventContextKey, message_id);
       })
@@ -463,11 +558,16 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         content: string;
         context_type: string;
         context_id: string;
+        conversation_id?: string | null;
         created_at: string;
       }>("agent:message_queued", (payload) => {
         const { message_id, content, context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          payload.conversation_id
+        );
         queueMessage(eventContextKey, content, message_id);
       })
     );
@@ -487,10 +587,17 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         if (payload.teammate_name) return;
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
         handleChildTerminationReverseLink(eventContextId);
+        if (context_type === "project") {
+          invalidateAgentWorkspacePublishQueries(conversation_id);
+        }
       })
     );
 
@@ -509,10 +616,17 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
         handleChildTerminationReverseLink(eventContextId);
+        if (context_type === "project") {
+          invalidateAgentWorkspacePublishQueries(conversation_id);
+        }
 
         // Show error toast for agent failures in execution contexts
         if (["task_execution", "review", "merge"].includes(context_type)) {

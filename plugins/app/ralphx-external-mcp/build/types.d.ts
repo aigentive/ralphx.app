@@ -6,6 +6,13 @@ export interface ApiKeyContext {
     keyId: string;
     projectIds: string[];
     permissions: number;
+    tauriOrigin?: boolean;
+    runtime?: {
+        contextType?: string;
+        contextId?: string;
+        projectId?: string;
+        parentConversationId?: string;
+    };
 }
 /** External MCP server configuration */
 export interface ExternalMcpConfig {

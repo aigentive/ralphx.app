@@ -2,7 +2,12 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
-import type { ChatConversation, AgentRun, ContextType } from "../types/chat-conversation";
+import type {
+  AgentConversationMode,
+  ChatConversation,
+  AgentRun,
+  ContextType,
+} from "../types/chat-conversation";
 import { normalizeConversationProviderMetadata } from "../types/chat-conversation";
 import type { ToolCall } from "../components/Chat/ToolCallIndicator";
 import type { ContentBlockItem } from "../components/Chat/MessageItem";
@@ -150,6 +155,14 @@ export interface QueuedMessageResponse {
   isEditing: boolean;
 }
 
+export interface ConversationListPageResponse {
+  conversations: ChatConversation[];
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+}
+
 /**
  * A streaming task in the active state HTTP response from GET /api/conversations/:id/active-state.
  * Mirrors the Rust ActiveStreamingTask struct (snake_case — no rename_all on the Rust struct).
@@ -235,11 +248,22 @@ export interface ChildSessionAgentState {
   estimated_status: "idle" | "likely_generating" | "likely_waiting";
 }
 
+export interface ChildSessionVerificationInfo {
+  status: string;
+  generation: number;
+  current_round: number | null;
+  gap_score: number | null;
+}
+
 export interface ChildSessionStatusResponse {
   session_id: string;
   title: string | null;
+  session_status?: string | null;
+  session_purpose?: string | null;
+  parent_session_id?: string | null;
   agent_state: ChildSessionAgentState;
   recent_messages: ChildSessionMessage[];
+  verification?: ChildSessionVerificationInfo | null;
   pending_initial_prompt?: string | null;
   lastEffectiveModel: string | null;
 }
@@ -267,22 +291,35 @@ export async function getChildSessionStatus(
     throw new Error(`Failed to get child session status: ${res.status}`);
   }
   const raw = (await res.json()) as {
-    session_id: string;
-    title: string | null;
+    session_id?: string;
+    title?: string | null;
+    session?: {
+      id?: string;
+      title?: string | null;
+      status?: string | null;
+      session_purpose?: string | null;
+      parent_session_id?: string | null;
+      last_effective_model?: string | null;
+    };
     agent_state: ChildSessionAgentState;
-    recent_messages: ChildSessionMessage[];
+    recent_messages?: ChildSessionMessage[] | null;
+    verification?: ChildSessionVerificationInfo | null;
     pending_initial_prompt?: string | null;
     last_effective_model?: string | null;
   };
   return {
-    session_id: raw.session_id,
-    title: raw.title,
+    session_id: raw.session_id ?? raw.session?.id ?? sessionId,
+    title: raw.title ?? raw.session?.title ?? null,
+    session_status: raw.session?.status ?? null,
+    session_purpose: raw.session?.session_purpose ?? null,
+    parent_session_id: raw.session?.parent_session_id ?? null,
     agent_state: raw.agent_state,
-    recent_messages: raw.recent_messages,
+    recent_messages: raw.recent_messages ?? [],
+    verification: raw.verification ?? null,
     ...(raw.pending_initial_prompt !== undefined && {
       pending_initial_prompt: raw.pending_initial_prompt,
     }),
-    lastEffectiveModel: raw.last_effective_model ?? null,
+    lastEffectiveModel: raw.last_effective_model ?? raw.session?.last_effective_model ?? null,
   };
 }
 
@@ -300,11 +337,21 @@ const ChatConversationResponseSchema = z.object({
   provider_harness: z.string().min(1).nullable().optional(),
   upstream_provider: z.string().nullable().optional(),
   provider_profile: z.string().nullable().optional(),
+  agent_mode: z.enum(["chat", "edit", "ideation"]).nullable().optional(),
   title: z.string().nullable(),
   message_count: z.number(),
   last_message_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
+  archived_at: z.string().nullable().optional(),
+});
+
+const ConversationListPageResponseSchema = z.object({
+  conversations: z.array(ChatConversationResponseSchema),
+  limit: z.number(),
+  offset: z.number(),
+  total: z.number(),
+  has_more: z.boolean(),
 });
 
 const AgentRunResponseSchema = z.object({
@@ -319,6 +366,7 @@ const AgentRunResponseSchema = z.object({
 });
 
 type RawConversation = z.infer<typeof ChatConversationResponseSchema>;
+type RawConversationListPage = z.infer<typeof ConversationListPageResponseSchema>;
 type RawAgentRun = z.infer<typeof AgentRunResponseSchema>;
 
 function transformConversation(raw: RawConversation): ChatConversation {
@@ -335,11 +383,25 @@ function transformConversation(raw: RawConversation): ChatConversation {
     ...providerMetadata,
     upstreamProvider: raw.upstream_provider ?? null,
     providerProfile: raw.provider_profile ?? null,
+    agentMode: raw.agent_mode ?? null,
     title: raw.title,
     messageCount: raw.message_count,
     lastMessageAt: raw.last_message_at,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+    archivedAt: raw.archived_at ?? null,
+  };
+}
+
+function transformConversationListPage(
+  raw: RawConversationListPage
+): ConversationListPageResponse {
+  return {
+    conversations: raw.conversations.map(transformConversation),
+    limit: raw.limit,
+    offset: raw.offset,
+    total: raw.total,
+    hasMore: raw.has_more,
   };
 }
 
@@ -399,7 +461,7 @@ export interface ConversationMessagesPageResponse {
   hasOlder: boolean;
 }
 
-const UsageTotalsResponseSchema = z.object({
+const SnakeUsageTotalsResponseSchema = z.object({
   input_tokens: z.number(),
   output_tokens: z.number(),
   cache_creation_tokens: z.number(),
@@ -407,13 +469,26 @@ const UsageTotalsResponseSchema = z.object({
   estimated_usd: z.number().nullable(),
 });
 
+const CamelUsageTotalsResponseSchema = z.object({
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cacheCreationTokens: z.number(),
+  cacheReadTokens: z.number(),
+  estimatedUsd: z.number().nullable(),
+});
+
+const UsageTotalsResponseSchema = z.union([
+  SnakeUsageTotalsResponseSchema,
+  CamelUsageTotalsResponseSchema,
+]);
+
 const UsageBucketResponseSchema = z.object({
   key: z.string(),
   count: z.number(),
   usage: UsageTotalsResponseSchema,
 });
 
-const ConversationUsageCoverageResponseSchema = z.object({
+const SnakeConversationUsageCoverageResponseSchema = z.object({
   provider_message_count: z.number(),
   provider_messages_with_usage: z.number(),
   run_count: z.number(),
@@ -421,14 +496,39 @@ const ConversationUsageCoverageResponseSchema = z.object({
   effective_totals_source: z.string(),
 });
 
-const ConversationAttributionCoverageResponseSchema = z.object({
+const CamelConversationUsageCoverageResponseSchema = z.object({
+  providerMessageCount: z.number(),
+  providerMessagesWithUsage: z.number(),
+  runCount: z.number(),
+  runsWithUsage: z.number(),
+  effectiveTotalsSource: z.string(),
+});
+
+const ConversationUsageCoverageResponseSchema = z.union([
+  SnakeConversationUsageCoverageResponseSchema,
+  CamelConversationUsageCoverageResponseSchema,
+]);
+
+const SnakeConversationAttributionCoverageResponseSchema = z.object({
   provider_message_count: z.number(),
   provider_messages_with_attribution: z.number(),
   run_count: z.number(),
   runs_with_attribution: z.number(),
 });
 
-const ConversationStatsResponseSchema = z.object({
+const CamelConversationAttributionCoverageResponseSchema = z.object({
+  providerMessageCount: z.number(),
+  providerMessagesWithAttribution: z.number(),
+  runCount: z.number(),
+  runsWithAttribution: z.number(),
+});
+
+const ConversationAttributionCoverageResponseSchema = z.union([
+  SnakeConversationAttributionCoverageResponseSchema,
+  CamelConversationAttributionCoverageResponseSchema,
+]);
+
+const SnakeConversationStatsResponseSchema = z.object({
   conversation_id: z.string(),
   context_type: z.string(),
   context_id: z.string(),
@@ -446,9 +546,42 @@ const ConversationStatsResponseSchema = z.object({
   by_effort: z.array(UsageBucketResponseSchema),
 });
 
+const CamelConversationStatsResponseSchema = z.object({
+  conversationId: z.string(),
+  contextType: z.string(),
+  contextId: z.string(),
+  providerHarness: z.string().nullable(),
+  upstreamProvider: z.string().nullable(),
+  providerProfile: z.string().nullable(),
+  messageUsageTotals: UsageTotalsResponseSchema,
+  runUsageTotals: UsageTotalsResponseSchema,
+  effectiveUsageTotals: UsageTotalsResponseSchema,
+  usageCoverage: ConversationUsageCoverageResponseSchema,
+  attributionCoverage: ConversationAttributionCoverageResponseSchema,
+  byHarness: z.array(UsageBucketResponseSchema),
+  byUpstreamProvider: z.array(UsageBucketResponseSchema),
+  byModel: z.array(UsageBucketResponseSchema),
+  byEffort: z.array(UsageBucketResponseSchema),
+});
+
+const ConversationStatsResponseSchema = z.union([
+  SnakeConversationStatsResponseSchema,
+  CamelConversationStatsResponseSchema,
+]);
+
 type RawConversationStats = z.infer<typeof ConversationStatsResponseSchema>;
 
 function transformUsageTotals(raw: z.infer<typeof UsageTotalsResponseSchema>): UsageTotalsResponse {
+  if ("inputTokens" in raw) {
+    return {
+      inputTokens: raw.inputTokens,
+      outputTokens: raw.outputTokens,
+      cacheCreationTokens: raw.cacheCreationTokens,
+      cacheReadTokens: raw.cacheReadTokens,
+      estimatedUsd: raw.estimatedUsd,
+    };
+  }
+
   return {
     inputTokens: raw.input_tokens,
     outputTokens: raw.output_tokens,
@@ -466,7 +599,70 @@ function transformUsageBucket(raw: z.infer<typeof UsageBucketResponseSchema>): U
   };
 }
 
+function transformUsageCoverage(
+  raw: z.infer<typeof ConversationUsageCoverageResponseSchema>,
+): ConversationUsageCoverageResponse {
+  if ("providerMessageCount" in raw) {
+    return {
+      providerMessageCount: raw.providerMessageCount,
+      providerMessagesWithUsage: raw.providerMessagesWithUsage,
+      runCount: raw.runCount,
+      runsWithUsage: raw.runsWithUsage,
+      effectiveTotalsSource: raw.effectiveTotalsSource,
+    };
+  }
+
+  return {
+    providerMessageCount: raw.provider_message_count,
+    providerMessagesWithUsage: raw.provider_messages_with_usage,
+    runCount: raw.run_count,
+    runsWithUsage: raw.runs_with_usage,
+    effectiveTotalsSource: raw.effective_totals_source,
+  };
+}
+
+function transformAttributionCoverage(
+  raw: z.infer<typeof ConversationAttributionCoverageResponseSchema>,
+): ConversationAttributionCoverageResponse {
+  if ("providerMessageCount" in raw) {
+    return {
+      providerMessageCount: raw.providerMessageCount,
+      providerMessagesWithAttribution: raw.providerMessagesWithAttribution,
+      runCount: raw.runCount,
+      runsWithAttribution: raw.runsWithAttribution,
+    };
+  }
+
+  return {
+    providerMessageCount: raw.provider_message_count,
+    providerMessagesWithAttribution:
+      raw.provider_messages_with_attribution,
+    runCount: raw.run_count,
+    runsWithAttribution: raw.runs_with_attribution,
+  };
+}
+
 function transformConversationStats(raw: RawConversationStats): ConversationStatsResponse {
+  if ("conversationId" in raw) {
+    return {
+      conversationId: raw.conversationId,
+      contextType: raw.contextType as ContextType,
+      contextId: raw.contextId,
+      providerHarness: raw.providerHarness,
+      upstreamProvider: raw.upstreamProvider,
+      providerProfile: raw.providerProfile,
+      messageUsageTotals: transformUsageTotals(raw.messageUsageTotals),
+      runUsageTotals: transformUsageTotals(raw.runUsageTotals),
+      effectiveUsageTotals: transformUsageTotals(raw.effectiveUsageTotals),
+      usageCoverage: transformUsageCoverage(raw.usageCoverage),
+      attributionCoverage: transformAttributionCoverage(raw.attributionCoverage),
+      byHarness: raw.byHarness.map(transformUsageBucket),
+      byUpstreamProvider: raw.byUpstreamProvider.map(transformUsageBucket),
+      byModel: raw.byModel.map(transformUsageBucket),
+      byEffort: raw.byEffort.map(transformUsageBucket),
+    };
+  }
+
   return {
     conversationId: raw.conversation_id,
     contextType: raw.context_type as ContextType,
@@ -477,20 +673,8 @@ function transformConversationStats(raw: RawConversationStats): ConversationStat
     messageUsageTotals: transformUsageTotals(raw.message_usage_totals),
     runUsageTotals: transformUsageTotals(raw.run_usage_totals),
     effectiveUsageTotals: transformUsageTotals(raw.effective_usage_totals),
-    usageCoverage: {
-      providerMessageCount: raw.usage_coverage.provider_message_count,
-      providerMessagesWithUsage: raw.usage_coverage.provider_messages_with_usage,
-      runCount: raw.usage_coverage.run_count,
-      runsWithUsage: raw.usage_coverage.runs_with_usage,
-      effectiveTotalsSource: raw.usage_coverage.effective_totals_source,
-    },
-    attributionCoverage: {
-      providerMessageCount: raw.attribution_coverage.provider_message_count,
-      providerMessagesWithAttribution:
-        raw.attribution_coverage.provider_messages_with_attribution,
-      runCount: raw.attribution_coverage.run_count,
-      runsWithAttribution: raw.attribution_coverage.runs_with_attribution,
-    },
+    usageCoverage: transformUsageCoverage(raw.usage_coverage),
+    attributionCoverage: transformAttributionCoverage(raw.attribution_coverage),
     byHarness: raw.by_harness.map(transformUsageBucket),
     byUpstreamProvider: raw.by_upstream_provider.map(transformUsageBucket),
     byModel: raw.by_model.map(transformUsageBucket),
@@ -514,6 +698,7 @@ function transformAgentRun(raw: RawAgentRun): AgentRun {
 // Schema for AgentMessageResponse from unified_chat_commands (snake_case)
 const AgentMessageSchema = z.object({
   id: z.string(),
+  conversation_id: z.string().nullable().optional(),
   role: z.string(),
   content: z.string(),
   metadata: z.string().nullable().optional(),
@@ -552,7 +737,10 @@ type RawConversationMessagesPage = z.infer<
   typeof ConversationMessagesPageResponseSchema
 >;
 
-function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
+function transformAgentMessage(
+  raw: RawAgentMessage,
+  fallbackConversationId?: string
+): ChatMessageResponse {
   return {
     id: raw.id,
     sessionId: null,
@@ -577,7 +765,7 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
     content: raw.content,
     metadata: raw.metadata ?? null,
     parentMessageId: null,
-    conversationId: null,
+    conversationId: raw.conversation_id ?? fallbackConversationId ?? null,
     // Parse at API layer to avoid redundant parsing in components
     toolCalls: parseToolCalls(raw.tool_calls),
     contentBlocks: parseContentBlocks(raw.content_blocks),
@@ -588,9 +776,10 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
 function transformConversationMessagesPage(
   raw: RawConversationMessagesPage
 ): ConversationMessagesPageResponse {
+  const conversationId = raw.conversation.id;
   return {
     conversation: transformConversation(raw.conversation),
-    messages: raw.messages.map(transformAgentMessage),
+    messages: raw.messages.map((message) => transformAgentMessage(message, conversationId)),
     limit: raw.limit,
     offset: raw.offset,
     totalMessageCount: raw.total_message_count,
@@ -606,14 +795,44 @@ function transformConversationMessagesPage(
  */
 export async function listConversations(
   contextType: ContextType,
-  contextId: string
+  contextId: string,
+  includeArchived = false
 ): Promise<ChatConversation[]> {
   const raw = await typedInvoke(
     "list_agent_conversations",
-    { contextType, contextId },
+    { contextType, contextId, includeArchived },
     z.array(ChatConversationResponseSchema)
   );
   return raw.map(transformConversation);
+}
+
+/**
+ * List a page of conversations for a given context with optional title search.
+ */
+export async function listConversationsPage(
+  contextType: ContextType,
+  contextId: string,
+  limit: number,
+  offset = 0,
+  includeArchived = false,
+  search?: string,
+  archivedOnly = false
+): Promise<ConversationListPageResponse> {
+  const normalizedSearch = search?.trim();
+  const raw = await typedInvoke(
+    "list_agent_conversations_page",
+    {
+      contextType,
+      contextId,
+      includeArchived,
+      ...(archivedOnly ? { archivedOnly } : {}),
+      limit,
+      offset,
+      ...(normalizedSearch ? { search: normalizedSearch } : {}),
+    },
+    ConversationListPageResponseSchema
+  );
+  return transformConversationListPage(raw);
 }
 
 /**
@@ -635,7 +854,7 @@ export async function getConversation(
 
   return {
     conversation: transformConversation(raw.conversation),
-    messages: raw.messages.map(transformAgentMessage),
+    messages: raw.messages.map((message) => transformAgentMessage(message, raw.conversation.id)),
   };
 }
 
@@ -676,7 +895,8 @@ export async function getConversationStats(
  */
 export async function createConversation(
   contextType: ContextType,
-  contextId: string
+  contextId: string,
+  title?: string
 ): Promise<ChatConversation> {
   const raw = await typedInvoke(
     "create_agent_conversation",
@@ -684,8 +904,56 @@ export async function createConversation(
       input: {
         contextType,
         contextId,
+        ...(title !== undefined && title.trim().length > 0 && { title: title.trim() }),
       },
     },
+    ChatConversationResponseSchema
+  );
+  return transformConversation(raw);
+}
+
+export async function updateConversationTitle(
+  conversationId: string,
+  title: string
+): Promise<ChatConversation> {
+  const raw = await typedInvoke(
+    "update_agent_conversation_title",
+    {
+      conversationId,
+      title: title.trim(),
+    },
+    ChatConversationResponseSchema
+  );
+  return transformConversation(raw);
+}
+
+export async function spawnConversationSessionNamer(
+  conversationId: string,
+  firstMessage: string
+): Promise<void> {
+  await invoke("spawn_session_namer", {
+    conversationId,
+    firstMessage,
+  });
+}
+
+export async function archiveConversation(
+  conversationId: string
+): Promise<ChatConversation> {
+  const raw = await typedInvoke(
+    "archive_agent_conversation",
+    { conversationId },
+    ChatConversationResponseSchema
+  );
+  return transformConversation(raw);
+}
+
+export async function restoreConversation(
+  conversationId: string
+): Promise<ChatConversation> {
+  const raw = await typedInvoke(
+    "restore_agent_conversation",
+    { conversationId },
     ChatConversationResponseSchema
   );
   return transformConversation(raw);
@@ -739,12 +1007,26 @@ function transformQueuedMessage(raw: RawQueuedMessage): QueuedMessageResponse {
 export const chatApi = {
   // Conversation management
   listConversations,
+  listConversationsPage,
   getConversation,
   getConversationMessagesPage,
   getConversationStats,
   createConversation,
+  updateConversationTitle,
+  spawnConversationSessionNamer,
+  archiveConversation,
+  restoreConversation,
+  getAgentConversationWorkspace,
+  listAgentConversationWorkspacesByProject,
+  listAgentConversationWorkspacePublicationEvents,
+  getAgentConversationWorkspaceFreshness,
+  updateAgentConversationWorkspaceFromBase,
+  publishAgentConversationWorkspace,
+  closeAgentWorkspacePr,
   getAgentRunStatus,
   // Message sending & queue
+  startAgentConversation,
+  switchAgentConversationMode,
   sendAgentMessage,
   getQueuedAgentMessages,
   deleteQueuedAgentMessage,
@@ -776,6 +1058,104 @@ export interface SendAgentMessageResult {
   queuedMessageId?: string | null | undefined;
 }
 
+export type AgentConversationWorkspaceMode = AgentConversationMode;
+export type AgentConversationBaseRefKind =
+  | "project_default"
+  | "current_branch"
+  | "local_branch";
+
+export interface AgentConversationBaseSelection {
+  kind: AgentConversationBaseRefKind;
+  ref: string;
+  displayName: string;
+}
+
+export interface AgentConversationWorkspace {
+  conversationId: string;
+  projectId: string;
+  mode: AgentConversationWorkspaceMode;
+  baseRefKind: string;
+  baseRef: string;
+  baseDisplayName: string | null;
+  baseCommit: string | null;
+  branchName: string;
+  worktreePath: string;
+  linkedIdeationSessionId: string | null;
+  linkedPlanBranchId: string | null;
+  publicationPrNumber: number | null;
+  publicationPrUrl: string | null;
+  publicationPrStatus: string | null;
+  publicationPushStatus: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StartAgentConversationInput {
+  projectId: string;
+  content: string;
+  conversationId?: string | null;
+  providerHarness?: string | null;
+  modelId?: string | null;
+  mode?: AgentConversationWorkspaceMode;
+  base?: AgentConversationBaseSelection | null;
+}
+
+export interface StartAgentConversationResult {
+  conversation: ChatConversation;
+  workspace: AgentConversationWorkspace | null;
+  sendResult: SendAgentMessageResult;
+}
+
+export interface SwitchAgentConversationModeInput {
+  conversationId: string;
+  mode: AgentConversationWorkspaceMode;
+  base?: AgentConversationBaseSelection | null;
+}
+
+export interface SwitchAgentConversationModeResult {
+  conversation: ChatConversation;
+  workspace: AgentConversationWorkspace | null;
+}
+
+export interface PublishAgentConversationWorkspaceResult {
+  workspace: AgentConversationWorkspace;
+  commitSha: string | null;
+  pushed: boolean;
+  createdPr: boolean;
+  prNumber: number | null;
+  prUrl: string | null;
+}
+
+export interface AgentConversationWorkspacePublicationEvent {
+  id: string;
+  conversationId: string;
+  step: string;
+  status: string;
+  summary: string;
+  classification: string | null;
+  createdAt: string;
+}
+
+export interface AgentConversationWorkspaceFreshness {
+  conversationId: string;
+  baseRef: string;
+  baseDisplayName: string | null;
+  targetRef: string;
+  capturedBaseCommit: string | null;
+  targetBaseCommit: string;
+  isBaseAhead: boolean;
+  hasUncommittedChanges: boolean;
+  unpublishedCommitCount: number | null;
+}
+
+export interface UpdateAgentConversationWorkspaceFromBaseResult {
+  workspace: AgentConversationWorkspace;
+  updated: boolean;
+  targetRef: string;
+  baseCommit: string;
+}
+
 const SendAgentMessageResponseSchema = z.object({
   conversation_id: z.string(),
   agent_run_id: z.string(),
@@ -787,6 +1167,101 @@ const SendAgentMessageResponseSchema = z.object({
 
 type RawSendAgentMessageResponse = z.infer<typeof SendAgentMessageResponseSchema>;
 
+const AgentConversationWorkspaceResponseSchema = z.object({
+  conversation_id: z.string(),
+  project_id: z.string(),
+  mode: z.string(),
+  base_ref_kind: z.string(),
+  base_ref: z.string(),
+  base_display_name: z.string().nullable(),
+  base_commit: z.string().nullable(),
+  branch_name: z.string(),
+  worktree_path: z.string(),
+  linked_ideation_session_id: z.string().nullable(),
+  linked_plan_branch_id: z.string().nullable(),
+  publication_pr_number: z.number().nullable(),
+  publication_pr_url: z.string().nullable(),
+  publication_pr_status: z.string().nullable(),
+  publication_push_status: z.string().nullable(),
+  status: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+const AgentConversationWorkspaceListResponseSchema = z.array(
+  AgentConversationWorkspaceResponseSchema
+);
+const AgentConversationWorkspacePublicationEventResponseSchema = z.object({
+  id: z.string(),
+  conversation_id: z.string(),
+  step: z.string(),
+  status: z.string(),
+  summary: z.string(),
+  classification: z.string().nullable(),
+  created_at: z.string(),
+});
+const AgentConversationWorkspacePublicationEventListResponseSchema = z.array(
+  AgentConversationWorkspacePublicationEventResponseSchema
+);
+const AgentConversationWorkspaceFreshnessResponseSchema = z.object({
+  conversation_id: z.string(),
+  base_ref: z.string(),
+  base_display_name: z.string().nullable(),
+  target_ref: z.string(),
+  captured_base_commit: z.string().nullable(),
+  target_base_commit: z.string(),
+  is_base_ahead: z.boolean(),
+  has_uncommitted_changes: z.boolean(),
+  unpublished_commit_count: z.number().nullable(),
+});
+
+const StartAgentConversationResponseSchema = z.object({
+  conversation: ChatConversationResponseSchema,
+  workspace: AgentConversationWorkspaceResponseSchema.nullable(),
+  send_result: SendAgentMessageResponseSchema,
+});
+
+const SwitchAgentConversationModeResponseSchema = z.object({
+  conversation: ChatConversationResponseSchema,
+  workspace: AgentConversationWorkspaceResponseSchema.nullable(),
+});
+
+const PublishAgentConversationWorkspaceResponseSchema = z.object({
+  workspace: AgentConversationWorkspaceResponseSchema,
+  commit_sha: z.string().nullable(),
+  pushed: z.boolean(),
+  created_pr: z.boolean(),
+  pr_number: z.number().nullable(),
+  pr_url: z.string().nullable(),
+});
+const UpdateAgentConversationWorkspaceFromBaseResponseSchema = z.object({
+  workspace: AgentConversationWorkspaceResponseSchema,
+  updated: z.boolean(),
+  target_ref: z.string(),
+  base_commit: z.string(),
+});
+
+type RawAgentConversationWorkspace = z.infer<
+  typeof AgentConversationWorkspaceResponseSchema
+>;
+type RawStartAgentConversationResponse = z.infer<
+  typeof StartAgentConversationResponseSchema
+>;
+type RawSwitchAgentConversationModeResponse = z.infer<
+  typeof SwitchAgentConversationModeResponseSchema
+>;
+type RawPublishAgentConversationWorkspaceResponse = z.infer<
+  typeof PublishAgentConversationWorkspaceResponseSchema
+>;
+type RawAgentConversationWorkspacePublicationEvent = z.infer<
+  typeof AgentConversationWorkspacePublicationEventResponseSchema
+>;
+type RawAgentConversationWorkspaceFreshness = z.infer<
+  typeof AgentConversationWorkspaceFreshnessResponseSchema
+>;
+type RawUpdateAgentConversationWorkspaceFromBaseResponse = z.infer<
+  typeof UpdateAgentConversationWorkspaceFromBaseResponseSchema
+>;
+
 function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): SendAgentMessageResult {
   return {
     conversationId: raw.conversation_id,
@@ -796,6 +1271,231 @@ function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): Se
     queuedAsPending: raw.queued_as_pending,
     queuedMessageId: raw.queued_message_id,
   };
+}
+
+function transformAgentConversationWorkspace(
+  raw: RawAgentConversationWorkspace
+): AgentConversationWorkspace {
+  return {
+    conversationId: raw.conversation_id,
+    projectId: raw.project_id,
+    mode: raw.mode as AgentConversationWorkspaceMode,
+    baseRefKind: raw.base_ref_kind,
+    baseRef: raw.base_ref,
+    baseDisplayName: raw.base_display_name,
+    baseCommit: raw.base_commit,
+    branchName: raw.branch_name,
+    worktreePath: raw.worktree_path,
+    linkedIdeationSessionId: raw.linked_ideation_session_id,
+    linkedPlanBranchId: raw.linked_plan_branch_id,
+    publicationPrNumber: raw.publication_pr_number,
+    publicationPrUrl: raw.publication_pr_url,
+    publicationPrStatus: raw.publication_pr_status,
+    publicationPushStatus: raw.publication_push_status,
+    status: raw.status,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+function transformStartAgentConversationResponse(
+  raw: RawStartAgentConversationResponse
+): StartAgentConversationResult {
+  return {
+    conversation: transformConversation(raw.conversation),
+    workspace: raw.workspace ? transformAgentConversationWorkspace(raw.workspace) : null,
+    sendResult: transformSendAgentMessageResponse(raw.send_result),
+  };
+}
+
+function transformSwitchAgentConversationModeResponse(
+  raw: RawSwitchAgentConversationModeResponse
+): SwitchAgentConversationModeResult {
+  return {
+    conversation: transformConversation(raw.conversation),
+    workspace: raw.workspace ? transformAgentConversationWorkspace(raw.workspace) : null,
+  };
+}
+
+function transformPublishAgentConversationWorkspaceResponse(
+  raw: RawPublishAgentConversationWorkspaceResponse
+): PublishAgentConversationWorkspaceResult {
+  return {
+    workspace: transformAgentConversationWorkspace(raw.workspace),
+    commitSha: raw.commit_sha,
+    pushed: raw.pushed,
+    createdPr: raw.created_pr,
+    prNumber: raw.pr_number,
+    prUrl: raw.pr_url,
+  };
+}
+
+function transformAgentConversationWorkspacePublicationEvent(
+  raw: RawAgentConversationWorkspacePublicationEvent
+): AgentConversationWorkspacePublicationEvent {
+  return {
+    id: raw.id,
+    conversationId: raw.conversation_id,
+    step: raw.step,
+    status: raw.status,
+    summary: raw.summary,
+    classification: raw.classification,
+    createdAt: raw.created_at,
+  };
+}
+
+function transformAgentConversationWorkspaceFreshness(
+  raw: RawAgentConversationWorkspaceFreshness
+): AgentConversationWorkspaceFreshness {
+  return {
+    conversationId: raw.conversation_id,
+    baseRef: raw.base_ref,
+    baseDisplayName: raw.base_display_name,
+    targetRef: raw.target_ref,
+    capturedBaseCommit: raw.captured_base_commit,
+    targetBaseCommit: raw.target_base_commit,
+    isBaseAhead: raw.is_base_ahead,
+    hasUncommittedChanges: raw.has_uncommitted_changes,
+    unpublishedCommitCount: raw.unpublished_commit_count,
+  };
+}
+
+function transformUpdateAgentConversationWorkspaceFromBaseResponse(
+  raw: RawUpdateAgentConversationWorkspaceFromBaseResponse
+): UpdateAgentConversationWorkspaceFromBaseResult {
+  return {
+    workspace: transformAgentConversationWorkspace(raw.workspace),
+    updated: raw.updated,
+    targetRef: raw.target_ref,
+    baseCommit: raw.base_commit,
+  };
+}
+
+export async function getAgentConversationWorkspace(
+  conversationId: string
+): Promise<AgentConversationWorkspace | null> {
+  const raw = await typedInvoke(
+    "get_agent_conversation_workspace",
+    { conversationId },
+    AgentConversationWorkspaceResponseSchema.nullable()
+  );
+  return raw ? transformAgentConversationWorkspace(raw) : null;
+}
+
+export async function listAgentConversationWorkspacesByProject(
+  projectId: string
+): Promise<AgentConversationWorkspace[]> {
+  const raw = await typedInvoke(
+    "list_agent_conversation_workspaces_by_project",
+    { projectId },
+    AgentConversationWorkspaceListResponseSchema
+  );
+  return raw.map(transformAgentConversationWorkspace);
+}
+
+export async function listAgentConversationWorkspacePublicationEvents(
+  conversationId: string
+): Promise<AgentConversationWorkspacePublicationEvent[]> {
+  const raw = await typedInvoke(
+    "list_agent_conversation_workspace_publication_events",
+    { conversationId },
+    AgentConversationWorkspacePublicationEventListResponseSchema
+  );
+  return raw.map(transformAgentConversationWorkspacePublicationEvent);
+}
+
+export async function getAgentConversationWorkspaceFreshness(
+  conversationId: string
+): Promise<AgentConversationWorkspaceFreshness> {
+  const raw = await typedInvoke(
+    "get_agent_conversation_workspace_freshness",
+    { conversationId },
+    AgentConversationWorkspaceFreshnessResponseSchema
+  );
+  return transformAgentConversationWorkspaceFreshness(raw);
+}
+
+export async function updateAgentConversationWorkspaceFromBase(
+  conversationId: string
+): Promise<UpdateAgentConversationWorkspaceFromBaseResult> {
+  const raw = await typedInvoke(
+    "update_agent_conversation_workspace_from_base",
+    { conversationId },
+    UpdateAgentConversationWorkspaceFromBaseResponseSchema
+  );
+  return transformUpdateAgentConversationWorkspaceFromBaseResponse(raw);
+}
+
+export async function publishAgentConversationWorkspace(
+  conversationId: string
+): Promise<PublishAgentConversationWorkspaceResult> {
+  const raw = await typedInvoke(
+    "publish_agent_conversation_workspace",
+    { conversationId },
+    PublishAgentConversationWorkspaceResponseSchema
+  );
+  return transformPublishAgentConversationWorkspaceResponse(raw);
+}
+
+export async function closeAgentWorkspacePr(
+  conversationId: string
+): Promise<AgentConversationWorkspace> {
+  const raw = await typedInvoke(
+    "close_agent_workspace_pr",
+    { conversationId },
+    AgentConversationWorkspaceResponseSchema
+  );
+  return transformAgentConversationWorkspace(raw);
+}
+
+export async function startAgentConversation(
+  input: StartAgentConversationInput
+): Promise<StartAgentConversationResult> {
+  const raw = await typedInvoke(
+    "start_agent_conversation",
+    {
+      input: {
+        projectId: input.projectId,
+        content: input.content,
+        ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+        ...(input.providerHarness ? { providerHarness: input.providerHarness } : {}),
+        ...(input.modelId ? { modelOverride: input.modelId } : {}),
+        ...(input.mode ? { mode: input.mode } : {}),
+        ...(input.base
+          ? {
+              baseRefKind: input.base.kind,
+              baseRef: input.base.ref,
+              baseDisplayName: input.base.displayName,
+            }
+          : {}),
+      },
+    },
+    StartAgentConversationResponseSchema
+  );
+  return transformStartAgentConversationResponse(raw);
+}
+
+export async function switchAgentConversationMode(
+  input: SwitchAgentConversationModeInput
+): Promise<SwitchAgentConversationModeResult> {
+  const raw = await typedInvoke(
+    "switch_agent_conversation_mode",
+    {
+      input: {
+        conversationId: input.conversationId,
+        mode: input.mode,
+        ...(input.base
+          ? {
+              baseRefKind: input.base.kind,
+              baseRef: input.base.ref,
+              baseDisplayName: input.base.displayName,
+            }
+          : {}),
+      },
+    },
+    SwitchAgentConversationModeResponseSchema
+  );
+  return transformSwitchAgentConversationModeResponse(raw);
 }
 
 /**
@@ -813,7 +1513,12 @@ export async function sendAgentMessage(
   contextId: string,
   content: string,
   attachmentIds?: string[],
-  target?: string
+  target?: string,
+  options?: {
+    conversationId?: string | null;
+    providerHarness?: string | null;
+    modelId?: string | null;
+  }
 ): Promise<SendAgentMessageResult> {
   const raw = await typedInvoke(
     "send_agent_message",
@@ -824,6 +1529,9 @@ export async function sendAgentMessage(
         content,
         ...(attachmentIds !== undefined && attachmentIds.length > 0 && { attachmentIds }),
         ...(target !== undefined && { target }),
+        ...(options?.conversationId ? { conversationId: options.conversationId } : {}),
+        ...(options?.providerHarness ? { providerHarness: options.providerHarness } : {}),
+        ...(options?.modelId ? { modelOverride: options.modelId } : {}),
       },
     },
     SendAgentMessageResponseSchema

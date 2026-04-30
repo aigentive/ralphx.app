@@ -9,7 +9,11 @@ use sha2::{Digest, Sha256};
 /// worktrees must never be used as the fallback for RalphX runtime logs.
 pub fn app_log_dir() -> PathBuf {
     if cfg!(debug_assertions) {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.artifacts/logs")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+            .join(".artifacts/logs")
     } else {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
@@ -31,6 +35,13 @@ pub fn merge_validation_log_dir(task_id: &str) -> PathBuf {
     app_log_dir()
         .join("merge-validation")
         .join(hashed_log_component("task", task_id))
+}
+
+pub fn stream_debug_log_file(conversation_id: &str) -> PathBuf {
+    app_log_dir().join("stream-debug").join(format!(
+        "{}.log",
+        hashed_log_component("conversation", conversation_id)
+    ))
 }
 
 pub fn codex_prompt_debug_file(mode: &str) -> PathBuf {
@@ -86,6 +97,22 @@ mod tests {
 
         assert!(path.starts_with(codex_prompt_debug_dir()));
         assert!(filename.contains("-unknown-"));
+        assert!(!filename.contains(".."));
+        assert!(!filename.contains('/'));
+        assert!(!filename.contains('\\'));
+    }
+
+    #[test]
+    fn stream_debug_log_file_hashes_conversation_id() {
+        let path = stream_debug_log_file("../conversation/with\\separators");
+        let filename = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .expect("stream debug filename");
+
+        assert!(path.starts_with(app_log_dir().join("stream-debug")));
+        assert!(filename.starts_with("conversation-"));
+        assert!(filename.ends_with(".log"));
         assert!(!filename.contains(".."));
         assert!(!filename.contains('/'));
         assert!(!filename.contains('\\'));

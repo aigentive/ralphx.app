@@ -14,6 +14,7 @@ export const VIEW_TYPE_VALUES = [
   "kanban",
   "graph",
   "ideation",
+  "agents",
   "extensibility",
   "activity",
   "insights",
@@ -23,6 +24,7 @@ export const VIEW_TYPE_VALUES = [
 
 export const ViewTypeSchema = z.enum(VIEW_TYPE_VALUES);
 export type ViewType = z.infer<typeof ViewTypeSchema>;
+export const DEFAULT_PROJECT_VIEW: ViewType = "agents";
 
 // ============================================================================
 // Chat Context
@@ -142,7 +144,7 @@ export function createTaskDetailContext(
  */
 export function createProjectContext(
   projectId: string,
-  view: "activity" | "insights"
+  view: "activity" | "insights" | "agents"
 ): ChatContext {
   return {
     view,

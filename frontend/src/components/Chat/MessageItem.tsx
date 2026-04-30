@@ -9,14 +9,21 @@
  * - Code blocks with copy functionality
  */
 
-import React, { useMemo } from "react";
-import { Bot } from "lucide-react";
+import React, { useCallback, useMemo, useState } from "react";
+import { Bot, Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
+import { shouldHideCompletedProjectOrchestrationToolCall } from "./tool-widgets/ProjectOrchestrationWidget.utils";
 import { TextBubble } from "./TextBubble";
-import { formatTimestamp } from "./MessageItem.utils";
+import { formatTimestamp, formatTimestampTitle } from "./MessageItem.utils";
 import { isTaskToolCall } from "./DiffToolCallView.utils";
 import { MessageAttachments, type MessageAttachment } from "./MessageAttachments";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   formatMessageAttributionTooltip,
   formatProviderModelEffortLabel,
@@ -108,6 +115,7 @@ export const MessageItem = React.memo(function MessageItem({
   estimatedUsd,
 }: MessageItemProps) {
   const isUser = role === "user";
+  const [copied, setCopied] = useState(false);
   const providerHarnessLabel = formatProviderHarnessLabel(providerHarness);
   const providerHarnessStyle = getProviderHarnessBadgeStyle(providerHarness);
   const modelEffortLabel = formatProviderModelEffortLabel({
@@ -144,7 +152,36 @@ export const MessageItem = React.memo(function MessageItem({
     }),
     [contentBlocks, toolCalls],
   );
+  const visibleParsedToolCalls = useMemo(
+    () => parsedToolCalls.filter((tc) => !shouldHideCompletedProjectOrchestrationToolCall(tc)),
+    [parsedToolCalls],
+  );
   const hasContentBlocks = parsedContentBlocks.length > 0;
+  const copyableText = useMemo(() => {
+    if (hasContentBlocks) {
+      return parsedContentBlocks
+        .filter((block) => block.type === "text" && typeof block.text === "string")
+        .map((block) => block.text?.trim() ?? "")
+        .filter((text) => text.length > 0)
+        .join("\n\n");
+    }
+
+    return content.trim();
+  }, [content, hasContentBlocks, parsedContentBlocks]);
+  const showInlineCopy = copyableText.length > 0;
+  const handleCopy = useCallback(async () => {
+    if (!showInlineCopy) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(copyableText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Silently fail
+    }
+  }, [copyableText, showInlineCopy]);
 
   // Collect IDs of child tool calls that belong to Task subagents.
   // These are embedded in Task result content blocks and should NOT render as top-level cards.
@@ -180,6 +217,7 @@ export const MessageItem = React.memo(function MessageItem({
         isLastInList ? "mb-0" : "mb-5",
         isUser ? "justify-end" : "justify-start"
       )}
+      data-chat-message-item="true"
       style={teammateColor ? { borderLeft: `2px solid ${teammateColor}`, paddingLeft: "8px" } : undefined}
     >
       {/* Agent indicator for assistant messages */}
@@ -235,7 +273,13 @@ export const MessageItem = React.memo(function MessageItem({
           // Skip child tool calls that belong to Task subagents (they render inside TaskToolCallCard)
           parsedContentBlocks.map((block, index) => {
             if (block.type === "text" && block.text) {
-              return <TextBubble key={`block-${index}`} text={block.text} isUser={isUser} />;
+              return (
+                <TextBubble
+                  key={`block-${index}`}
+                  text={block.text}
+                  isUser={isUser}
+                />
+              );
             } else if (block.type === "tool_use" && block.name) {
               // Skip child tool calls — they're rendered inside their parent TaskToolCallCard
               if (block.id && childToolCallIds.has(block.id)) {
@@ -250,6 +294,9 @@ export const MessageItem = React.memo(function MessageItem({
               if (block.diffContext) {
                 toolCall.diffContext = block.diffContext;
               }
+              if (shouldHideCompletedProjectOrchestrationToolCall(toolCall)) {
+                return null;
+              }
               return <ToolCallIndicator key={`block-${index}`} toolCall={toolCall} />;
             }
             return null;
@@ -257,9 +304,9 @@ export const MessageItem = React.memo(function MessageItem({
         ) : (
           // Legacy rendering: tool calls first, then content
           <>
-            {!isUser && parsedToolCalls.length > 0 && (
+            {!isUser && visibleParsedToolCalls.length > 0 && (
               <div className="space-y-1.5 overflow-hidden">
-                {parsedToolCalls.map((tc) => (
+                {visibleParsedToolCalls.map((tc) => (
                   <ToolCallIndicator key={tc.id} toolCall={tc} />
                 ))}
               </div>
@@ -272,14 +319,42 @@ export const MessageItem = React.memo(function MessageItem({
           </>
         )}
 
-        <span
+        <div
           className={cn(
-            "text-[10px] mt-1 px-1 text-text-primary/40",
-            isUser ? "text-right" : "text-left"
+            "flex items-center gap-1.5 px-1 pb-[10px] text-[10px] text-text-primary/40",
+            isUser ? "justify-end" : "justify-start"
           )}
+          data-testid="message-meta"
         >
-          {formatTimestamp(createdAt)}
-        </span>
+          <span title={formatTimestampTitle(createdAt) || undefined}>
+            {formatTimestamp(createdAt)}
+          </span>
+          {showInlineCopy && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => void handleCopy()}
+                  className="h-4 w-4 rounded-sm p-0 text-text-primary/40 hover:bg-[var(--overlay-moderate)] hover:text-text-primary/70"
+                  aria-label={copied ? "Copied" : "Copy message"}
+                  data-testid="message-copy-button"
+                  data-theme-button-skip="true"
+                >
+                  {copied ? (
+                    <Check className="h-3 w-3 text-[var(--status-success)]" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                {copied ? "Copied" : "Copy message"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
     </div>
   );

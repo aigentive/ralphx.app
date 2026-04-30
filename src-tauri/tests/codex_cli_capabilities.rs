@@ -326,18 +326,25 @@ fn build_spawnable_codex_exec_command_logs_prompt_to_artifact_and_redacts_debug_
 fn compose_codex_prompt_injects_agent_prompt_body_when_available() {
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let plugin_dir = temp_dir.path().join("plugins/app");
-    let agents_dir = plugin_dir.join("agents");
-    std::fs::create_dir_all(&agents_dir).expect("agents dir");
+    let agent_dir = temp_dir.path().join("agents/ralphx-execution-worker/codex");
+    std::fs::create_dir_all(&agent_dir).expect("canonical agent dir");
     std::fs::write(
-        agents_dir.join("worker.md"),
-        "---\nname: ralphx-execution-worker\n---\nYou are the worker agent.\n",
+        temp_dir
+            .path()
+            .join("agents/ralphx-execution-worker/agent.yaml"),
+        "name: ralphx-execution-worker\nrole: worker\n",
+    )
+    .expect("agent metadata");
+    std::fs::write(
+        agent_dir.join("prompt.md"),
+        "You are the worker agent.\n",
     )
     .expect("agent file");
 
     let prompt = compose_codex_prompt(
         "Execute task task-123",
         Some(plugin_dir.as_path()),
-        Some("ralphx:worker"),
+        Some("ralphx:ralphx-execution-worker"),
     );
 
     assert!(prompt.contains("<ralphx_agent_instructions>"));

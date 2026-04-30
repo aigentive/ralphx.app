@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use std::{fs, os::unix::fs::PermissionsExt};
@@ -12,8 +12,8 @@ use ralphx_lib::domain::entities::{
 };
 use ralphx_lib::http_server::delegation::{DelegationHistoryEntry, DelegationJobSnapshot};
 use ralphx_lib::http_server::handlers::{
-    build_delegated_task_completed_payload, build_delegated_task_started_payload,
-    cancel_delegate, get_delegated_session_status, start_delegate, wait_delegate,
+    build_delegated_task_completed_payload, build_delegated_task_started_payload, cancel_delegate,
+    get_delegated_session_status, start_delegate, wait_delegate,
 };
 use ralphx_lib::http_server::types::{
     DelegateCancelRequest, DelegateStartRequest, DelegateWaitRequest, DelegatedRunSummary,
@@ -55,6 +55,25 @@ impl Drop for EnvVarGuard {
             std::env::remove_var(self.key);
         }
     }
+}
+
+fn prepend_to_path(dir: &Path) -> EnvVarGuard {
+    let existing = std::env::var("PATH").unwrap_or_default();
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let value = if existing.is_empty() {
+        dir.display().to_string()
+    } else {
+        format!("{}{separator}{existing}", dir.display())
+    };
+    EnvVarGuard::set("PATH", &value)
+}
+
+fn prepend_fake_codex_to_path(fake_codex_path: &Path) -> EnvVarGuard {
+    prepend_to_path(
+        fake_codex_path
+            .parent()
+            .expect("fake codex script should have parent dir"),
+    )
 }
 
 fn install_fake_codex_cli() -> (TempDir, PathBuf) {
@@ -195,10 +214,7 @@ fn install_runtime_plugin_dir() -> (TempDir, PathBuf) {
 async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_client() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -302,7 +318,11 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
     assert_eq!(waited.parent_message_id.as_deref(), Some("msg-99"));
     assert_eq!(waited.parent_tool_use_id.as_deref(), Some("toolu-parent-1"));
     assert_eq!(
-        waited.history.iter().map(|entry| entry.status.as_str()).collect::<Vec<_>>(),
+        waited
+            .history
+            .iter()
+            .map(|entry| entry.status.as_str())
+            .collect::<Vec<_>>(),
         vec!["running", "completed"]
     );
     let delegated_status = waited
@@ -310,7 +330,10 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
         .expect("delegated status should be hydrated");
     assert_eq!(delegated_status.session.id, waited.delegated_session_id);
     assert_eq!(delegated_status.session.parent_context_type, "ideation");
-    assert_eq!(delegated_status.session.parent_context_id, parent.id.as_str());
+    assert_eq!(
+        delegated_status.session.parent_context_id,
+        parent.id.as_str()
+    );
     assert_eq!(delegated_status.session.status, "completed");
     assert_eq!(delegated_status.agent_state.estimated_status, "completed");
     assert_eq!(
@@ -351,10 +374,7 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
 async fn test_get_delegated_session_status_exposes_parent_context() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -404,10 +424,7 @@ async fn test_get_delegated_session_status_exposes_parent_context() {
 async fn test_delegate_start_uses_verifier_subagent_lane_model_when_model_is_omitted() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -472,7 +489,10 @@ async fn test_delegate_start_uses_verifier_subagent_lane_model_when_model_is_omi
     assert_eq!(latest_run.harness.as_deref(), Some("codex"));
     assert_eq!(latest_run.logical_model.as_deref(), Some("gpt-5.4-mini"));
     assert_eq!(latest_run.approval_policy.as_deref(), Some("never"));
-    assert_eq!(latest_run.sandbox_mode.as_deref(), Some("danger-full-access"));
+    assert_eq!(
+        latest_run.sandbox_mode.as_deref(),
+        Some("danger-full-access")
+    );
 }
 
 #[tokio::test]
@@ -508,12 +528,10 @@ async fn test_delegate_start_rejects_unknown_agent_name() {
     .unwrap_err();
 
     assert_eq!(error.0, axum::http::StatusCode::BAD_REQUEST);
-    assert!(
-        error.1 .0["error"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("Unknown canonical agent")
-    );
+    assert!(error.1 .0["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("Unknown canonical agent"));
 }
 
 #[tokio::test]
@@ -549,12 +567,10 @@ async fn test_delegate_start_rejects_missing_caller_agent_name() {
     .unwrap_err();
 
     assert_eq!(error.0, axum::http::StatusCode::BAD_REQUEST);
-    assert!(
-        error.1 .0["error"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("caller_agent_name")
-    );
+    assert!(error.1 .0["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("caller_agent_name"));
 }
 
 #[tokio::test]
@@ -590,22 +606,17 @@ async fn test_delegate_start_rejects_disallowed_target_for_caller() {
     .unwrap_err();
 
     assert_eq!(error.0, axum::http::StatusCode::FORBIDDEN);
-    assert!(
-        error.1 .0["error"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("may not delegate")
-    );
+    assert!(error.1 .0["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("may not delegate"));
 }
 
 #[tokio::test]
 async fn test_delegate_start_infers_parent_session_from_verification_child_context() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -663,20 +674,12 @@ async fn test_delegate_start_verifier_context_survives_external_generated_plugin
     let target_project_root = TempDir::new().expect("temp target project");
     let generated_plugin_root = TempDir::new().expect("temp generated plugin root");
     let generated_plugin_dir = generated_plugin_root.path().join("generated/claude-plugin");
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
-    let _plugin_dir_guard = EnvVarGuard::set(
-        "RALPHX_PLUGIN_DIR",
-        runtime_plugin_dir.to_str().expect("runtime plugin dir utf8"),
-    );
-    let _generated_plugin_guard = EnvVarGuard::set(
-        "RALPHX_GENERATED_PLUGIN_DIR",
-        generated_plugin_dir
-            .to_str()
-            .expect("generated plugin dir utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
+    let _runtime_plugin_guard =
+        ralphx_lib::infrastructure::agents::claude::override_runtime_plugin_dirs_for_tests(
+            runtime_plugin_dir,
+            generated_plugin_dir.clone(),
+        );
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent =
@@ -735,10 +738,7 @@ async fn test_delegate_start_verifier_context_survives_external_generated_plugin
 async fn test_delegate_start_uses_verifier_subagent_harness_when_harness_is_omitted() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -833,12 +833,17 @@ async fn test_delegate_start_uses_verifier_subagent_harness_when_harness_is_omit
         .expect("latest delegated run");
     assert_eq!(latest_run.harness.as_deref(), Some("codex"));
     assert_eq!(latest_run.approval_policy.as_deref(), Some("never"));
-    assert_eq!(latest_run.sandbox_mode.as_deref(), Some("danger-full-access"));
+    assert_eq!(
+        latest_run.sandbox_mode.as_deref(),
+        Some("danger-full-access")
+    );
 
     let delegated = state
         .app_state
         .delegated_session_repo
-        .get_by_id(&DelegatedSessionId::from_string(start.delegated_session_id.clone()))
+        .get_by_id(&DelegatedSessionId::from_string(
+            start.delegated_session_id.clone(),
+        ))
         .await
         .unwrap()
         .unwrap();
@@ -864,10 +869,7 @@ fn symlink_path(source: impl AsRef<std::path::Path>, target: impl AsRef<std::pat
 async fn test_delegate_start_uses_ideation_subagent_harness_when_harness_is_omitted() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -948,12 +950,17 @@ async fn test_delegate_start_uses_ideation_subagent_harness_when_harness_is_omit
         .expect("latest delegated run");
     assert_eq!(latest_run.harness.as_deref(), Some("codex"));
     assert_eq!(latest_run.approval_policy.as_deref(), Some("never"));
-    assert_eq!(latest_run.sandbox_mode.as_deref(), Some("danger-full-access"));
+    assert_eq!(
+        latest_run.sandbox_mode.as_deref(),
+        Some("danger-full-access")
+    );
 
     let delegated = state
         .app_state
         .delegated_session_repo
-        .get_by_id(&DelegatedSessionId::from_string(start.delegated_session_id.clone()))
+        .get_by_id(&DelegatedSessionId::from_string(
+            start.delegated_session_id.clone(),
+        ))
         .await
         .unwrap()
         .unwrap();
@@ -964,10 +971,7 @@ async fn test_delegate_start_uses_ideation_subagent_harness_when_harness_is_omit
 async fn test_delegate_start_links_parent_conversation_to_verification_child_chat() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -996,7 +1000,9 @@ async fn test_delegate_start_links_parent_conversation_to_verification_child_cha
     let verification_conversation = state
         .app_state
         .chat_conversation_repo
-        .create(ChatConversation::new_ideation(verification_child.id.clone()))
+        .create(ChatConversation::new_ideation(
+            verification_child.id.clone(),
+        ))
         .await
         .unwrap();
     let parent_conversation_id = parent_conversation.id.as_str();
@@ -1088,12 +1094,10 @@ async fn test_delegate_start_rejects_parent_session_mismatch_against_verificatio
     .unwrap_err();
 
     assert_eq!(error.0, axum::http::StatusCode::BAD_REQUEST);
-    assert!(
-        error.1 .0["error"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("does not match caller context parent")
-    );
+    assert!(error.1 .0["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("does not match caller context parent"));
 }
 
 #[tokio::test]
@@ -1152,7 +1156,10 @@ fn test_build_delegated_task_started_payload_uses_parent_lineage_and_delegated_m
 
     assert_eq!(payload.tool_use_id, "toolu-parent-1");
     assert_eq!(payload.tool_name, "delegate_start");
-    assert_eq!(payload.description.as_deref(), Some("ralphx-execution-reviewer"));
+    assert_eq!(
+        payload.description.as_deref(),
+        Some("ralphx-execution-reviewer")
+    );
     assert_eq!(payload.subagent_type.as_deref(), Some("delegated"));
     assert_eq!(payload.delegated_job_id.as_deref(), Some("job-123"));
     assert_eq!(
@@ -1251,7 +1258,10 @@ fn test_build_delegated_task_completed_payload_uses_latest_run_attribution() {
     );
     assert_eq!(payload.delegated_agent_run_id.as_deref(), Some("run-2"));
     assert_eq!(payload.provider_harness.as_deref(), Some("codex"));
-    assert_eq!(payload.provider_session_id.as_deref(), Some("provider-thread-1"));
+    assert_eq!(
+        payload.provider_session_id.as_deref(),
+        Some("provider-thread-1")
+    );
     assert_eq!(payload.upstream_provider.as_deref(), Some("openai"));
     assert_eq!(payload.provider_profile.as_deref(), Some("openai"));
     assert_eq!(payload.logical_model.as_deref(), Some("gpt-5.4"));

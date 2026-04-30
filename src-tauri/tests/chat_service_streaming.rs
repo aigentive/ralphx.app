@@ -231,6 +231,13 @@ fn test_completion_tool_detection_accepts_merge_mcp_name() {
 }
 
 #[test]
+fn test_completion_tool_detection_accepts_agent_workspace_repair_mcp_name() {
+    assert!(is_completion_tool_name(
+        "mcp__ralphx__complete_agent_workspace_repair"
+    ));
+}
+
+#[test]
 fn test_completion_tool_detection_accepts_finalize_proposals_mcp_name() {
     assert!(is_completion_tool_name("mcp__ralphx__finalize_proposals"));
 }
@@ -241,6 +248,7 @@ fn test_completion_tool_detection_accepts_codex_double_colon_names() {
         "ralphx::execution_complete",
         "ralphx::complete_review",
         "ralphx::complete_merge",
+        "ralphx::complete_agent_workspace_repair",
         "ralphx::finalize_proposals",
     ] {
         assert!(is_completion_tool_name(tool_name), "{tool_name} should mark completion");

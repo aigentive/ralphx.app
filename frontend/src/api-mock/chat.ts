@@ -12,9 +12,17 @@ import { normalizeConversationProviderMetadata } from "@/types/chat-conversation
 import type {
   ChatMessageResponse,
   ChildSessionStatusResponse,
+  ConversationListPageResponse,
   ConversationStatsResponse,
+  AgentConversationWorkspace,
+  AgentConversationWorkspacePublicationEvent,
+  PublishAgentConversationWorkspaceResult,
   QueuedMessageResponse,
   SendAgentMessageResult,
+  StartAgentConversationInput,
+  StartAgentConversationResult,
+  SwitchAgentConversationModeInput,
+  SwitchAgentConversationModeResult,
 } from "@/api/chat";
 import { generateTestUuid } from "@/test/mock-data";
 import { buildFallbackConversationStats } from "@/lib/chat/conversation-stats";
@@ -32,6 +40,11 @@ import {
 const mockConversations: Map<string, ChatConversation> = new Map();
 const mockMessages: Map<string, ChatMessageResponse[]> = new Map();
 const mockQueuedMessages: Map<string, QueuedMessageResponse[]> = new Map();
+const mockWorkspaces: Map<string, AgentConversationWorkspace> = new Map();
+const mockWorkspacePublicationEvents: Map<
+  string,
+  AgentConversationWorkspacePublicationEvent[]
+> = new Map();
 const mockChildSessionStatuses: Map<string, ChildSessionStatusResponse> = new Map();
 const mockChildSessionStatusOverrides: Map<string, MockChildSessionStatusOverride> = new Map();
 
@@ -61,8 +74,19 @@ export interface MockChatController {
   clearChildSessionStatusOverrides(): void;
   listConversations(
     contextType: ContextType,
-    contextId: string
+    contextId: string,
+    includeArchived?: boolean,
+    archivedOnly?: boolean
   ): Promise<ChatConversation[]>;
+  listConversationsPage(
+    contextType: ContextType,
+    contextId: string,
+    limit: number,
+    offset?: number,
+    includeArchived?: boolean,
+    search?: string,
+    archivedOnly?: boolean
+  ): Promise<ConversationListPageResponse>;
   getConversation(
     conversationId: string
   ): Promise<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>;
@@ -75,6 +99,8 @@ export function resetMockChatState(): void {
   mockConversations.clear();
   mockMessages.clear();
   mockQueuedMessages.clear();
+  mockWorkspaces.clear();
+  mockWorkspacePublicationEvents.clear();
   mockChildSessionStatuses.clear();
   mockChildSessionStatusOverrides.clear();
 }
@@ -165,6 +191,7 @@ function exposeMockChatController(): void {
     setChildSessionStatusOverride: mockSetChildSessionStatusOverride,
     clearChildSessionStatusOverrides: mockClearChildSessionStatusOverrides,
     listConversations: mockListConversations,
+    listConversationsPage: mockListConversationsPage,
     getConversation: mockGetConversation,
     getConversationStats: mockGetConversationStats,
   };
@@ -178,11 +205,57 @@ exposeMockChatController();
 
 export async function mockListConversations(
   contextType: ContextType,
-  contextId: string
+  contextId: string,
+  includeArchived = false,
+  archivedOnly = false
 ): Promise<ChatConversation[]> {
   return Array.from(mockConversations.values()).filter(
-    (c) => c.contextType === contextType && c.contextId === contextId
+    (c) =>
+      c.contextType === contextType &&
+      c.contextId === contextId &&
+      (archivedOnly
+        ? Boolean(c.archivedAt)
+        : includeArchived || !c.archivedAt)
   );
+}
+
+export async function mockListConversationsPage(
+  contextType: ContextType,
+  contextId: string,
+  limit: number,
+  offset = 0,
+  includeArchived = false,
+  search?: string,
+  archivedOnly = false
+): Promise<ConversationListPageResponse> {
+  const normalizedSearch = search?.trim().toLowerCase();
+  const conversations = (await mockListConversations(
+    contextType,
+    contextId,
+    includeArchived,
+    archivedOnly
+  ))
+    .filter((conversation) => {
+      if (!normalizedSearch) {
+        return true;
+      }
+      return (conversation.title ?? "Untitled agent")
+        .toLowerCase()
+        .includes(normalizedSearch);
+    })
+    .sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+    );
+  const pagedConversations = conversations.slice(offset, offset + limit);
+
+  return {
+    conversations: pagedConversations,
+    limit,
+    offset,
+    total: conversations.length,
+    hasMore: offset + pagedConversations.length < conversations.length,
+  };
 }
 
 export async function mockGetConversation(
@@ -201,6 +274,7 @@ export async function mockGetConversation(
       lastMessageAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      archivedAt: null,
     };
     return { conversation: newConversation, messages: [] };
   }
@@ -226,21 +300,72 @@ export async function mockGetConversationStats(
 
 export async function mockCreateConversation(
   contextType: ContextType,
-  contextId: string
+  contextId: string,
+  title?: string
 ): Promise<ChatConversation> {
   const conversation: ChatConversation = {
     id: generateTestUuid(),
     contextType,
     contextId,
     ...normalizeConversationProviderMetadata({}),
-    title: null,
+    title: title?.trim() || null,
     messageCount: 0,
     lastMessageAt: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    archivedAt: null,
   };
   mockConversations.set(conversation.id, conversation);
   return conversation;
+}
+
+export async function mockUpdateConversationTitle(
+  conversationId: string,
+  title: string
+): Promise<ChatConversation> {
+  const conversation = mockConversations.get(conversationId);
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} not found`);
+  }
+  const updated = {
+    ...conversation,
+    title: title.trim(),
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(conversationId, updated);
+  return cloneConversation(updated);
+}
+
+export async function mockArchiveConversation(
+  conversationId: string
+): Promise<ChatConversation> {
+  const conversation = mockConversations.get(conversationId);
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} not found`);
+  }
+  const updated = {
+    ...conversation,
+    archivedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(conversationId, updated);
+  return cloneConversation(updated);
+}
+
+export async function mockRestoreConversation(
+  conversationId: string
+): Promise<ChatConversation> {
+  const conversation = mockConversations.get(conversationId);
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} not found`);
+  }
+  const updated = {
+    ...conversation,
+    archivedAt: null,
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(conversationId, updated);
+  return cloneConversation(updated);
 }
 
 function cloneChildSessionStatus(
@@ -317,6 +442,161 @@ export async function mockSendAgentMessage(
   };
 }
 
+export async function mockStartAgentConversation(
+  input: StartAgentConversationInput
+): Promise<StartAgentConversationResult> {
+  const conversation = input.conversationId
+    ? mockConversations.get(input.conversationId) ??
+      (await mockCreateConversation("project", input.projectId))
+    : await mockCreateConversation("project", input.projectId);
+  const mode = input.mode ?? "edit";
+  const modeConversation: ChatConversation = {
+    ...conversation,
+    agentMode: mode,
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(conversation.id, modeConversation);
+  const sendResult: SendAgentMessageResult = {
+    conversationId: conversation.id,
+    agentRunId: generateTestUuid(),
+    isNewConversation: !input.conversationId,
+    wasQueued: false,
+    queuedAsPending: false,
+  };
+
+  const workspace = createMockWorkspace(modeConversation, input.projectId, mode, input.base);
+  if (workspace) {
+    mockWorkspaces.set(conversation.id, workspace);
+  }
+
+  return {
+    conversation: modeConversation,
+    workspace,
+    sendResult,
+  };
+}
+
+export async function mockSwitchAgentConversationMode(
+  input: SwitchAgentConversationModeInput
+): Promise<SwitchAgentConversationModeResult> {
+  const conversation = mockConversations.get(input.conversationId);
+  if (!conversation) {
+    throw new Error(`No mock conversation seeded for ${input.conversationId}`);
+  }
+  const updatedConversation: ChatConversation = {
+    ...conversation,
+    agentMode: input.mode,
+    providerSessionId: null,
+    providerHarness: null,
+    claudeSessionId: null,
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(input.conversationId, updatedConversation);
+
+  let workspace = mockWorkspaces.get(input.conversationId) ?? null;
+  workspace = workspace
+    ? { ...workspace, mode: input.mode, updatedAt: updatedConversation.updatedAt }
+    : createMockWorkspace(
+        updatedConversation,
+        updatedConversation.contextId,
+        input.mode,
+        input.base
+      );
+  mockWorkspaces.set(input.conversationId, workspace);
+
+  return {
+    conversation: updatedConversation,
+    workspace,
+  };
+}
+
+function createMockWorkspace(
+  conversation: ChatConversation,
+  projectId: string,
+  mode: Exclude<StartAgentConversationInput["mode"], undefined>,
+  base: StartAgentConversationInput["base"]
+): AgentConversationWorkspace {
+  return {
+    conversationId: conversation.id,
+    projectId,
+    mode,
+    baseRefKind: base?.kind ?? "project_default",
+    baseRef: base?.ref ?? "main",
+    baseDisplayName: base?.displayName ?? null,
+    baseCommit: null,
+    branchName: `ralphx/mock/agent-${conversation.id.slice(0, 8)}`,
+    worktreePath: `/tmp/ralphx/mock/${conversation.id}`,
+    linkedIdeationSessionId: null,
+    linkedPlanBranchId: null,
+    publicationPrNumber: null,
+    publicationPrUrl: null,
+    publicationPrStatus: null,
+    publicationPushStatus: null,
+    status: "active",
+    createdAt: conversation.createdAt,
+    updatedAt: conversation.updatedAt,
+  };
+}
+
+export async function mockGetAgentConversationWorkspace(
+  conversationId: string
+): Promise<AgentConversationWorkspace | null> {
+  return mockWorkspaces.get(conversationId) ?? null;
+}
+
+export async function mockListAgentConversationWorkspacesByProject(
+  projectId: string
+): Promise<AgentConversationWorkspace[]> {
+  return Array.from(mockWorkspaces.values()).filter(
+    (workspace) => workspace.projectId === projectId
+  );
+}
+
+export async function mockListAgentConversationWorkspacePublicationEvents(
+  conversationId: string
+): Promise<AgentConversationWorkspacePublicationEvent[]> {
+  return mockWorkspacePublicationEvents.get(conversationId) ?? [];
+}
+
+export async function mockPublishAgentConversationWorkspace(
+  conversationId: string
+): Promise<PublishAgentConversationWorkspaceResult> {
+  const workspace = mockWorkspaces.get(conversationId);
+  if (!workspace) {
+    throw new Error(`No mock workspace seeded for ${conversationId}`);
+  }
+  const published: AgentConversationWorkspace = {
+    ...workspace,
+    publicationPrNumber: workspace.publicationPrNumber ?? 42,
+    publicationPrUrl:
+      workspace.publicationPrUrl ?? "https://github.com/mock/project/pull/42",
+    publicationPrStatus: workspace.publicationPrStatus ?? "draft",
+    publicationPushStatus: "pushed",
+    updatedAt: new Date().toISOString(),
+  };
+  mockWorkspaces.set(conversationId, published);
+  mockWorkspacePublicationEvents.set(conversationId, [
+    ...(mockWorkspacePublicationEvents.get(conversationId) ?? []),
+    {
+      id: `event-${mockWorkspacePublicationEvents.get(conversationId)?.length ?? 0}`,
+      conversationId,
+      step: "published",
+      status: "succeeded",
+      summary: "Draft pull request is ready",
+      classification: null,
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+  return {
+    workspace: published,
+    commitSha: "mockcommit",
+    pushed: true,
+    createdPr: workspace.publicationPrNumber == null,
+    prNumber: published.publicationPrNumber,
+    prUrl: published.publicationPrUrl,
+  };
+}
+
 export async function mockGetQueuedAgentMessages(
   contextType: ContextType,
   contextId: string
@@ -368,10 +648,22 @@ export const mockChatApi = {
   seedConversation: seedMockConversation,
   replaceMessages: replaceMockConversationMessages,
   listConversations: mockListConversations,
+  listConversationsPage: mockListConversationsPage,
   getConversation: mockGetConversation,
   createConversation: mockCreateConversation,
+  updateConversationTitle: mockUpdateConversationTitle,
+  archiveConversation: mockArchiveConversation,
+  restoreConversation: mockRestoreConversation,
   getChildSessionStatus: mockGetChildSessionStatus,
   getAgentRunStatus: mockGetAgentRunStatus,
+  getAgentConversationWorkspace: mockGetAgentConversationWorkspace,
+  listAgentConversationWorkspacesByProject:
+    mockListAgentConversationWorkspacesByProject,
+  listAgentConversationWorkspacePublicationEvents:
+    mockListAgentConversationWorkspacePublicationEvents,
+  publishAgentConversationWorkspace: mockPublishAgentConversationWorkspace,
+  startAgentConversation: mockStartAgentConversation,
+  switchAgentConversationMode: mockSwitchAgentConversationMode,
   sendAgentMessage: mockSendAgentMessage,
   getQueuedAgentMessages: mockGetQueuedAgentMessages,
   deleteQueuedAgentMessage: mockDeleteQueuedAgentMessage,

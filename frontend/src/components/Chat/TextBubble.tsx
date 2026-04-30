@@ -3,16 +3,11 @@
  *
  * Renders text content with:
  * - User vs assistant styling
- * - Copy button on hover
  * - Markdown rendering for user and assistant messages
  */
 
-import { useState, useCallback } from "react";
-import { Copy, Check } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { markdownComponents } from "./MessageItem.markdown";
 
 interface TextBubbleProps {
@@ -20,60 +15,89 @@ interface TextBubbleProps {
   isUser: boolean;
 }
 
-export function TextBubble({ text, isUser }: TextBubbleProps) {
-  const [copied, setCopied] = useState(false);
+interface MarkdownContentProps {
+  text: string;
+}
 
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Silently fail
-    }
-  }, [text]);
+const LazyMarkdownContent = lazy(async () => {
+  const [{ default: ReactMarkdown }, { default: remarkGfm }] = await Promise.all([
+    import("react-markdown"),
+    import("remark-gfm"),
+  ]);
+
+  return {
+    default: function MarkdownContent({ text }: MarkdownContentProps) {
+      return (
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {text}
+        </ReactMarkdown>
+      );
+    },
+  };
+});
+
+export function TextBubble({ text, isUser }: TextBubbleProps) {
+  const canHydrateMarkdown = useAfterPaintReady(text);
 
   return (
     <div
       data-testid={isUser ? "text-bubble-user" : "text-bubble-assistant"}
       className={cn(
-        "relative group px-3 py-2 text-[13px] leading-relaxed",
-        /* macOS Tahoe: uniform rounded corners */
-        "rounded-xl"
+        "w-fit text-[13px] leading-relaxed break-words",
+        isUser ? "px-3 py-2 rounded-xl" : "px-0 py-0 rounded-none",
+        isUser ? "self-end" : "self-start"
       )}
       style={{
-        /* macOS Tahoe: flat solid colors, no gradients */
-        background: isUser
-          ? "var(--accent-primary)" /* Accent orange - flat */
-          : "var(--bg-elevated)", /* Dark surface - flat */
-        color: isUser ? "var(--text-inverse)" : "var(--text-primary)",
-        border: "none",
+        maxWidth: "min(85%, 620px)",
+        background: isUser ? "var(--chat-user-bubble-bg)" : "transparent",
+        color: isUser ? "var(--chat-user-bubble-text)" : "var(--text-primary)",
+        borderWidth: isUser ? "1px" : "0",
+        borderStyle: isUser ? "solid" : "none",
+        borderColor: isUser ? "var(--chat-user-bubble-border)" : "transparent",
         boxShadow: "none",
       }}
     >
       <div className="max-w-none overflow-hidden [&>p]:mb-0">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {text}
-        </ReactMarkdown>
-      </div>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={handleCopy}
-        className={cn(
-          "absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity",
-          isUser
-            ? "hover:bg-[color-mix(in_srgb,_var(--text-inverse)_20%,_transparent)] text-[var(--text-inverse)]"
-            : "hover:bg-[var(--overlay-moderate)]"
-        )}
-        aria-label={copied ? "Copied" : "Copy message"}
-      >
-        {copied ? (
-          <Check className="w-4 h-4 text-[var(--status-success)]" />
+        {canHydrateMarkdown ? (
+          <Suspense fallback={<PlainTextContent text={text} />}>
+            <LazyMarkdownContent text={text} />
+          </Suspense>
         ) : (
-          <Copy className="w-4 h-4" />
+          <PlainTextContent text={text} />
         )}
-      </Button>
+      </div>
     </div>
   );
+}
+
+function PlainTextContent({ text }: MarkdownContentProps) {
+  return <span className="whitespace-pre-wrap">{text}</span>;
+}
+
+function useAfterPaintReady(key: string): boolean {
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    setIsReady(false);
+    let timer: number | null = null;
+    let frame: number | null = null;
+    frame = window.requestAnimationFrame(() => {
+      frame = null;
+      timer = window.setTimeout(() => {
+        timer = null;
+        setIsReady(true);
+      }, 0);
+    });
+
+    return () => {
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+      }
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [key]);
+
+  return isReady;
 }

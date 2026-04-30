@@ -13,6 +13,7 @@ use crate::application::chat_service::{
     SendMessageOptions,
 };
 use crate::application::harness_runtime_registry::resolve_harness_plugin_dir;
+use crate::application::ideation_workspace::resolve_ideation_workspace_path;
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatMessage, DelegatedSession,
@@ -183,10 +184,10 @@ async fn load_parent_project_working_directory(
         })?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Parent project not found"))?;
 
-    Ok((
-        parent.project_id.as_str().to_string(),
-        PathBuf::from(project.working_directory),
-    ))
+    let working_directory = resolve_ideation_workspace_path(&parent, &project)
+        .map_err(|error| json_error(StatusCode::CONFLICT, error))?;
+
+    Ok((parent.project_id.as_str().to_string(), working_directory))
 }
 
 async fn resolve_parent_session_id(

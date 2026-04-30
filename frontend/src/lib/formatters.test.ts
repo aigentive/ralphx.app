@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { formatDate, formatRelativeTime, formatDuration, formatDateTime } from "./formatters";
+import {
+  formatDate,
+  formatRelativeTime,
+  formatDuration,
+  formatDateTime,
+  formatHumanTimestamp,
+} from "./formatters";
 
 describe("formatDate", () => {
   it("should format ISO date string", () => {
@@ -225,5 +231,52 @@ describe("formatDateTime", () => {
     const result = formatDateTime(ts);
     expect(result).not.toBe("-");
     expect(typeof result).toBe("string");
+  });
+});
+
+describe("formatHumanTimestamp", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("formats sub-minute timestamps as just now", () => {
+    const result = formatHumanTimestamp(new Date(2026, 3, 25, 16, 32, 30));
+
+    expect(result.label).toBe("just now");
+    expect(result.title).toMatch(/Apr 25, 2026/);
+    expect(result.title).toMatch(/4:32 PM/);
+  });
+
+  it("formats singular minutes and hours", () => {
+    expect(formatHumanTimestamp(new Date(2026, 3, 25, 16, 32, 0)).label).toBe("1 minute ago");
+    expect(formatHumanTimestamp(new Date(2026, 3, 25, 15, 33, 0)).label).toBe("1 hour ago");
+  });
+
+  it("formats plural hours and days inside the 7-day window", () => {
+    expect(formatHumanTimestamp(new Date(2026, 3, 25, 14, 33, 0)).label).toBe("2 hours ago");
+    expect(formatHumanTimestamp(new Date(2026, 3, 23, 16, 33, 0)).label).toBe("2 days ago");
+  });
+
+  it("uses the time and date label once the timestamp is outside the 7-day window", () => {
+    const result = formatHumanTimestamp(new Date(2026, 3, 17, 16, 33, 0));
+
+    expect(result.label).toBe("4:33 PM * Apr 17");
+    expect(result.title).toBe("Apr 17, 2026, 4:33 PM");
+  });
+
+  it("includes the year in the absolute label when needed", () => {
+    const result = formatHumanTimestamp(new Date(2025, 11, 31, 9, 5, 0));
+
+    expect(result.label).toBe("9:05 AM * Dec 31, 2025");
+    expect(result.title).toBe("Dec 31, 2025, 9:05 AM");
+  });
+
+  it("handles invalid timestamps", () => {
+    expect(formatHumanTimestamp("not-a-date")).toEqual({ label: "-", title: "" });
   });
 });

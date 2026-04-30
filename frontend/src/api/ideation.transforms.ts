@@ -7,6 +7,7 @@ import type {
 } from "../types/ideation-config";
 import type {
   IdeationSessionStatus,
+  SessionListResponse,
   TaskProposal,
   Priority,
   Complexity,
@@ -33,6 +34,7 @@ import {
   ApplyProposalsResultResponseSchema,
   CreateChildSessionResponseSchema,
   ParentSessionContextResponseSchema,
+  SessionListResponseSchema,
 } from "./ideation.schemas";
 
 export function transformSession(raw: z.infer<typeof IdeationSessionResponseSchema>): IdeationSessionResponse {
@@ -69,7 +71,38 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     blockerFingerprint: raw.blocker_fingerprint ?? null,
     sessionPurpose: raw.session_purpose ?? "general",
     acceptanceStatus: raw.acceptance_status ?? null,
+    analysisBaseRefKind: raw.analysis_base_ref_kind ?? null,
+    analysisBaseRef: raw.analysis_base_ref ?? null,
+    analysisBaseDisplayName: raw.analysis_base_display_name ?? null,
+    analysisWorkspaceKind: raw.analysis_workspace_kind ?? "project_root",
+    analysisWorkspacePath: raw.analysis_workspace_path ?? null,
+    analysisBaseCommit: raw.analysis_base_commit ?? null,
+    analysisBaseLockedAt: raw.analysis_base_locked_at ?? null,
     lastEffectiveModel: raw.last_effective_model ?? null,
+  };
+}
+
+export function transformSessionList(
+  raw: z.infer<typeof SessionListResponseSchema>
+): SessionListResponse {
+  return {
+    sessions: raw.sessions.map((item) => ({
+      ...transformSession(item),
+      progress: item.progress
+        ? {
+            idle: item.progress.idle,
+            active: item.progress.active,
+            done: item.progress.done,
+            total: item.progress.total,
+          }
+        : null,
+      parentSessionTitle: item.parentSessionTitle,
+      verificationChildCount: item.verificationChildCount,
+      hasPendingPrompt: item.hasPendingPrompt,
+    })),
+    total: raw.total,
+    hasMore: raw.hasMore,
+    offset: raw.offset,
   };
 }
 

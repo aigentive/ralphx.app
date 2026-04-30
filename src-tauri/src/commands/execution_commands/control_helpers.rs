@@ -67,6 +67,45 @@ pub(super) fn is_ideation_registry_context(context_type: &str) -> bool {
     context_type == "ideation" || context_type == "session"
 }
 
+async fn resolve_project_queue_context(
+    key: &QueueKey,
+    app_state: &AppState,
+) -> Result<Option<(String, Option<ChatConversationId>)>, String> {
+    if key.context_type != ChatContextType::Project {
+        return Ok(Some((key.context_id.clone(), None)));
+    }
+
+    let project_id = ProjectId::from_string(key.context_id.clone());
+    if app_state
+        .project_repo
+        .get_by_id(&project_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
+        return Ok(Some((key.context_id.clone(), None)));
+    }
+
+    let conversation_id = ChatConversationId::from_string(key.context_id.clone());
+    let Some(conversation) = app_state
+        .chat_conversation_repo
+        .get_by_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+
+    if conversation.context_type != ChatContextType::Project {
+        return Ok(None);
+    }
+
+    Ok(Some((
+        conversation.context_id.clone(),
+        Some(conversation.id),
+    )))
+}
+
 pub(super) async fn queue_key_matches_project(
     key: &QueueKey,
     project_filter: Option<&ProjectId>,
@@ -126,7 +165,9 @@ pub(super) async fn queue_key_matches_project(
             };
             Ok(task.project_id == *project_id)
         }
-        ChatContextType::Project => Ok(key.context_id == project_id.as_str()),
+        ChatContextType::Project => Ok(resolve_project_queue_context(key, app_state)
+            .await?
+            .is_some_and(|(context_id, _)| context_id == project_id.as_str())),
     }
 }
 
@@ -535,7 +576,10 @@ where
                     .map(|task| task.project_id.as_str().to_string())
                     .unwrap_or_default()
             }
-            ChatContextType::Project => key.context_id.clone(),
+            ChatContextType::Project => resolve_project_queue_context(&key, app_state)
+                .await?
+                .map(|(context_id, _)| context_id)
+                .unwrap_or_default(),
             _ => String::new(),
         };
         chat_keys.push((
@@ -553,13 +597,21 @@ where
             continue;
         };
 
+        let mut options = queued_message_to_send_options(&queued);
+        let send_context_id = if key.context_type == ChatContextType::Project {
+            let Some((context_id, conversation_id)) =
+                resolve_project_queue_context(&key, app_state).await?
+            else {
+                continue;
+            };
+            options.conversation_id_override = conversation_id;
+            context_id
+        } else {
+            key.context_id.clone()
+        };
+
         let send_result = build_chat_service()
-            .send_message(
-                key.context_type,
-                &key.context_id,
-                &queued.content,
-                queued_message_to_send_options(&queued),
-            )
+            .send_message(key.context_type, &send_context_id, &queued.content, options)
             .await;
 
         match send_result {

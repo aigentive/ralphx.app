@@ -14,8 +14,7 @@ pub const BLOCKED_PREFIXES: &[&str] = &[
 /// Validate a path for use as a project working directory.
 ///
 /// Steps:
-/// 1. Canonicalize via `std::fs::canonicalize` (resolves symlinks, `..`, etc).
-///    Falls back to component-filtering for non-existent paths.
+/// 1. Lexically normalize an absolute path and reject traversal components.
 /// 2. Blocklist: reject paths under known system dirs.
 /// 3. Allowlist: require path under the user's home directory.
 ///
@@ -24,15 +23,9 @@ pub const BLOCKED_PREFIXES: &[&str] = &[
 pub fn validate_project_path(path: &str) -> AppResult<PathBuf> {
     let input_path = Path::new(path);
 
-    // Step 1: Canonicalize
-    let canonical = if input_path.exists() {
-        std::fs::canonicalize(input_path).map_err(|e| {
-            AppError::Validation(format!("Failed to canonicalize path: {e}"))
-        })?
-    } else {
-        // Path doesn't exist: canonicalize parent + append basename (for auto-create support)
-        canonicalize_nonexistent(input_path)?
-    };
+    // Step 1: Normalize without filesystem access so validation itself cannot
+    // dereference a user-controlled path.
+    let canonical = normalize_absolute_project_path(input_path, "project")?;
 
     let canonical_str = canonical.to_string_lossy();
 
@@ -47,8 +40,8 @@ pub fn validate_project_path(path: &str) -> AppResult<PathBuf> {
 
     // Step 3: Allowlist — must be under home directory
     let home = std::env::var("HOME")
-        .map(PathBuf::from)
         .map_err(|_| AppError::Validation("Cannot determine home directory".to_string()))?;
+    let home = normalize_absolute_project_path(Path::new(&home), "home directory")?;
 
     if !canonical.starts_with(&home) {
         return Err(AppError::Validation(
@@ -59,50 +52,39 @@ pub fn validate_project_path(path: &str) -> AppResult<PathBuf> {
     Ok(canonical)
 }
 
-/// Canonicalize a path that doesn't exist yet by filtering `..` / `.` components
-/// from the lexical path without hitting the filesystem.
-///
-/// This is a best-effort canonicalization for paths that will be created later.
-/// Requires the parent directory to exist.
-fn canonicalize_nonexistent(input_path: &Path) -> AppResult<PathBuf> {
-    let parent = input_path.parent().ok_or_else(|| {
-        AppError::Validation("Invalid path: no parent directory".to_string())
-    })?;
+fn normalize_absolute_project_path(input_path: &Path, context: &str) -> AppResult<PathBuf> {
+    if !input_path.is_absolute() {
+        return Err(AppError::Validation(format!(
+            "{context} path must be absolute"
+        )));
+    }
 
-    // Try to canonicalize parent if it exists
-    let canonical_parent = if parent.exists() {
-        std::fs::canonicalize(parent).map_err(|e| {
-            AppError::Validation(format!("Failed to canonicalize parent directory: {e}"))
-        })?
-    } else {
-        // Walk components manually — filters `.` and normalises `..`
-        let mut components = Vec::new();
-        for component in parent.components() {
-            match component {
-                Component::ParentDir => {
-                    components.pop();
-                }
-                Component::CurDir => {}
-                Component::RootDir => {
-                    components.clear();
-                    components.push(component);
-                }
-                other => {
-                    components.push(other);
-                }
+    let mut normalized = PathBuf::new();
+    let mut normal_components = 0usize;
+
+    for component in input_path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::Normal(part) => {
+                normal_components += 1;
+                normalized.push(part);
+            }
+            Component::CurDir | Component::ParentDir => {
+                return Err(AppError::Validation(format!(
+                    "{context} path contains unsafe traversal components"
+                )));
             }
         }
-        components.iter().fold(PathBuf::new(), |mut acc, c| {
-            acc.push(c);
-            acc
-        })
-    };
+    }
 
-    let basename = input_path.file_name().ok_or_else(|| {
-        AppError::Validation("Invalid path: no basename component".to_string())
-    })?;
+    if normal_components == 0 {
+        return Err(AppError::Validation(format!(
+            "{context} path must not be a filesystem root"
+        )));
+    }
 
-    Ok(canonical_parent.join(basename))
+    Ok(normalized)
 }
 
 #[cfg(test)]

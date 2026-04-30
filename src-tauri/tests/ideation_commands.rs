@@ -2,8 +2,8 @@ use ralphx_lib::application::AppState;
 use ralphx_lib::commands::ideation_commands::*;
 use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
 use ralphx_lib::domain::entities::{
-    ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority, ProjectId,
-    ProposalCategory, TaskProposal, TaskProposalId,
+    ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority, Project,
+    ProjectId, ProposalCategory, TaskProposal, TaskProposalId,
 };
 use ralphx_lib::domain::ideation::IdeationSettings;
 
@@ -1588,7 +1588,8 @@ async fn test_task_execution_plan_id_persists() {
         .expect("Failed to create execution plan");
 
     // Create a task with execution_plan_id set
-    let mut task = ralphx_lib::domain::entities::Task::new(project_id.clone(), "EP Task".to_string());
+    let mut task =
+        ralphx_lib::domain::entities::Task::new(project_id.clone(), "EP Task".to_string());
     task.ideation_session_id = Some(session_id.clone());
     task.execution_plan_id = Some(exec_plan_id.clone());
 
@@ -1700,7 +1701,10 @@ async fn test_two_execution_plans_same_session_have_unique_ids() {
         .await
         .expect("Failed to create plan2");
 
-    assert_ne!(id1, id2, "Each re-accept must produce a unique ExecutionPlan ID");
+    assert_ne!(
+        id1, id2,
+        "Each re-accept must produce a unique ExecutionPlan ID"
+    );
 }
 
 #[tokio::test]
@@ -1742,7 +1746,7 @@ async fn setup_session_with_proposals(
     ralphx_lib::domain::entities::IdeationSession,
     Vec<String>,
 ) {
-    use ralphx_lib::domain::entities::{Project, ProposalCategory, Priority};
+    use ralphx_lib::domain::entities::{Priority, Project, ProposalCategory};
 
     let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
     let project = state
@@ -1807,7 +1811,10 @@ async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
     assert!(result.warnings.is_empty());
     assert_eq!(result.project_id, project_id.as_str());
     assert_eq!(result.session_id, session.id.as_str());
-    assert!(result.any_ready_tasks, "Tasks with no blockers should be Ready");
+    assert!(
+        result.any_ready_tasks,
+        "Tasks with no blockers should be Ready"
+    );
 
     // Verify tasks are actually Ready in the repo
     for task_id_str in &result.created_task_ids {
@@ -1843,7 +1850,10 @@ async fn test_apply_proposals_core_session_converts_to_accepted() {
         .await
         .expect("apply_proposals_core should succeed");
 
-    assert!(result.session_converted, "All proposals applied — session should convert");
+    assert!(
+        result.session_converted,
+        "All proposals applied — session should convert"
+    );
 
     // Verify session status is Accepted in repo
     let updated_session = state
@@ -1872,7 +1882,10 @@ async fn test_apply_proposals_core_partial_apply_does_not_convert_session() {
         .await
         .expect("apply_proposals_core should succeed");
 
-    assert!(!result.session_converted, "Partial apply should not convert session");
+    assert!(
+        !result.session_converted,
+        "Partial apply should not convert session"
+    );
 
     // Session should still be Active
     let updated_session = state
@@ -1973,7 +1986,11 @@ async fn test_apply_proposals_core_repairs_stale_orphaned_execution_plan() {
         .await
         .expect("Retry should supersede orphan execution plan and succeed");
 
-    assert_eq!(result.created_task_ids.len(), 2, "Retry should create tasks");
+    assert_eq!(
+        result.created_task_ids.len(),
+        2,
+        "Retry should create tasks"
+    );
     assert!(result.session_converted, "Retry should convert the session");
 
     let orphan_plan = state
@@ -2078,16 +2095,31 @@ async fn test_apply_proposals_core_result_contains_context_fields() {
         .expect("apply_proposals_core should succeed");
 
     // Verify context fields for Tauri side effects
-    assert_eq!(result.project_id, project_id.as_str(), "project_id must match");
-    assert_eq!(result.session_id, session.id.as_str(), "session_id must match");
-    assert_eq!(result.proposal_titles.len(), 2, "proposal_titles should contain all applied titles");
+    assert_eq!(
+        result.project_id,
+        project_id.as_str(),
+        "project_id must match"
+    );
+    assert_eq!(
+        result.session_id,
+        session.id.as_str(),
+        "session_id must match"
+    );
+    assert_eq!(
+        result.proposal_titles.len(),
+        2,
+        "proposal_titles should contain all applied titles"
+    );
     assert!(!result.is_user_title, "New session has no user title");
-    assert!(result.execution_plan_id.is_some(), "execution_plan_id must be set");
+    assert!(
+        result.execution_plan_id.is_some(),
+        "execution_plan_id must be set"
+    );
 }
 
 #[tokio::test]
 async fn test_apply_proposals_core_preserves_dependencies() {
-    use ralphx_lib::domain::entities::{InternalStatus, Priority, ProposalCategory, Project};
+    use ralphx_lib::domain::entities::{InternalStatus, Priority, Project, ProposalCategory};
 
     let state = setup_apply_test_state();
 
@@ -2144,10 +2176,7 @@ async fn test_apply_proposals_core_preserves_dependencies() {
 
     let input = ApplyProposalsInput {
         session_id: session.id.as_str().to_string(),
-        proposal_ids: vec![
-            p1.id.as_str().to_string(),
-            p2.id.as_str().to_string(),
-        ],
+        proposal_ids: vec![p1.id.as_str().to_string(), p2.id.as_str().to_string()],
         target_column: "auto".to_string(),
         base_branch_override: None,
     };
@@ -2157,7 +2186,10 @@ async fn test_apply_proposals_core_preserves_dependencies() {
         .expect("apply_proposals_core should succeed");
 
     assert_eq!(result.created_task_ids.len(), 2);
-    assert_eq!(result.dependencies_created, 1, "One dependency should be created");
+    assert_eq!(
+        result.dependencies_created, 1,
+        "One dependency should be created"
+    );
 
     // Verify statuses: p1 task → Ready, p2 task → Blocked
     let tasks = state
@@ -2166,12 +2198,29 @@ async fn test_apply_proposals_core_preserves_dependencies() {
         .await
         .expect("Failed to get tasks");
 
-    let blocker_task = tasks.iter().find(|t| t.title == "Blocker Task").expect("Blocker task not found");
-    let dependent_task = tasks.iter().find(|t| t.title == "Dependent Task").expect("Dependent task not found");
+    let blocker_task = tasks
+        .iter()
+        .find(|t| t.title == "Blocker Task")
+        .expect("Blocker task not found");
+    let dependent_task = tasks
+        .iter()
+        .find(|t| t.title == "Dependent Task")
+        .expect("Dependent task not found");
 
-    assert_eq!(blocker_task.internal_status, InternalStatus::Ready, "Blocker task has no blockers → Ready");
-    assert_eq!(dependent_task.internal_status, InternalStatus::Blocked, "Dependent task has blocker → Blocked");
-    assert!(dependent_task.blocked_reason.is_some(), "Blocked task should have a reason");
+    assert_eq!(
+        blocker_task.internal_status,
+        InternalStatus::Ready,
+        "Blocker task has no blockers → Ready"
+    );
+    assert_eq!(
+        dependent_task.internal_status,
+        InternalStatus::Blocked,
+        "Dependent task has blocker → Blocked"
+    );
+    assert!(
+        dependent_task.blocked_reason.is_some(),
+        "Blocked task should have a reason"
+    );
 }
 
 // ============================================================================
@@ -2192,18 +2241,23 @@ async fn test_create_ideation_session_emits_session_created_event() {
     let captured_clone = Arc::clone(&captured);
 
     handle.listen("ideation:session_created", move |event| {
-        let payload: serde_json::Value =
-            serde_json::from_str(event.payload()).unwrap_or_default();
+        let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
         *captured_clone.lock().unwrap() = Some(payload);
     });
 
     let project_id = ProjectId::new();
+    let mut project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    project.id = project_id.clone();
+    state.project_repo.create(project).await.unwrap();
     let input = CreateSessionInput {
         project_id: project_id.to_string(),
         title: Some("Test Event Session".to_string()),
         seed_task_id: None,
         team_mode: None,
         team_config: None,
+        analysis_base_ref_kind: None,
+        analysis_base_ref: None,
+        analysis_base_display_name: None,
     };
 
     let result = create_ideation_session_impl(&handle, &state, input)
@@ -2214,7 +2268,10 @@ async fn test_create_ideation_session_emits_session_created_event() {
     assert_eq!(result.title, Some("Test Event Session".to_string()));
 
     let payload = captured.lock().unwrap().clone();
-    assert!(payload.is_some(), "ideation:session_created event should have been emitted");
+    assert!(
+        payload.is_some(),
+        "ideation:session_created event should have been emitted"
+    );
     let payload = payload.unwrap();
     assert_eq!(
         payload["projectId"].as_str().unwrap(),
@@ -2240,6 +2297,9 @@ async fn test_create_ideation_session_downgrades_team_mode_to_solo_for_codex() {
     let handle = app.handle().clone();
     let state = setup_apply_test_state();
     let project_id = ProjectId::new();
+    let mut project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    project.id = project_id.clone();
+    state.project_repo.create(project).await.unwrap();
 
     state
         .agent_lane_settings_repo
@@ -2262,6 +2322,9 @@ async fn test_create_ideation_session_downgrades_team_mode_to_solo_for_codex() {
             budget_limit: None,
             composition_mode: "balanced".to_string(),
         }),
+        analysis_base_ref_kind: None,
+        analysis_base_ref: None,
+        analysis_base_display_name: None,
     };
 
     let result = create_ideation_session_impl(&handle, &state, input)
@@ -2280,6 +2343,103 @@ async fn test_create_ideation_session_downgrades_team_mode_to_solo_for_codex() {
 
     assert_eq!(stored.team_mode.as_deref(), Some("solo"));
     assert!(stored.team_config_json.is_none());
+}
+
+#[tokio::test]
+async fn test_create_ideation_session_local_branch_provisions_worktree() {
+    use ralphx_lib::domain::entities::{
+        IdeationAnalysisBaseRefKind, IdeationAnalysisWorkspaceKind,
+    };
+    use ralphx_lib::testing::create_mock_app;
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    let app = create_mock_app();
+    let handle = app.handle().clone();
+    let state = setup_apply_test_state();
+    let repo_dir = setup_git_repo_for_apply_test();
+    let worktree_parent = tempfile::TempDir::new().unwrap();
+
+    let branch_output = Command::new("git")
+        .args(["branch", "feature/analysis"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("create local branch");
+    assert!(
+        branch_output.status.success(),
+        "branch creation failed: {}",
+        String::from_utf8_lossy(&branch_output.stderr)
+    );
+
+    let mut project = Project::new(
+        "Test Project".to_string(),
+        repo_dir.path().to_string_lossy().to_string(),
+    );
+    project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(worktree_parent.path().to_string_lossy().to_string());
+    let project = state.project_repo.create(project).await.unwrap();
+
+    let result = create_ideation_session_impl(
+        &handle,
+        &state,
+        CreateSessionInput {
+            project_id: project.id.to_string(),
+            title: Some("Branch Session".to_string()),
+            seed_task_id: None,
+            team_mode: None,
+            team_config: None,
+            analysis_base_ref_kind: Some(IdeationAnalysisBaseRefKind::LocalBranch),
+            analysis_base_ref: Some("feature/analysis".to_string()),
+            analysis_base_display_name: Some("feature/analysis".to_string()),
+        },
+    )
+    .await
+    .expect("create session should provision ideation worktree");
+
+    assert_eq!(
+        result.analysis_base_ref.as_deref(),
+        Some("feature/analysis")
+    );
+    assert_eq!(result.analysis_workspace_kind, "ideation_worktree");
+
+    let workspace = PathBuf::from(
+        result
+            .analysis_workspace_path
+            .as_deref()
+            .expect("workspace path should be persisted"),
+    );
+    assert!(workspace.is_dir(), "workspace should exist");
+    assert_ne!(workspace, repo_dir.path());
+
+    let workspace_branch = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&workspace)
+        .output()
+        .expect("read worktree branch");
+    assert!(
+        workspace_branch.status.success(),
+        "branch read failed: {}",
+        String::from_utf8_lossy(&workspace_branch.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&workspace_branch.stdout).trim(),
+        "feature/analysis"
+    );
+
+    let stored = state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(result.id))
+        .await
+        .expect("load stored ideation session")
+        .expect("stored ideation session should exist");
+    assert_eq!(
+        stored.analysis.workspace_kind,
+        IdeationAnalysisWorkspaceKind::IdeationWorktree
+    );
+    assert_eq!(
+        stored.analysis.workspace_path.as_deref(),
+        workspace.to_str()
+    );
 }
 
 // ============================================================================
@@ -2314,12 +2474,177 @@ fn setup_git_repo_for_apply_test() -> tempfile::TempDir {
     dir
 }
 
+#[tokio::test]
+async fn test_apply_proposals_core_internal_session_uses_session_analysis_base() {
+    use ralphx_lib::domain::entities::{
+        IdeationAnalysisBaseRefKind, IdeationAnalysisState, IdeationAnalysisWorkspaceKind,
+        IdeationSession, Priority, Project, ProposalCategory, TaskProposal,
+    };
+
+    let state = setup_apply_test_state();
+    let repo_dir = setup_git_repo_for_apply_test();
+    let project = Project::new(
+        "Test Project".to_string(),
+        repo_dir.path().to_string_lossy().to_string(),
+    );
+    let project = state.project_repo.create(project).await.unwrap();
+
+    let mut session = IdeationSession::new(project.id.clone());
+    session.analysis = IdeationAnalysisState {
+        base_ref_kind: Some(IdeationAnalysisBaseRefKind::ProjectDefault),
+        base_ref: Some("main".to_string()),
+        base_display_name: Some("Project default (main)".to_string()),
+        workspace_kind: IdeationAnalysisWorkspaceKind::ProjectRoot,
+        workspace_path: Some(repo_dir.path().to_string_lossy().to_string()),
+        base_commit: None,
+        base_locked_at: Some(chrono::Utc::now()),
+    };
+    let session = state.ideation_session_repo.create(session).await.unwrap();
+
+    let proposal = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Test Proposal",
+            ProposalCategory::Feature,
+            Priority::Medium,
+        ))
+        .await
+        .unwrap();
+
+    apply_proposals_core(
+        &state,
+        ApplyProposalsInput {
+            session_id: session.id.as_str().to_string(),
+            proposal_ids: vec![proposal.id.as_str().to_string()],
+            target_column: "auto".to_string(),
+            base_branch_override: Some("late-override".to_string()),
+        },
+    )
+    .await
+    .expect("internal apply should derive base from session analysis");
+
+    let plan_branch = state
+        .plan_branch_repo
+        .get_by_session_id(&session.id)
+        .await
+        .unwrap()
+        .expect("plan branch should exist");
+    assert_eq!(plan_branch.source_branch, "main");
+    assert_eq!(plan_branch.base_branch_override.as_deref(), Some("main"));
+}
+
+#[tokio::test]
+async fn test_apply_proposals_core_linked_agent_workspace_reuses_conversation_branch() {
+    use ralphx_lib::application::agent_conversation_workspace::{
+        prepare_agent_conversation_workspace, AgentConversationWorkspaceBaseSelection,
+    };
+    use ralphx_lib::domain::entities::{
+        AgentConversationWorkspaceMode, ChatConversation, IdeationAnalysisBaseRefKind,
+        IdeationAnalysisState, IdeationAnalysisWorkspaceKind, IdeationSession, Priority, Project,
+        ProposalCategory, TaskProposal,
+    };
+
+    let state = setup_apply_test_state();
+    let repo_dir = setup_git_repo_for_apply_test();
+    let worktree_parent = tempfile::TempDir::new().unwrap();
+    let mut project = Project::new(
+        "Test Project".to_string(),
+        repo_dir.path().to_string_lossy().to_string(),
+    );
+    project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(worktree_parent.path().to_string_lossy().to_string());
+    let project = state.project_repo.create(project).await.unwrap();
+
+    let conversation = state
+        .chat_conversation_repo
+        .create(ChatConversation::new_project(project.id.clone()))
+        .await
+        .expect("create project conversation");
+    let mut workspace = prepare_agent_conversation_workspace(
+        &project,
+        &conversation.id,
+        AgentConversationWorkspaceMode::Ideation,
+        AgentConversationWorkspaceBaseSelection {
+            kind: Some(IdeationAnalysisBaseRefKind::ProjectDefault),
+            base_ref: Some("main".to_string()),
+            display_name: Some("Project default (main)".to_string()),
+        },
+    )
+    .await
+    .expect("prepare agent conversation workspace");
+
+    let mut session = IdeationSession::new(project.id.clone());
+    session.analysis = IdeationAnalysisState {
+        base_ref_kind: Some(IdeationAnalysisBaseRefKind::ProjectDefault),
+        base_ref: Some("main".to_string()),
+        base_display_name: Some("Project default (main)".to_string()),
+        workspace_kind: IdeationAnalysisWorkspaceKind::IdeationWorktree,
+        workspace_path: Some(workspace.worktree_path.clone()),
+        base_commit: workspace.base_commit.clone(),
+        base_locked_at: Some(chrono::Utc::now()),
+    };
+    let session = state.ideation_session_repo.create(session).await.unwrap();
+    workspace.linked_ideation_session_id = Some(session.id.clone());
+    let workspace = state
+        .agent_conversation_workspace_repo
+        .create_or_update(workspace)
+        .await
+        .expect("persist linked workspace");
+
+    let proposal = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Test Proposal",
+            ProposalCategory::Feature,
+            Priority::Medium,
+        ))
+        .await
+        .unwrap();
+
+    apply_proposals_core(
+        &state,
+        ApplyProposalsInput {
+            session_id: session.id.as_str().to_string(),
+            proposal_ids: vec![proposal.id.as_str().to_string()],
+            target_column: "auto".to_string(),
+            base_branch_override: None,
+        },
+    )
+    .await
+    .expect("apply should reuse linked agent conversation branch");
+
+    let plan_branch = state
+        .plan_branch_repo
+        .get_by_session_id(&session.id)
+        .await
+        .unwrap()
+        .expect("plan branch should exist");
+    assert_eq!(plan_branch.branch_name, workspace.branch_name);
+    assert_eq!(plan_branch.source_branch, "main");
+    assert_eq!(plan_branch.base_branch_override.as_deref(), Some("main"));
+
+    let linked_workspace = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation.id)
+        .await
+        .unwrap()
+        .expect("workspace should still exist");
+    assert_eq!(
+        linked_workspace.linked_plan_branch_id.as_ref(),
+        Some(&plan_branch.id)
+    );
+}
+
 /// Proof Obligation #5: when `create_branch` fails (source branch nonexistent),
 /// `apply_proposals_core` returns an error AND no ExecutionPlan row is created.
 /// Validates that branch validation (Phase 0) occurs before ExecutionPlan creation.
 #[tokio::test]
 async fn test_apply_proposals_core_branch_creation_failure_leaves_no_orphaned_execution_plan() {
-    use ralphx_lib::domain::entities::{IdeationSession, Priority, Project, ProposalCategory, TaskProposal};
+    use ralphx_lib::domain::entities::{
+        IdeationSession, Priority, Project, ProposalCategory, TaskProposal,
+    };
 
     let state = setup_apply_test_state();
     let dir = setup_git_repo_for_apply_test();
@@ -2396,7 +2721,9 @@ async fn test_apply_proposals_core_branch_creation_failure_leaves_no_orphaned_ex
 /// merge task edge is created (feature branch path).
 #[tokio::test]
 async fn test_apply_proposals_core_tasks_created_count_excludes_merge_task() {
-    use ralphx_lib::domain::entities::{IdeationSession, Priority, Project, ProposalCategory, TaskProposal};
+    use ralphx_lib::domain::entities::{
+        IdeationSession, Priority, Project, ProposalCategory, TaskProposal,
+    };
 
     let state = setup_apply_test_state();
     let dir = setup_git_repo_for_apply_test();
@@ -2540,7 +2867,9 @@ async fn test_apply_proposals_core_gate_passes_after_analyze_session_dependencie
 /// effect of any non-empty `depends_on`. This test simulates that auto-set path.
 #[tokio::test]
 async fn test_apply_proposals_core_gate_passes_with_deps_set_at_creation() {
-    use ralphx_lib::domain::entities::{IdeationSession, Priority, Project, ProposalCategory, TaskProposal};
+    use ralphx_lib::domain::entities::{
+        IdeationSession, Priority, Project, ProposalCategory, TaskProposal,
+    };
 
     let state = setup_apply_test_state();
 
@@ -2596,10 +2925,7 @@ async fn test_apply_proposals_core_gate_passes_with_deps_set_at_creation() {
 
     let input = ApplyProposalsInput {
         session_id: session.id.as_str().to_string(),
-        proposal_ids: vec![
-            p1.id.as_str().to_string(),
-            p2.id.as_str().to_string(),
-        ],
+        proposal_ids: vec![p1.id.as_str().to_string(), p2.id.as_str().to_string()],
         target_column: "auto".to_string(),
         base_branch_override: None,
     };
@@ -2940,10 +3266,7 @@ async fn test_finalize_atomicity_all_records_consistent() {
 
     let input = ApplyProposalsInput {
         session_id: session.id.as_str().to_string(),
-        proposal_ids: vec![
-            p1.id.as_str().to_string(),
-            p2.id.as_str().to_string(),
-        ],
+        proposal_ids: vec![p1.id.as_str().to_string(), p2.id.as_str().to_string()],
         target_column: "auto".to_string(),
         base_branch_override: Some("feature/atomic-test".to_string()),
     };
@@ -3012,12 +3335,15 @@ async fn test_finalize_atomicity_all_records_consistent() {
 /// to Accepted.
 #[tokio::test]
 async fn test_apply_proposals_core_excludes_foreign_proposals() {
-    use ralphx_lib::domain::entities::{Project, ProposalCategory, Priority};
+    use ralphx_lib::domain::entities::{Priority, Project, ProposalCategory};
 
     let state = setup_apply_test_state();
 
     // Create project with a known working directory
-    let project = Project::new("Source Project".to_string(), "/tmp/local-project".to_string());
+    let project = Project::new(
+        "Source Project".to_string(),
+        "/tmp/local-project".to_string(),
+    );
     let project = state
         .project_repo
         .create(project)
@@ -3135,7 +3461,7 @@ async fn test_apply_proposals_core_excludes_foreign_proposals() {
 /// tasks_created==0 with a "foreign skipped" message and transitions session to Accepted.
 #[tokio::test]
 async fn test_apply_proposals_core_all_foreign_returns_early() {
-    use ralphx_lib::domain::entities::{Project, ProposalCategory, Priority};
+    use ralphx_lib::domain::entities::{Priority, Project, ProposalCategory};
 
     let state = setup_apply_test_state();
 
@@ -3196,14 +3522,19 @@ async fn test_apply_proposals_core_all_foreign_returns_early() {
         .expect("apply_proposals_core should succeed for all-foreign sessions");
 
     // No tasks must be created
-    assert_eq!(result.tasks_created, 0, "All-foreign session must create 0 tasks");
+    assert_eq!(
+        result.tasks_created, 0,
+        "All-foreign session must create 0 tasks"
+    );
     assert!(
         result.created_task_ids.is_empty(),
         "created_task_ids must be empty for all-foreign session"
     );
 
     // Message must mention "foreign skipped"
-    let msg = result.message.expect("Expected a message for all-foreign early return");
+    let msg = result
+        .message
+        .expect("Expected a message for all-foreign early return");
     assert!(
         msg.contains("foreign skipped"),
         "Message must contain 'foreign skipped', got: {msg}"

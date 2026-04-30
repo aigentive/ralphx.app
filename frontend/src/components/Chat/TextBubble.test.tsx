@@ -8,8 +8,14 @@
  */
 
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi } from "vitest";
 import { TextBubble } from "./TextBubble";
+import { openPath } from "@tauri-apps/plugin-opener";
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openPath: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("TextBubble", () => {
 
@@ -28,10 +34,6 @@ describe("TextBubble", () => {
       expect(screen.getByText("Hello world")).toBeInTheDocument();
     });
 
-    it("renders the copy button", () => {
-      render(<TextBubble text="Hello" isUser={true} />);
-      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
-    });
   });
 
   // ============================================================================
@@ -39,62 +41,91 @@ describe("TextBubble", () => {
   // ============================================================================
 
   describe("markdown rendering", () => {
-    it("renders headings in user messages", () => {
-      render(<TextBubble text="# Heading 1" isUser={true} />);
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
-    });
-
-    it("renders headings in assistant messages", () => {
+    it("paints plain text before markdown hydration", async () => {
       render(<TextBubble text="# Heading 1" isUser={false} />);
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
+
+      expect(screen.getByText("# Heading 1")).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
     });
 
-    it("renders lists in user messages", () => {
+    it("renders headings in user messages", async () => {
+      render(<TextBubble text="# Heading 1" isUser={true} />);
+      expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
+    });
+
+    it("renders headings in assistant messages", async () => {
+      render(<TextBubble text="# Heading 1" isUser={false} />);
+      expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Heading 1");
+    });
+
+    it("renders lists in user messages", async () => {
       const text = "- Item 1\n- Item 2\n- Item 3";
       render(<TextBubble text={text} isUser={true} />);
-      expect(screen.getByText("Item 1")).toBeInTheDocument();
+      expect(await screen.findByText("Item 1")).toBeInTheDocument();
       expect(screen.getByText("Item 2")).toBeInTheDocument();
       expect(screen.getByText("Item 3")).toBeInTheDocument();
     });
 
-    it("renders lists in assistant messages", () => {
+    it("renders lists in assistant messages", async () => {
       const text = "- Item 1\n- Item 2\n- Item 3";
       render(<TextBubble text={text} isUser={false} />);
-      expect(screen.getByText("Item 1")).toBeInTheDocument();
+      expect(await screen.findByText("Item 1")).toBeInTheDocument();
       expect(screen.getByText("Item 2")).toBeInTheDocument();
       expect(screen.getByText("Item 3")).toBeInTheDocument();
     });
 
-    it("renders inline code in user messages", () => {
+    it("renders inline code in user messages", async () => {
       render(<TextBubble text="Use `const` for constants" isUser={true} />);
-      expect(screen.getByText("const")).toBeInTheDocument();
+      expect(await screen.findByText("const")).toBeInTheDocument();
     });
 
-    it("renders inline code in assistant messages", () => {
+    it("renders inline code in assistant messages", async () => {
       render(<TextBubble text="Use `const` for constants" isUser={false} />);
-      expect(screen.getByText("const")).toBeInTheDocument();
+      expect(await screen.findByText("const")).toBeInTheDocument();
     });
 
-    it("renders code blocks in user messages", () => {
+    it("renders code blocks in user messages", async () => {
       const text = "```javascript\nconst x = 1;\n```";
       render(<TextBubble text={text} isUser={true} />);
-      expect(screen.getByText("const x = 1;")).toBeInTheDocument();
+      expect(await screen.findByText("const x = 1;")).toBeInTheDocument();
     });
 
-    it("renders code blocks in assistant messages", () => {
+    it("renders code blocks in assistant messages", async () => {
       const text = "```javascript\nconst x = 1;\n```";
       render(<TextBubble text={text} isUser={false} />);
-      expect(screen.getByText("const x = 1;")).toBeInTheDocument();
+      expect(await screen.findByText("const x = 1;")).toBeInTheDocument();
     });
 
-    it("renders bold text in user messages", () => {
+    it("renders bold text in user messages", async () => {
       render(<TextBubble text="This is **bold** text" isUser={true} />);
-      expect(screen.getByText("bold")).toBeInTheDocument();
+      expect(await screen.findByText("bold")).toBeInTheDocument();
     });
 
-    it("renders bold text in assistant messages", () => {
+    it("renders bold text in assistant messages", async () => {
       render(<TextBubble text="This is **bold** text" isUser={false} />);
-      expect(screen.getByText("bold")).toBeInTheDocument();
+      expect(await screen.findByText("bold")).toBeInTheDocument();
+    });
+
+    it("opens absolute local file links with the system opener instead of navigating the webview", async () => {
+      const user = userEvent.setup();
+      render(
+        <TextBubble
+          text="[agent-models.ts](/tmp/ralphx-worktree/frontend/src/lib/agent-models.ts:1)"
+          isUser={false}
+        />
+      );
+
+      const link = await screen.findByRole("link", { name: "agent-models.ts" });
+      expect(link).toHaveAttribute(
+        "href",
+        "file:///tmp/ralphx-worktree/frontend/src/lib/agent-models.ts",
+      );
+
+      await user.click(link);
+
+      expect(openPath).toHaveBeenCalledWith(
+        "/tmp/ralphx-worktree/frontend/src/lib/agent-models.ts",
+      );
     });
   });
 
@@ -103,64 +134,56 @@ describe("TextBubble", () => {
   // ============================================================================
 
   describe("styling", () => {
-    it("applies user styling (orange background)", () => {
+    it("applies token-backed user styling", () => {
       const { container } = render(<TextBubble text="Hello" isUser={true} />);
       const bubble = container.firstChild as HTMLElement;
-      expect(bubble).toHaveStyle({ background: "var(--accent-primary)" });
+      expect(bubble).toHaveStyle({
+        background: "var(--chat-user-bubble-bg)",
+        color: "var(--chat-user-bubble-text)",
+      });
+      expect(bubble.getAttribute("style")).toContain("border-color: var(--chat-user-bubble-border)");
+      expect(bubble.getAttribute("style")).toContain("border-style: solid");
+      expect(bubble.getAttribute("style")).toContain("border-width: 1px");
     });
 
-    it("applies assistant styling (dark background)", () => {
+    it("renders assistant text without a filled bubble background", () => {
       const { container } = render(<TextBubble text="Hello" isUser={false} />);
       const bubble = container.firstChild as HTMLElement;
-      expect(bubble).toHaveStyle({ background: "var(--bg-elevated)" });
+      expect(bubble).toHaveStyle({ background: "transparent" });
     });
 
-    it("applies rounded corners", () => {
+    it("applies rounded corners to user bubbles", () => {
       const { container } = render(<TextBubble text="Hello" isUser={true} />);
       const bubble = container.firstChild as HTMLElement;
       expect(bubble).toHaveClass("rounded-xl");
     });
 
-    it("applies padding", () => {
+    it("keeps user bubble padding", () => {
       const { container } = render(<TextBubble text="Hello" isUser={true} />);
       const bubble = container.firstChild as HTMLElement;
       expect(bubble).toHaveClass("px-3");
       expect(bubble).toHaveClass("py-2");
     });
-  });
 
-  // ============================================================================
-  // Copy Functionality Tests
-  // ============================================================================
-
-  describe("copy functionality", () => {
-    it("renders copy button with correct label", () => {
-      render(<TextBubble text="Hello" isUser={true} />);
-      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
+    it("removes bubble padding and rounding for assistant text", () => {
+      const { container } = render(<TextBubble text="Hello" isUser={false} />);
+      const bubble = container.firstChild as HTMLElement;
+      expect(bubble).toHaveClass("px-0");
+      expect(bubble).toHaveClass("py-0");
+      expect(bubble).toHaveClass("rounded-none");
     });
 
-    it("copy button is present and accessible", () => {
-      render(<TextBubble text="Hello" isUser={false} />);
-      const copyButton = screen.getByLabelText("Copy message");
-      expect(copyButton).toBeInTheDocument();
-      expect(copyButton.tagName).toBe("BUTTON");
+    it("uses a container-aware max width instead of a fixed bubble cap", () => {
+      const { container } = render(<TextBubble text="Hello" isUser={true} />);
+      const bubble = container.firstChild as HTMLElement;
+      expect(bubble).toHaveStyle({ maxWidth: "min(85%, 620px)" });
     });
   });
 
-  // ============================================================================
-  // Accessibility Tests
-  // ============================================================================
-
-  describe("accessibility", () => {
-    it("copy button has proper aria-label", () => {
+  describe("copy control ownership", () => {
+    it("does not render an inline copy button inside the text bubble", () => {
       render(<TextBubble text="Hello" isUser={true} />);
-      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
-    });
-
-    it("copy button is keyboard accessible", () => {
-      render(<TextBubble text="Hello" isUser={false} />);
-      const button = screen.getByLabelText("Copy message");
-      expect(button.tagName).toBe("BUTTON");
+      expect(screen.queryByLabelText("Copy message")).not.toBeInTheDocument();
     });
   });
 });

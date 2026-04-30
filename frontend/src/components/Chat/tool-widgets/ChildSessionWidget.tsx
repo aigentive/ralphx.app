@@ -5,7 +5,7 @@
  * Collapsed body: latest message snippet (80 chars plain text).
  * Expanded body: LoadingSkeleton → MessagePreviewList (5 messages) + "Open Session" button.
  *
- * Polling: 5s when agent is active, disabled when idle.
+ * Polling: 5s when agent is active or waiting to start, disabled when idle.
  * History guard: if first fetch returns idle + no messages, polling is permanently disabled.
  */
 
@@ -57,6 +57,46 @@ function AgentStatusBadge({
     return <Badge variant="blue" compact>Waiting</Badge>;
   }
   return null;
+}
+
+function getVerificationBadge(status: string | null | undefined): {
+  label: string;
+  variant: BadgeVariant;
+} | null {
+  switch (status) {
+    case "reviewing":
+      return { label: "Verifying", variant: "blue" };
+    case "verified":
+      return { label: "Verified", variant: "success" };
+    case "needs_revision":
+      return { label: "Needs revision", variant: "warning" };
+    case "skipped":
+      return { label: "Skipped", variant: "muted" };
+    case "imported_verified":
+      return { label: "Imported verified", variant: "success" };
+    default:
+      return null;
+  }
+}
+
+function getVerificationSummary(
+  verification: {
+    status: string;
+    current_round: number | null;
+    gap_score: number | null;
+  } | null | undefined
+): string | null {
+  const badge = getVerificationBadge(verification?.status);
+  if (!verification || !badge) {
+    return null;
+  }
+  const details = [
+    verification.current_round ? `round ${verification.current_round}` : null,
+    typeof verification.gap_score === "number" ? `gap score ${verification.gap_score}` : null,
+  ].filter(Boolean);
+  return details.length > 0
+    ? `Verification: ${badge.label.toLowerCase()} (${details.join(", ")})`
+    : `Verification: ${badge.label.toLowerCase()}`;
 }
 
 function LoadingSkeleton() {
@@ -166,13 +206,28 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
   toolCall,
   compact,
 }: ToolCallWidgetProps) {
+  const normalizedToolName = toolCall.name.toLowerCase();
+  const isProjectIdeationRun =
+    normalizedToolName.includes("start_ideation_session") ||
+    normalizedToolName.includes("v1_start_ideation");
   const parsed = parseMcpToolResult(toolCall.result);
   const title =
-    getString(toolCall.arguments, "title") ?? getString(parsed, "title");
+    getString(toolCall.arguments, "title") ??
+    getString(parsed, "title") ??
+    (isProjectIdeationRun ? "Ideation run" : undefined);
   const purpose =
-    getString(toolCall.arguments, "purpose") ?? getString(parsed, "purpose");
-  const orchestrationTriggered = getBool(parsed, "orchestration_triggered");
-  const sessionId = getString(parsed, "session_id");
+    getString(toolCall.arguments, "purpose") ??
+    getString(parsed, "purpose") ??
+    (isProjectIdeationRun ? "ideation" : undefined);
+  const orchestrationTriggered =
+    getBool(parsed, "orchestration_triggered") ??
+    getBool(parsed, "agent_spawned") ??
+    getBool(parsed, "agentSpawned");
+  const sessionId =
+    getString(parsed, "session_id") ??
+    getString(parsed, "sessionId") ??
+    getString(parsed, "child_session_id") ??
+    getString(parsed, "childSessionId");
 
   const onNavigate = useContext(ChildSessionNavigationContext);
 
@@ -188,17 +243,44 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
   }
 
   const purposeVariant: BadgeVariant = purpose === "verification" ? "blue" : "muted";
+  const displayTitle = data?.title || title;
+  const verificationBadge = getVerificationBadge(data?.verification?.status);
+  const verificationSummary = getVerificationSummary(data?.verification);
   const agentStatus = data?.agent_state.estimated_status ?? "idle";
-  const isPendingCapacity = !!(data?.pending_initial_prompt);
+  const pendingInitialPrompt =
+    data?.pending_initial_prompt ??
+    getString(parsed, "pendingInitialPrompt") ??
+    getString(parsed, "pending_initial_prompt");
+  const blockedReason =
+    getString(parsed, "agentSpawnBlockedReason") ??
+    getString(parsed, "agent_spawn_blocked_reason");
+  const nextAction =
+    getString(parsed, "nextAction") ??
+    getString(parsed, "next_action");
+  const blockedReasonLower = blockedReason?.toLowerCase() ?? "";
+  const isPendingStart = !!pendingInitialPrompt;
+  const isPausedPending =
+    isPendingStart &&
+    (blockedReasonLower.includes("paused") ||
+      blockedReasonLower.includes("resume execution") ||
+      nextAction === "wait_for_resume");
+  const pendingBadgeLabel = isPausedPending ? "Paused" : "Waiting to start";
+  const pendingSnippet = isPausedPending
+    ? "Saved prompt. Resume execution to start."
+    : "Waiting for an ideation slot...";
   const latestMessage = data?.recent_messages[data.recent_messages.length - 1];
-  const snippet = latestMessage ? truncate(stripMarkdown(latestMessage.content), 80) : null;
+  const latestMessageSnippet = latestMessage ? truncate(stripMarkdown(latestMessage.content), 80) : null;
+  const snippet = verificationSummary ?? latestMessageSnippet;
+  const verificationIsActive = data?.verification?.status === "reviewing";
   const visualState =
     isLoading
       ? "loading"
       : isError
         ? "error"
-        : isPendingCapacity
+        : isPendingStart
           ? "pending"
+          : verificationIsActive
+            ? "active"
           : agentStatus === "idle"
             ? "idle"
             : "active";
@@ -211,18 +293,27 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
         header={
           <WidgetHeader
             icon={<GitBranch size={12} />}
-            title={purpose === "verification" ? "Verification Session" : "Follow-up Session"}
+            title={
+              purpose === "verification"
+                ? "Verification Session"
+                : isProjectIdeationRun
+                  ? "Ideation Session"
+                  : "Follow-up Session"
+            }
             {...(compact !== undefined && { compact })}
             badge={
               <>
                 {purpose && <Badge variant={purposeVariant} compact>{purpose}</Badge>}
-                {orchestrationTriggered === true && (
+                {verificationBadge && (
+                  <Badge variant={verificationBadge.variant} compact>{verificationBadge.label}</Badge>
+                )}
+                {orchestrationTriggered === true && !verificationBadge && (
                   <Badge variant="success" compact>Agent spawned</Badge>
                 )}
-                {isPendingCapacity && agentStatus === "idle" && (
-                  <Badge variant="warning" compact>Waiting for capacity</Badge>
+                {isPendingStart && agentStatus === "idle" && (
+                  <Badge variant="warning" compact>{pendingBadgeLabel}</Badge>
                 )}
-                {!isPendingCapacity && agentStatus !== "idle" && <AgentStatusBadge status={agentStatus} />}
+                {!isPendingStart && agentStatus !== "idle" && <AgentStatusBadge status={agentStatus} />}
                 {sessionId && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onNavigate(sessionId); }}
@@ -239,7 +330,7 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
                     }}
                     aria-label="Open Session"
                   >
-                    Open Session
+                    Open Run
                   </button>
                 )}
               </>
@@ -257,7 +348,7 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
             marginBottom: 4,
           }}
         >
-          {title}
+          {displayTitle}
         </span>
 
         {/* Collapsed body: snippet (single line — stable height) */}
@@ -266,10 +357,10 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
             style={{
               ...truncatedTitleStyle(compact),
               fontSize: 11,
-              color: (snippet || isPendingCapacity) ? colors.textMuted : "transparent",
+              color: (snippet || isPendingStart) ? colors.textMuted : "transparent",
             }}
           >
-            {snippet ?? (isPendingCapacity ? "Waiting for capacity..." : "No messages yet")}
+            {snippet ?? (isPendingStart ? pendingSnippet : "No messages yet")}
           </span>
         </WidgetRow>
 

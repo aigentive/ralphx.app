@@ -31,7 +31,11 @@ fn compose_codex_prompt_prefers_canonical_codex_prompt_when_available() {
     )
     .expect("write legacy prompt");
 
-    let composed = compose_codex_prompt("User prompt", Some(&plugin_dir), Some("ralphx-utility-session-namer"));
+    let composed = compose_codex_prompt(
+        "User prompt",
+        Some(&plugin_dir),
+        Some("ralphx-utility-session-namer"),
+    );
 
     assert!(
         composed.contains("Canonical Codex Prompt"),
@@ -44,7 +48,7 @@ fn compose_codex_prompt_prefers_canonical_codex_prompt_when_available() {
 }
 
 #[test]
-fn compose_codex_prompt_falls_back_to_legacy_claude_prompt_when_canonical_prompt_missing() {
+fn compose_codex_prompt_ignores_legacy_claude_prompt_when_canonical_prompt_missing() {
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let root = temp_dir.path();
     let plugin_dir = create_plugin_dir(root);
@@ -55,11 +59,15 @@ fn compose_codex_prompt_falls_back_to_legacy_claude_prompt_when_canonical_prompt
     )
     .expect("write legacy prompt");
 
-    let composed = compose_codex_prompt("User prompt", Some(&plugin_dir), Some("ralphx-utility-session-namer"));
+    let composed = compose_codex_prompt(
+        "User prompt",
+        Some(&plugin_dir),
+        Some("ralphx-utility-session-namer"),
+    );
 
-    assert!(
-        composed.contains("Legacy Claude Prompt"),
-        "expected legacy claude prompt fallback when canonical codex prompt is absent"
+    assert_eq!(
+        composed, "User prompt",
+        "Codex should not inherit deleted legacy Claude plugin prompt files"
     );
 }
 
@@ -87,7 +95,11 @@ fn compose_codex_prompt_uses_shared_prompt_when_harness_is_explicitly_allowed() 
     )
     .expect("write legacy prompt");
 
-    let composed = compose_codex_prompt("User prompt", Some(&plugin_dir), Some("ralphx-utility-session-namer"));
+    let composed = compose_codex_prompt(
+        "User prompt",
+        Some(&plugin_dir),
+        Some("ralphx-utility-session-namer"),
+    );
 
     assert!(
         composed.contains("Shared Session Namer Prompt"),
@@ -95,12 +107,70 @@ fn compose_codex_prompt_uses_shared_prompt_when_harness_is_explicitly_allowed() 
     );
     assert!(
         !composed.contains("Legacy Claude Prompt"),
-        "expected shared canonical prompt to win over legacy prompt fallback"
+        "expected shared canonical prompt to ignore deleted legacy Claude plugin prompt files"
     );
 }
 
 #[test]
-fn compose_codex_prompt_does_not_fall_back_to_legacy_prompt_when_canonical_agent_lacks_codex_prompt() {
+fn compose_codex_prompt_injects_directed_internal_skill_context() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let root = temp_dir.path();
+    let plugin_dir = create_plugin_dir(root);
+
+    std::fs::create_dir_all(root.join("agents/ralphx-chat-project/shared"))
+        .expect("create shared prompt dir");
+    std::fs::write(
+        root.join("agents/ralphx-chat-project/agent.yaml"),
+        r#"name: ralphx-chat-project
+role: project_chat
+capabilities:
+  internal_skills:
+    allowed:
+      - workspace-swe
+"#,
+    )
+    .expect("write shared definition");
+    std::fs::write(
+        root.join("agents/ralphx-chat-project/shared/prompt.md"),
+        "Project chat prompt",
+    )
+    .expect("write shared prompt");
+    std::fs::create_dir_all(root.join("plugins/app/skills/workspace-swe"))
+        .expect("create skill dir");
+    std::fs::write(
+        root.join("plugins/app/skills/workspace-swe/SKILL.md"),
+        r#"---
+name: workspace-swe
+description: Workspace bridge guidance
+disable-model-invocation: true
+user-invocable: false
+---
+# Workspace SWE
+Report only unless workspace intervention is explicit.
+"#,
+    )
+    .expect("write skill");
+
+    let composed = compose_codex_prompt(
+        "<!-- ralphx_internal_skill=workspace-swe -->\nBridge payload",
+        Some(&plugin_dir),
+        Some("ralphx-chat-project"),
+    );
+
+    assert!(composed.contains("Project chat prompt"));
+    assert!(
+        composed.contains("<ralphx_internal_skills>"),
+        "expected internal skill context to be injected"
+    );
+    assert!(
+        composed.contains("Report only unless workspace intervention is explicit."),
+        "expected directed skill body to be injected"
+    );
+}
+
+#[test]
+fn compose_codex_prompt_does_not_fall_back_to_legacy_prompt_when_canonical_agent_lacks_codex_prompt(
+) {
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let root = temp_dir.path();
     let plugin_dir = create_plugin_dir(root);
@@ -123,7 +193,11 @@ fn compose_codex_prompt_does_not_fall_back_to_legacy_prompt_when_canonical_agent
     )
     .expect("write legacy prompt");
 
-    let composed = compose_codex_prompt("User prompt", Some(&plugin_dir), Some("ralphx-ideation-team-lead"));
+    let composed = compose_codex_prompt(
+        "User prompt",
+        Some(&plugin_dir),
+        Some("ralphx-ideation-team-lead"),
+    );
 
     assert_eq!(
         composed, "User prompt",
@@ -156,12 +230,13 @@ fn build_codex_mcp_overrides_includes_runtime_feature_flags_from_agent_metadata(
     )
     .expect("write fake mcp server");
 
-    let overrides =
-        build_codex_mcp_overrides(&plugin_dir, "ralphx-plan-verifier", false, None)
-            .expect("overrides");
+    let overrides = build_codex_mcp_overrides(&plugin_dir, "ralphx-plan-verifier", false, None)
+        .expect("overrides");
 
     assert!(
-        overrides.iter().any(|entry| entry == "features.shell_tool=false"),
+        overrides
+            .iter()
+            .any(|entry| entry == "features.shell_tool=false"),
         "Codex runtime feature flags should flow into config overrides: {overrides:?}"
     );
 }
@@ -186,6 +261,7 @@ fn build_codex_mcp_overrides_passes_runtime_context_over_cli_args() {
         project_id: Some("project-456".to_string()),
         working_directory: Some(root.join("workspace")),
         lead_session_id: Some("lead-789".to_string()),
+        parent_conversation_id: None,
     };
 
     let overrides = build_codex_mcp_overrides(
@@ -232,5 +308,118 @@ fn build_codex_mcp_overrides_passes_runtime_context_over_cli_args() {
     assert!(
         args_override.contains("--lead-session-id"),
         "expected lead-session-id CLI arg in overrides: {args_override}"
+    );
+}
+
+#[test]
+fn build_codex_mcp_overrides_uses_external_mcp_transport_when_declared() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let root = temp_dir.path();
+    let plugin_dir = create_plugin_dir(root);
+    std::fs::create_dir_all(root.join("agents/ralphx-chat-project"))
+        .expect("create canonical agent dir");
+    std::fs::write(
+        root.join("agents/ralphx-chat-project/agent.yaml"),
+        r#"name: ralphx-chat-project
+role: project_chat
+harnesses:
+  codex:
+    mcp_transport: external
+    mcp_tools:
+      - v1_start_ideation
+      - v1_get_ideation_status
+    runtime_features:
+      shell_tool: false
+"#,
+    )
+    .expect("write shared definition");
+
+    let overrides = build_codex_mcp_overrides(&plugin_dir, "ralphx-chat-project", false, None)
+        .expect("overrides");
+
+    assert!(
+        overrides
+            .iter()
+            .any(|entry| entry.starts_with("mcp_servers.ralphx.url=")),
+        "external MCP transport should use a streamable HTTP URL: {overrides:?}"
+    );
+    assert!(
+        overrides.iter().any(|entry| {
+            entry == "mcp_servers.ralphx.bearer_token_env_var=\"RALPHX_TAURI_MCP_BYPASS_TOKEN\""
+        }),
+        "external MCP transport should use the Tauri bypass token env var: {overrides:?}"
+    );
+    assert!(
+        overrides
+            .iter()
+            .any(|entry| entry == "mcp_servers.ralphx.enabled_tools=[\"v1_start_ideation\",\"v1_get_ideation_status\"]"),
+        "external MCP enabled tools should come from Codex metadata: {overrides:?}"
+    );
+    assert!(
+        !overrides.iter().any(|entry| entry.contains(".command=") || entry.contains(".args=")),
+        "external MCP transport must not point Codex at the bundled stdio MCP server: {overrides:?}"
+    );
+    assert!(
+        overrides
+            .iter()
+            .any(|entry| entry == "features.shell_tool=false"),
+        "runtime feature flags should still be preserved: {overrides:?}"
+    );
+}
+
+#[test]
+fn build_codex_mcp_overrides_threads_runtime_context_into_external_mcp_url() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let root = temp_dir.path();
+    let plugin_dir = create_plugin_dir(root);
+    std::fs::create_dir_all(root.join("agents/ralphx-chat-project"))
+        .expect("create canonical agent dir");
+    std::fs::write(
+        root.join("agents/ralphx-chat-project/agent.yaml"),
+        r#"name: ralphx-chat-project
+role: project_chat
+harnesses:
+  codex:
+    mcp_transport: external
+    mcp_tools:
+      - v1_start_ideation
+"#,
+    )
+    .expect("write shared definition");
+
+    let runtime_context = CodexMcpRuntimeContext {
+        context_type: Some("project".to_string()),
+        context_id: Some("project-123".to_string()),
+        task_id: None,
+        project_id: Some("project-123".to_string()),
+        working_directory: Some(root.join("workspace")),
+        lead_session_id: None,
+        parent_conversation_id: Some("conversation 456".to_string()),
+    };
+
+    let overrides = build_codex_mcp_overrides(
+        &plugin_dir,
+        "ralphx-chat-project",
+        false,
+        Some(&runtime_context),
+    )
+    .expect("overrides");
+
+    let url_override = overrides
+        .iter()
+        .find(|entry| entry.starts_with("mcp_servers.ralphx.url="))
+        .expect("external MCP URL override");
+
+    assert!(
+        url_override.contains("context_type=project"),
+        "external MCP URL should include context type: {url_override}"
+    );
+    assert!(
+        url_override.contains("project_id=project-123"),
+        "external MCP URL should include project id: {url_override}"
+    );
+    assert!(
+        url_override.contains("parent_conversation_id=conversation%20456"),
+        "external MCP URL should include encoded parent conversation id: {url_override}"
     );
 }

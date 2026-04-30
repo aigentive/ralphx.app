@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import type {
   IdeationSession,
   TaskProposal,
+  VerificationStatus,
 } from "@/types/ideation";
 import type { ApplyProposalsInput, ApplyProposalsResultResponse } from "@/api/ideation.types";
 import { Button } from "@/components/ui/button";
@@ -357,27 +358,34 @@ export function PlanningView({
   const lastVerificationChildId = useIdeationStore(
     (s) => s.lastVerificationChildId[session?.id ?? ''] ?? null
   );
+  const [displayedVerificationChildId, setDisplayedVerificationChildId] = useState<string | null>(null);
+  const [displayedVerificationStatus, setDisplayedVerificationStatus] = useState<{
+    status: VerificationStatus;
+    inProgress: boolean;
+  } | null>(null);
 
   // Poll status for verification child and direct child session views to detect pending_initial_prompt
-  // Eagerly fetch verification child sessions so lastVerificationChildId is populated
-  // before the user clicks the Verification tab (eliminates cold-start flash of parent chat)
-  const { data: verificationChildren } = useQuery({
-    queryKey: ["childSessions", session?.id, "verification"],
-    queryFn: () => ideationApi.sessions.getChildren(session!.id, "verification"),
+  // Eagerly fetch the latest verification child id so chat routing is ready without
+  // hydrating the full child-session history before the Verification tab needs it.
+  const { data: latestVerificationChild } = useQuery({
+    queryKey: ["childSessionId", session?.id, "verification", "latest"],
+    queryFn: () =>
+      ideationApi.sessions.getLatestChildSessionId(session!.id, "verification", {
+        includeArchived: true,
+      }),
     enabled: !!session?.id && session?.sessionPurpose !== "verification",
     staleTime: 30_000,
   });
 
-  const latestVerificationChildId = useMemo(() => {
-    if (!verificationChildren?.length) return null;
-    const sorted = [...verificationChildren].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-    return sorted[0]?.id ?? null;
-  }, [verificationChildren]);
+  const latestVerificationChildId =
+    latestVerificationChild?.latestChildSessionId ?? null;
 
   const verificationChatSessionId =
-    lastVerificationChildId ?? activeVerificationChildId ?? latestVerificationChildId ?? null;
+    displayedVerificationChildId ??
+    lastVerificationChildId ??
+    activeVerificationChildId ??
+    latestVerificationChildId ??
+    null;
 
   const { data: verificationChildStatus } = useChildSessionStatus(verificationChatSessionId);
   // Poll for the current session unconditionally — works for both child and top-level sessions.
@@ -387,14 +395,16 @@ export function PlanningView({
   // Pre-populate lastVerificationChildId from eager query result.
   // Only sets if store field is null (avoids overwriting event-driven updates).
   useEffect(() => {
-    if (!session?.id || !verificationChildren?.length) return;
+    if (!session?.id || !latestVerificationChildId) return;
     if (lastVerificationChildId) return;
 
-    const latestId = latestVerificationChildId;
-    if (latestId) {
-      setLastVerificationChildId(session.id, latestId);
-    }
-  }, [session?.id, verificationChildren?.length, latestVerificationChildId, lastVerificationChildId, setLastVerificationChildId]);
+    setLastVerificationChildId(session.id, latestVerificationChildId);
+  }, [
+    session?.id,
+    latestVerificationChildId,
+    lastVerificationChildId,
+    setLastVerificationChildId,
+  ]);
 
   // Reset to plan tab when switching sessions
   const prevSessionIdRef = useRef<string | null>(null);
@@ -404,6 +414,10 @@ export function PlanningView({
       // Session changed — reset new session to plan tab, but preserve
       // per-session verification routing state so coming back stays reliable.
       setActiveIdeationTab(session.id, 'plan');
+    }
+    if (prevSessionIdRef.current !== session.id) {
+      setDisplayedVerificationChildId(null);
+      setDisplayedVerificationStatus(null);
     }
     prevSessionIdRef.current = session.id;
   }, [session?.id, setActiveIdeationTab]);
@@ -431,14 +445,18 @@ export function PlanningView({
     !hasKnownPlan && !isVerificationActive && isTerminalVerificationStatus
       ? "unverified"
       : rawVerificationStatus;
+  const effectiveVerificationStatus =
+    displayedVerificationStatus?.status ?? verificationStatus;
+  const effectiveVerificationInProgress =
+    displayedVerificationStatus?.inProgress ?? isVerificationActive;
   const showVerificationTab = Boolean(
-    verificationStatus !== "unverified" || hasKnownPlan
+    effectiveVerificationStatus !== "unverified" || hasKnownPlan
   );
   const verificationBadge: "in_progress" | "verified" | "warning" | null = (() => {
     if (!session) return null;
-    if (isVerificationActive) return "in_progress";
-    if (verificationStatus === "verified" || verificationStatus === "imported_verified") return "verified";
-    if (verificationStatus === "needs_revision") return "warning";
+    if (effectiveVerificationInProgress) return "in_progress";
+    if (effectiveVerificationStatus === "verified" || effectiveVerificationStatus === "imported_verified") return "verified";
+    if (effectiveVerificationStatus === "needs_revision") return "warning";
     return null;
   })();
 
@@ -690,25 +708,22 @@ export function PlanningView({
     // But allow refetch when verification is actively running (state may have changed)
     if (verificationChatSessionId && !isVerificationActive) return;
 
-    // Fetch the latest verification child session
+    // Fetch the latest verification child id without hydrating the full history list.
     try {
-      const children = await ideationApi.sessions.getChildren(session.id, 'verification');
-      if (children.length > 0) {
-        // Sort by createdAt descending, take the most recent
-        const sorted = [...children].sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        const latest = sorted[0];
-        if (latest) {
-          // Only set activeVerificationChildId if not already populated (fresh hydration only)
-          if (!activeVerificationChildId) {
-            setActiveVerificationChildId(session.id, latest.id);
-          }
-          setLastVerificationChildId(session.id, latest.id);
+      const latest = await ideationApi.sessions.getLatestChildSessionId(
+        session.id,
+        'verification',
+        { includeArchived: true },
+      );
+      if (latest.latestChildSessionId) {
+        // Only set activeVerificationChildId if not already populated (fresh hydration only)
+        if (!activeVerificationChildId) {
+          setActiveVerificationChildId(session.id, latest.latestChildSessionId);
         }
+        setLastVerificationChildId(session.id, latest.latestChildSessionId);
       }
     } catch (err) {
-      console.error('Verification tab: failed to fetch child sessions', err);
+      console.error('Verification tab: failed to fetch latest child session id', err);
       // Tab switches regardless — child panel stays hidden until child exists
     }
   }, [
@@ -721,6 +736,13 @@ export function PlanningView({
     setActiveVerificationChildId,
     setLastVerificationChildId,
   ]);
+
+  const handleDisplayedVerificationStatusChange = useCallback(
+    (status: VerificationStatus, inProgress: boolean) => {
+      setDisplayedVerificationStatus({ status, inProgress });
+    },
+    [],
+  );
 
   return (
     <>
@@ -1189,7 +1211,11 @@ export function PlanningView({
                         data-testid="verification-tab-content"
                         className="flex flex-col flex-1 min-h-0"
                       >
-                        <VerificationPanel session={session} />
+                        <VerificationPanel
+                          session={session}
+                          onDisplayedVerificationChildChange={setDisplayedVerificationChildId}
+                          onDisplayedVerificationStatusChange={handleDisplayedVerificationStatusChange}
+                        />
                       </div>
                     )}
 

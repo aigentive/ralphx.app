@@ -4,7 +4,7 @@ import { TeamFindingsSection } from "./TeamFindingsSection";
 import type { TeamFinding } from "./TeamFindingsSection";
 
 const mockFindings: TeamFinding[] = [
-  { specialist: "Frontend", keyFinding: "Existing ChatPanel uses unified hooks", color: "#4ade80" },
+  { specialist: "Frontend", keyFinding: "Existing chat surface uses unified hooks", color: "#4ade80" },
   { specialist: "Backend", keyFinding: "AgenticClient trait supports team spawning", color: "#60a5fa" },
   { specialist: "Infra", keyFinding: "Database schema needs new team_sessions table" },
 ];
@@ -23,7 +23,7 @@ describe("TeamFindingsSection", () => {
     expect(screen.getByText("Frontend")).toBeInTheDocument();
     expect(screen.getByText("Backend")).toBeInTheDocument();
     expect(screen.getByText("Infra")).toBeInTheDocument();
-    expect(screen.getByText("Existing ChatPanel uses unified hooks")).toBeInTheDocument();
+    expect(screen.getByText("Existing chat surface uses unified hooks")).toBeInTheDocument();
     expect(screen.getByText("AgenticClient trait supports team spawning")).toBeInTheDocument();
     expect(screen.getByText("Database schema needs new team_sessions table")).toBeInTheDocument();
   });

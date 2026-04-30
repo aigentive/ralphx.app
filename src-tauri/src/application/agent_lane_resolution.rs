@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::domain::agents::{
-    generic_harness_lane_defaults, AgentHarnessKind, AgentLane, AgentLaneSettings,
-    LogicalEffort, StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
+    generic_harness_lane_defaults, AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort,
+    StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
 };
 use crate::domain::entities::ChatContextType;
 use crate::domain::repositories::AgentLaneSettingsRepository;
@@ -39,6 +39,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
 
     if primary_lane.is_none() {
         let effective_harness = harness_override.unwrap_or(DEFAULT_AGENT_HARNESS);
+        let non_lane_defaults = non_lane_harness_defaults(effective_harness);
         return ResolvedAgentSpawnSettings {
             configured_harness: None,
             effective_harness,
@@ -48,11 +49,20 @@ pub(crate) async fn resolve_agent_spawn_settings(
             configured_sandbox_mode: None,
             model: model_override
                 .map(str::to_string)
+                .or_else(|| {
+                    non_lane_defaults
+                        .as_ref()
+                        .and_then(|settings| settings.model.clone())
+                })
                 .unwrap_or_else(|| resolve_model(Some(agent_name))),
             logical_effort: None,
             claude_effort: None,
-            approval_policy: None,
-            sandbox_mode: None,
+            approval_policy: non_lane_defaults
+                .as_ref()
+                .and_then(|settings| settings.approval_policy.clone()),
+            sandbox_mode: non_lane_defaults
+                .as_ref()
+                .and_then(|settings| settings.sandbox_mode.clone()),
             configured_subagent_model_cap: None,
             subagent_model_cap: None,
         };
@@ -343,3 +353,6 @@ fn nondefault_harness_lane_settings(
     Some(generic_harness_lane_defaults(harness, lane))
 }
 
+fn non_lane_harness_defaults(harness: AgentHarnessKind) -> Option<AgentLaneSettings> {
+    nondefault_harness_lane_settings(AgentLane::IdeationPrimary, harness)
+}

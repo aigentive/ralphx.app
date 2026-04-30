@@ -54,6 +54,16 @@ export type ConversationProviderMetadata = {
   providerHarness?: ProviderHarness | null | undefined;
 };
 
+export const AGENT_CONVERSATION_MODE_VALUES = [
+  "chat",
+  "edit",
+  "ideation",
+] as const;
+export const AgentConversationModeSchema = z.enum(
+  AGENT_CONVERSATION_MODE_VALUES
+);
+export type AgentConversationMode = z.infer<typeof AgentConversationModeSchema>;
+
 // ============================================================================
 // Chat Conversation
 // ============================================================================
@@ -70,11 +80,13 @@ export const ChatConversationSchema = z.object({
   providerHarness: ProviderHarnessSchema.nullable(),
   upstreamProvider: z.string().nullable().optional(),
   providerProfile: z.string().nullable().optional(),
+  agentMode: AgentConversationModeSchema.nullable().optional(),
   title: z.string().nullable(),
   messageCount: z.number().int().min(0),
   lastMessageAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  archivedAt: z.string().datetime().nullable().optional(),
 });
 
 export type ChatConversation = z.infer<typeof ChatConversationSchema>;

@@ -1,8 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 import { makeToolCall } from "./__tests__/chatRenderFixtures";
+
+vi.mock("@/hooks/useChildSessionStatus", () => ({
+  useChildSessionStatus: vi.fn(() => ({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
+}));
 
 /**
  * ToolCallIndicator tests.
@@ -14,6 +23,50 @@ import { makeToolCall } from "./__tests__/chatRenderFixtures";
  * custom_tool, etc.) and for edit/write error fallback cases.
  */
 describe("ToolCallIndicator", () => {
+  describe("Project orchestration widgets", () => {
+    it("hides completed routine project orchestration reads", () => {
+      const toolCall: ToolCall = makeToolCall("mcp__ralphx__v1_get_ideation_status", {
+        id: "call-project-status",
+        result: { ok: true, status: "active" },
+      });
+
+      const { container } = render(<ToolCallIndicator toolCall={toolCall} />);
+
+      expect(container).toBeEmptyDOMElement();
+      expect(screen.queryByText("mcp__ralphx__v1_get_ideation_status")).not.toBeInTheDocument();
+    });
+
+    it("hides completed ideation prompt sends when no session id is available", () => {
+      const toolCall: ToolCall = makeToolCall("mcp__ralphx__v1_send_ideation_message", {
+        id: "call-send-ideation",
+        result: { queuedAsPending: true, nextAction: "wait_for_resume" },
+      });
+
+      const { container } = render(<ToolCallIndicator toolCall={toolCall} />);
+
+      expect(container).toBeEmptyDOMElement();
+      expect(screen.queryByText("mcp__ralphx__v1_send_ideation_message")).not.toBeInTheDocument();
+    });
+
+    it("renders ideation prompt sends with a session id as the attached ideation card", async () => {
+      const toolCall: ToolCall = makeToolCall("mcp__ralphx__v1_send_ideation_message", {
+        id: "call-send-ideation",
+        result: {
+          status: "sent",
+          session_id: "session-123",
+          next_action: "poll_status",
+        },
+      });
+
+      render(<ToolCallIndicator toolCall={toolCall} />);
+
+      expect(await screen.findByText("Ideation Session")).toBeInTheDocument();
+      expect(await screen.findByText("Ideation run")).toBeInTheDocument();
+      expect(await screen.findByText("Open Run")).toBeInTheDocument();
+      expect(screen.queryByText("Ideation prompt sent")).not.toBeInTheDocument();
+    });
+  });
+
   describe("Rendering (generic fallback)", () => {
     it("renders collapsed by default", () => {
       const toolCall: ToolCall = makeToolCall("update_task", {

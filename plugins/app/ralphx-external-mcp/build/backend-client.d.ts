@@ -10,8 +10,12 @@ import type { ApiKeyContext } from "./types.js";
 export declare const PROJECT_SCOPE_HEADER = "X-RalphX-Project-Scope";
 /** Header used to mark requests coming from external MCP */
 export declare const EXTERNAL_MCP_HEADER = "X-RalphX-External-MCP";
+/** Header used for Tauri-owned local bypass calls through the external MCP process */
+export declare const TAURI_MCP_HEADER = "X-RalphX-Tauri-MCP";
 /** Header for propagating the API key ID to the backend (for permission enforcement) */
 export declare const KEY_ID_HEADER = "X-RalphX-Key-Id";
+/** Header for backend-owned parent conversation/workspace binding */
+export declare const PARENT_CONVERSATION_HEADER = "X-RalphX-Parent-Conversation-Id";
 export interface BackendClientOptions {
     baseUrl: string;
     /** Timeout in milliseconds (default: 30000) */

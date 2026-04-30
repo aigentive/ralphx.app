@@ -39,7 +39,36 @@ export const IdeationSessionResponseSchema = z.object({
   inherited_plan_artifact_id: z.string().nullable().optional(),
   session_purpose: z.enum(["general", "verification"]).optional(),
   acceptance_status: z.enum(["pending", "accepted", "rejected"]).nullable().optional(),
+  analysis_base_ref_kind: z.enum(["project_default", "current_branch", "local_branch", "pull_request"]).nullable().optional(),
+  analysis_base_ref: z.string().nullable().optional(),
+  analysis_base_display_name: z.string().nullable().optional(),
+  analysis_workspace_kind: z.enum(["project_root", "ideation_worktree"]).optional(),
+  analysis_workspace_path: z.string().nullable().optional(),
+  analysis_base_commit: z.string().nullable().optional(),
+  analysis_base_locked_at: z.string().nullable().optional(),
   last_effective_model: z.string().nullable().optional(),
+});
+
+export const SessionProgressResponseSchema = z.object({
+  idle: z.number(),
+  active: z.number(),
+  done: z.number(),
+  total: z.number(),
+});
+
+export const IdeationSessionWithProgressResponseSchema =
+  IdeationSessionResponseSchema.extend({
+    progress: SessionProgressResponseSchema.nullable(),
+    parentSessionTitle: z.string().nullable(),
+    verificationChildCount: z.number(),
+    hasPendingPrompt: z.boolean(),
+  });
+
+export const SessionListResponseSchema = z.object({
+  sessions: z.array(IdeationSessionWithProgressResponseSchema),
+  total: z.number(),
+  hasMore: z.boolean(),
+  offset: z.number(),
 });
 
 /**
@@ -296,4 +325,10 @@ export const CreateChildSessionResponseSchema = z.object({
   created_at: z.string(),
   generation: z.number().optional(),
   parent_context: ParentSessionContextResponseSchema.optional(),
+});
+
+export const LatestChildSessionIdResponseSchema = z.object({
+  session_id: z.string(),
+  purpose: z.enum(["general", "verification"]).nullable().optional(),
+  latest_child_session_id: z.string().nullable(),
 });

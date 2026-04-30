@@ -226,3 +226,7 @@ export async function mockGetGitDefaultBranch(_workingDirectory: string): Promis
   // Return "main" as the default branch for mock purposes
   return "main";
 }
+
+export async function mockGetGitCurrentBranch(_workingDirectory: string): Promise<string> {
+  return "main";
+}

@@ -33,6 +33,7 @@
   --text-secondary: var(--gray-500);
   --text-muted:     var(--gray-600);
   --text-inverse:   hsl(220 10% 6%); /* on accent/light surfaces (e.g. HC yellow btn) */
+  --text-on-accent: var(--primary-foreground);
 
   /* ============================================================================
    * Accent (brand) — warm orange used sparingly
@@ -42,6 +43,10 @@
   --accent-hover:     var(--orange-600);
   --accent-muted:     hsla(14 100% 60% / 0.15); /* tinted bg for icon boxes */
   --accent-border:    hsla(14 100% 60% / 0.25); /* subtle accent-tinted borders */
+  --chat-user-bubble-bg: hsla(14 100% 60% / 0.12);
+  --chat-user-bubble-border: hsla(14 100% 60% / 0.45);
+  --chat-user-bubble-text: var(--text-primary);
+  --chat-user-bubble-copy-hover: hsla(0 0% 100% / 0.08);
 
   /* ============================================================================
    * Status — Okabe-Ito CVD-safe palette (spec §5 color-blind-design.md).

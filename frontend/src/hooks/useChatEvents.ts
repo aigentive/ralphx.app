@@ -38,6 +38,26 @@ import {
   isDelegationStartToolCall,
 } from "@/components/Chat/delegation-tool-calls";
 
+function stableSerialize(value: unknown): string {
+  if (value == null || typeof value !== "object") {
+    return JSON.stringify(value) ?? String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(stableSerialize).join(",")}]`;
+  }
+
+  const objectValue = value as Record<string, unknown>;
+  return `{${Object.keys(objectValue)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableSerialize(objectValue[key])}`)
+    .join(",")}}`;
+}
+
+function buildStreamingToolCallId(toolName: string, args: unknown): string {
+  return `streaming-agent:${canonicalizeToolName(toolName)}:${stableSerialize(args)}`;
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -278,8 +298,10 @@ export function useChatEvents({
           }
         }
 
-        // Use backend tool_id for deduplication, fall back to timestamp-based ID
-        const id = tool_id ?? `streaming-agent-${Date.now()}`;
+        // Use backend tool_id for deduplication. Some provider streams can omit
+        // item ids, so fall back to a stable name+arguments key to let the
+        // completed event update the live card instead of leaving a loading card.
+        const id = tool_id ?? buildStreamingToolCallId(tool_name, args);
 
         const entry: ToolCall = { id, name: tool_name, arguments: args };
         if (result != null) {
@@ -837,15 +859,12 @@ export function useChatEvents({
     );
 
     // ── agent:run_completed ──────────────────────────────────────────
-    // Clear all streaming state on run completion.
+    // Keep streaming state visible on completion until agent:message_created
+    // performs the query-aware handoff to persisted DB data.
     // Query invalidation is owned by useAgentEvents to avoid duplicate refetches.
     unsubscribes.push(
       bus.subscribe<AgentRunCompletedPayload>("agent:run_completed", (payload) => {
         if (!isRelevant(payload)) return;
-
-        setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
-        setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
-        setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
 
         // Clear all tool call start times and completion timestamps on run completion
         if (storeKey) {
@@ -861,15 +880,13 @@ export function useChatEvents({
     );
 
     // ── agent:turn_completed ────────────────────────────────────────
-    // Clear streaming state on turn completion (agent still alive in interactive mode).
+    // Keep streaming state visible until agent:message_created swaps in
+    // persisted DB data. Clearing here can blank an interactive turn if the
+    // completion event beats the final message invalidation/refetch.
     // Query invalidation is owned by useAgentEvents to avoid duplicate refetches.
     unsubscribes.push(
       bus.subscribe<AgentRunCompletedPayload>("agent:turn_completed", (payload) => {
         if (!isRelevant(payload)) return;
-
-        setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
-        setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
-        setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
 
         queryClient.invalidateQueries({
           queryKey: conversationStatsKey(payload.conversation_id),
@@ -887,7 +904,6 @@ export function useChatEvents({
       }>("agent:usage_updated", (payload) => {
         if (!isRelevant(payload)) return;
 
-        invalidateConversationDataQueries(queryClient, payload.conversation_id);
         queryClient.invalidateQueries({
           queryKey: conversationStatsKey(payload.conversation_id),
         });

@@ -48,6 +48,7 @@ import {
   parseCliOptionFromArgs,
 } from "./runtime-context.js";
 import { createVerificationRuntime } from "./verification-runtime.js";
+import { buildAppendTaskToIdeationPlanPayload } from "./append-task-payload.js";
 
 /**
  * Semantic keyword patterns for cross-project detection in plan text.
@@ -261,6 +262,7 @@ function validateProjectScope(
   const projectScopedTools = [
     "get_project_analysis",
     "save_project_analysis",
+    "append_task_to_ideation_plan",
     // Memory write tools (memory agents only)
     // Note: mark_memory_obsolete excluded - uses memory_id lookup for implicit project validation
     "upsert_memories",
@@ -640,6 +642,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         commit_sha: string;
       };
       result = await callTauri(`git/tasks/${task_id}/complete-merge`, { commit_sha });
+    } else if (name === "complete_agent_workspace_repair") {
+      // POST /api/agent-workspaces/:conversation_id/complete-repair
+      const {
+        conversation_id,
+        repair_commit_sha,
+        resolved_base_ref,
+        resolved_base_commit,
+        summary,
+      } = args as {
+        conversation_id: string;
+        repair_commit_sha: string;
+        resolved_base_ref: string;
+        resolved_base_commit: string;
+        summary: string;
+      };
+      result = await callTauri(`agent-workspaces/${conversation_id}/complete-repair`, {
+        repair_commit_sha,
+        resolved_base_ref,
+        resolved_base_commit,
+        summary,
+      });
     } else if (name === "report_conflict") {
       // POST /api/git/tasks/:task_id/report-conflict
       const { task_id, conflict_files, reason } = args as {
@@ -1043,6 +1066,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Alias for archive_task_proposal — no /api/delete_task_proposal route exists in backend
       const { proposal_id } = args as { proposal_id: string };
       result = await callTauri("archive_task_proposal", { proposal_id });
+    } else if (name === "append_task_to_ideation_plan") {
+      result = await callTauri(
+        name,
+        buildAppendTaskToIdeationPlanPayload(
+          (args as Record<string, unknown>) || {}
+        )
+      );
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});

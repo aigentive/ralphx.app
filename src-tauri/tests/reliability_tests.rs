@@ -89,6 +89,7 @@ fn make_external_session(
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        analysis: Default::default(),
         last_effective_model: None,
     }
 }
@@ -761,6 +762,7 @@ async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        analysis: Default::default(),
         last_effective_model: None,
     };
     state.ideation_session_repo.create(session).await.unwrap();
@@ -945,6 +947,7 @@ async fn c4_count_mismatch_prevents_finalize_and_leaves_no_orphans() {
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        analysis: Default::default(),
         last_effective_model: None,
     };
     state.ideation_session_repo.create(session).await.unwrap();
@@ -1178,6 +1181,7 @@ fn make_c5_session(
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        analysis: Default::default(),
         last_effective_model: None,
     }
 }

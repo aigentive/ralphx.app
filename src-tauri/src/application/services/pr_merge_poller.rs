@@ -12,12 +12,21 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 
+use crate::application::agent_conversation_workspace::agent_name_for_workspace_mode;
+use crate::application::chat_service::{ChatService, SendMessageOptions};
 use crate::application::task_transition_service::PrBranchFreshnessOutcome;
 use crate::application::TaskTransitionService;
 use crate::domain::entities::plan_branch::PrStatus as DbPrStatus;
+use crate::domain::entities::{
+    AgentConversationWorkspace, AgentConversationWorkspaceMode,
+    AgentConversationWorkspacePublicationEvent, AgentConversationWorkspaceStatus, ChatContextType,
+    ChatConversationId,
+};
 use crate::domain::entities::{InternalStatus, PlanBranchId, TaskId};
-use crate::domain::repositories::PlanBranchRepository;
+use crate::domain::repositories::{AgentConversationWorkspaceRepository, PlanBranchRepository};
+use crate::domain::services::github_service::{PrReviewCommentFeedback, PrReviewFeedback};
 use crate::domain::services::{GithubServiceTrait, PrStatus};
+use crate::error::AppError;
 
 // ────────────────────────────────────────────────────────────────────
 // Rate limit state shared across all pollers in the registry
@@ -59,8 +68,14 @@ pub struct PrPollerRegistry {
     /// Active poller handles keyed by TaskId. JoinHandle supports is_finished() + abort().
     active: Arc<DashMap<TaskId, JoinHandle<()>>>,
 
+    /// Active direct agent-workspace PR poller handles keyed by conversation id.
+    workspace_active: Arc<DashMap<ChatConversationId, JoinHandle<()>>>,
+
     /// Race guard: inserted BEFORE abort in stop_polling. poll_loop checks before calling transition.
     pub(crate) stopping: Arc<DashMap<TaskId, ()>>,
+
+    /// Race guard for direct agent-workspace PR pollers.
+    workspace_stopping: Arc<DashMap<ChatConversationId, ()>>,
 
     /// Guards PR creation — prevents duplicate draft PR creation per plan branch. (AD10)
     /// Shared with TaskServices so the merge entry action can lock before creating.
@@ -91,13 +106,91 @@ impl PrPollerRegistry {
     ) -> Self {
         Self {
             active: Arc::new(DashMap::new()),
+            workspace_active: Arc::new(DashMap::new()),
             stopping: Arc::new(DashMap::new()),
+            workspace_stopping: Arc::new(DashMap::new()),
             pr_creation_guard: Arc::new(DashMap::new()),
             semaphore: Arc::new(tokio::sync::Semaphore::new(Self::MAX_CONCURRENT_POLLS)),
             rate_limit: Arc::new(std::sync::Mutex::new(RateLimitState::default())),
             github_service,
             plan_branch_repo,
         }
+    }
+
+    pub fn start_agent_workspace_polling(
+        &self,
+        conversation_id: ChatConversationId,
+        pr_number: i64,
+        working_dir: PathBuf,
+        workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+        chat_service: Arc<dyn ChatService>,
+    ) {
+        use dashmap::mapref::entry::Entry;
+
+        if let Some(handle) = self.workspace_active.get(&conversation_id) {
+            if !handle.is_finished() {
+                tracing::debug!(
+                    conversation_id = conversation_id.as_str(),
+                    pr_number,
+                    "start_agent_workspace_polling: already polling, skipping"
+                );
+                return;
+            }
+        }
+        self.workspace_active.remove(&conversation_id);
+
+        let Some(github) = self.github_service.as_ref().map(Arc::clone) else {
+            tracing::warn!(
+                conversation_id = conversation_id.as_str(),
+                pr_number,
+                "start_agent_workspace_polling: github_service is None — skipping"
+            );
+            return;
+        };
+
+        let active = Arc::clone(&self.workspace_active);
+        let stopping = Arc::clone(&self.workspace_stopping);
+        let semaphore = Arc::clone(&self.semaphore);
+        let conversation_id_for_spawn = conversation_id.clone();
+
+        let handle = tokio::spawn(async move {
+            agent_workspace_poll_loop(
+                conversation_id_for_spawn,
+                pr_number,
+                working_dir,
+                github,
+                active,
+                stopping,
+                semaphore,
+                workspace_repo,
+                chat_service,
+            )
+            .await;
+        });
+
+        match self.workspace_active.entry(conversation_id) {
+            Entry::Vacant(vacant) => {
+                vacant.insert(handle);
+            }
+            Entry::Occupied(_) => {
+                handle.abort();
+            }
+        }
+    }
+
+    pub fn stop_agent_workspace_polling(&self, conversation_id: &ChatConversationId) {
+        self.workspace_stopping.insert(conversation_id.clone(), ());
+
+        if let Some((_, handle)) = self.workspace_active.remove(conversation_id) {
+            handle.abort();
+        }
+    }
+
+    pub fn is_agent_workspace_polling(&self, conversation_id: &ChatConversationId) -> bool {
+        self.workspace_active
+            .get(conversation_id)
+            .map(|handle| !handle.is_finished())
+            .unwrap_or(false)
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -110,7 +203,7 @@ impl PrPollerRegistry {
     /// via `DashMap::entry()` to prevent duplicate pollers from concurrent callers
     /// (reconciler restart + PendingMerge re-entry race).
     ///
-    /// Staggered start: adds `rand(0..30s)` jitter so pollers don't thunderherd
+    /// Staggered start: adds `rand(1..=30s)` jitter so pollers don't thunderherd
     /// on startup batch. (AD9)
     pub fn start_polling(
         &self,
@@ -151,10 +244,10 @@ impl PrPollerRegistry {
         let rate_limit = Arc::clone(&self.rate_limit);
         let plan_branch_repo = Arc::clone(&self.plan_branch_repo);
 
-        // Staggered start jitter (AD9): rand(0..30s)
+        // Staggered start jitter (AD9): rand(1..=30s)
         let jitter_secs: u64 = {
             use rand::Rng;
-            rand::thread_rng().gen_range(0..=30)
+            rand::thread_rng().gen_range(1..=30)
         };
 
         // Clone task_id for the spawned closure (original used for DashMap entry insert)
@@ -258,6 +351,29 @@ impl PrPollerRegistry {
             task_id,
             transition_service,
             history_actor,
+        )
+        .await
+    }
+
+    pub async fn process_agent_workspace_review_feedback_once(
+        &self,
+        conversation_id: &ChatConversationId,
+        pr_number: i64,
+        working_dir: &Path,
+        workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+        chat_service: Arc<dyn ChatService>,
+    ) -> crate::AppResult<bool> {
+        let Some(github) = self.github_service.as_ref() else {
+            return Ok(false);
+        };
+
+        route_agent_workspace_review_feedback_if_present(
+            Arc::clone(github),
+            working_dir,
+            pr_number,
+            conversation_id,
+            workspace_repo,
+            chat_service,
         )
         .await
     }
@@ -651,6 +767,267 @@ async fn poll_loop(
     }
 }
 
+async fn agent_workspace_poll_loop(
+    conversation_id: ChatConversationId,
+    pr_number: i64,
+    working_dir: PathBuf,
+    github: Arc<dyn GithubServiceTrait>,
+    active: Arc<DashMap<ChatConversationId, JoinHandle<()>>>,
+    stopping: Arc<DashMap<ChatConversationId, ()>>,
+    semaphore: Arc<tokio::sync::Semaphore>,
+    workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    chat_service: Arc<dyn ChatService>,
+) {
+    let interval = Duration::from_secs(60);
+    let mut first_poll = true;
+
+    loop {
+        if first_poll {
+            first_poll = false;
+        } else {
+            tokio::time::sleep(interval).await;
+        }
+
+        if stopping.contains_key(&conversation_id) {
+            active.remove(&conversation_id);
+            stopping.remove(&conversation_id);
+            return;
+        }
+
+        if !agent_workspace_pr_polling_should_continue(
+            Arc::clone(&workspace_repo),
+            &conversation_id,
+            pr_number,
+        )
+        .await
+        {
+            active.remove(&conversation_id);
+            stopping.remove(&conversation_id);
+            return;
+        }
+
+        let permit = match semaphore.acquire().await {
+            Ok(permit) => permit,
+            Err(_) => {
+                active.remove(&conversation_id);
+                stopping.remove(&conversation_id);
+                return;
+            }
+        };
+
+        if stopping.contains_key(&conversation_id) {
+            active.remove(&conversation_id);
+            stopping.remove(&conversation_id);
+            return;
+        }
+
+        match github.check_pr_status(&working_dir, pr_number).await {
+            Ok(PrStatus::Merged { .. }) => {
+                drop(permit);
+                let _ = mark_agent_workspace_pr_terminal(
+                    Arc::clone(&workspace_repo),
+                    &conversation_id,
+                    "merged",
+                    "Pull request merged",
+                )
+                .await;
+                active.remove(&conversation_id);
+                stopping.remove(&conversation_id);
+                return;
+            }
+            Ok(PrStatus::Closed) => {
+                drop(permit);
+                let _ = mark_agent_workspace_pr_terminal(
+                    Arc::clone(&workspace_repo),
+                    &conversation_id,
+                    "closed",
+                    "Pull request closed without merging",
+                )
+                .await;
+                active.remove(&conversation_id);
+                stopping.remove(&conversation_id);
+                return;
+            }
+            Ok(PrStatus::Open) => {
+                drop(permit);
+                if let Err(error) =
+                    mark_agent_workspace_pr_open(Arc::clone(&workspace_repo), &conversation_id)
+                        .await
+                {
+                    tracing::warn!(
+                        conversation_id = conversation_id.as_str(),
+                        pr_number,
+                        error = %error,
+                        "Agent workspace PR poller: failed to mark PR open"
+                    );
+                }
+
+                match route_agent_workspace_review_feedback_if_present(
+                    Arc::clone(&github),
+                    &working_dir,
+                    pr_number,
+                    &conversation_id,
+                    Arc::clone(&workspace_repo),
+                    Arc::clone(&chat_service),
+                )
+                .await
+                {
+                    Ok(true) => {
+                        tracing::info!(
+                            conversation_id = conversation_id.as_str(),
+                            pr_number,
+                            "Agent workspace PR poller: GitHub requested changes routed to workspace agent"
+                        );
+                        active.remove(&conversation_id);
+                        stopping.remove(&conversation_id);
+                        return;
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        tracing::warn!(
+                            conversation_id = conversation_id.as_str(),
+                            pr_number,
+                            error = %error,
+                            "Agent workspace PR poller: failed to inspect GitHub review feedback"
+                        );
+                    }
+                }
+            }
+            Err(error) => {
+                drop(permit);
+                tracing::warn!(
+                    conversation_id = conversation_id.as_str(),
+                    pr_number,
+                    error = %error,
+                    "Agent workspace PR poller: failed to check PR status"
+                );
+            }
+        }
+    }
+}
+
+async fn agent_workspace_pr_polling_should_continue(
+    workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    conversation_id: &ChatConversationId,
+    pr_number: i64,
+) -> bool {
+    match workspace_repo.get_by_conversation_id(conversation_id).await {
+        Ok(Some(workspace)) if agent_workspace_pr_polling_is_current(&workspace, pr_number) => true,
+        Ok(Some(workspace)) => {
+            tracing::info!(
+                conversation_id = conversation_id.as_str(),
+                pr_number,
+                mode = %workspace.mode,
+                linked_plan_branch_id = workspace
+                    .linked_plan_branch_id
+                    .as_ref()
+                    .map(|id| id.as_str()),
+                publication_pr_number = workspace.publication_pr_number,
+                publication_pr_status = workspace.publication_pr_status.as_deref(),
+                publication_push_status = workspace.publication_push_status.as_deref(),
+                "Agent workspace PR poller: workspace is no longer direct-pollable"
+            );
+            false
+        }
+        Ok(None) => {
+            tracing::info!(
+                conversation_id = conversation_id.as_str(),
+                pr_number,
+                "Agent workspace PR poller: workspace row disappeared"
+            );
+            false
+        }
+        Err(error) => {
+            tracing::warn!(
+                conversation_id = conversation_id.as_str(),
+                pr_number,
+                error = %error,
+                "Agent workspace PR poller: failed to refresh workspace ownership"
+            );
+            true
+        }
+    }
+}
+
+fn agent_workspace_pr_polling_is_current(
+    workspace: &AgentConversationWorkspace,
+    pr_number: i64,
+) -> bool {
+    workspace.status == AgentConversationWorkspaceStatus::Active
+        && workspace.mode == AgentConversationWorkspaceMode::Edit
+        && workspace.linked_plan_branch_id.is_none()
+        && workspace.publication_pr_number == Some(pr_number)
+        && matches!(
+            workspace.publication_push_status.as_deref(),
+            None | Some("pushed")
+        )
+        && !matches!(
+            workspace.publication_pr_status.as_deref(),
+            Some("closed") | Some("merged")
+        )
+}
+
+async fn mark_agent_workspace_pr_open(
+    workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    conversation_id: &ChatConversationId,
+) -> crate::AppResult<()> {
+    let Some(workspace) = workspace_repo
+        .get_by_conversation_id(conversation_id)
+        .await?
+    else {
+        return Ok(());
+    };
+
+    if workspace.publication_pr_status.as_deref() == Some("open")
+        && workspace.publication_push_status.as_deref() == Some("pushed")
+    {
+        return Ok(());
+    }
+
+    workspace_repo
+        .update_publication(
+            conversation_id,
+            workspace.publication_pr_number,
+            workspace.publication_pr_url.as_deref(),
+            Some("open"),
+            Some("pushed"),
+        )
+        .await
+}
+
+async fn mark_agent_workspace_pr_terminal(
+    workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    conversation_id: &ChatConversationId,
+    status: &str,
+    summary: &str,
+) -> crate::AppResult<()> {
+    let Some(workspace) = workspace_repo
+        .get_by_conversation_id(conversation_id)
+        .await?
+    else {
+        return Ok(());
+    };
+
+    workspace_repo
+        .update_publication(
+            conversation_id,
+            workspace.publication_pr_number,
+            workspace.publication_pr_url.as_deref(),
+            Some(status),
+            workspace.publication_push_status.as_deref(),
+        )
+        .await?;
+    workspace_repo
+        .append_publication_event(AgentConversationWorkspacePublicationEvent::new(
+            conversation_id.clone(),
+            format!("pr_{status}"),
+            "succeeded",
+            summary,
+            None,
+        ))
+        .await
+}
+
 async fn route_review_feedback_if_present(
     github: Arc<dyn GithubServiceTrait>,
     working_dir: &Path,
@@ -670,6 +1047,141 @@ async fn route_review_feedback_if_present(
         .route_github_pr_changes_requested(task_id, pr_number, feedback, history_actor)
         .await?;
     Ok(true)
+}
+
+async fn route_agent_workspace_review_feedback_if_present(
+    github: Arc<dyn GithubServiceTrait>,
+    working_dir: &Path,
+    pr_number: i64,
+    conversation_id: &ChatConversationId,
+    workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    chat_service: Arc<dyn ChatService>,
+) -> crate::AppResult<bool> {
+    let Some(feedback) = github
+        .check_pr_review_feedback(working_dir, pr_number)
+        .await?
+    else {
+        return Ok(false);
+    };
+
+    let classification = agent_workspace_review_event_classification(&feedback.review_id);
+    let already_routed = workspace_repo
+        .list_publication_events(conversation_id)
+        .await?
+        .into_iter()
+        .any(|event| event.classification.as_deref() == Some(classification.as_str()));
+    if already_routed {
+        return Ok(false);
+    }
+
+    let workspace = workspace_repo
+        .get_by_conversation_id(conversation_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!(
+                "Agent conversation workspace not found for conversation {}",
+                conversation_id
+            ))
+        })?;
+
+    let message = build_agent_workspace_pr_review_message(pr_number, &workspace, &feedback);
+    chat_service
+        .send_message(
+            ChatContextType::Project,
+            workspace.project_id.as_str(),
+            &message,
+            SendMessageOptions {
+                conversation_id_override: Some(workspace.conversation_id),
+                agent_name_override: Some(
+                    agent_name_for_workspace_mode(workspace.mode).to_string(),
+                ),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|error| AppError::Infrastructure(error.to_string()))?;
+
+    workspace_repo
+        .update_publication(
+            conversation_id,
+            workspace.publication_pr_number,
+            workspace.publication_pr_url.as_deref(),
+            Some("changes_requested"),
+            Some("needs_agent"),
+        )
+        .await?;
+    workspace_repo
+        .append_publication_event(AgentConversationWorkspacePublicationEvent::new(
+            conversation_id.clone(),
+            "github_review",
+            "needs_agent",
+            format!(
+                "GitHub PR #{pr_number} requested changes from @{}",
+                feedback.author
+            ),
+            Some(classification),
+        ))
+        .await?;
+
+    Ok(true)
+}
+
+fn agent_workspace_review_event_classification(review_id: &str) -> String {
+    format!("github_pr_review:{review_id}")
+}
+
+fn build_agent_workspace_pr_review_message(
+    pr_number: i64,
+    workspace: &AgentConversationWorkspace,
+    feedback: &PrReviewFeedback,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "GitHub PR #{pr_number} requested changes for this agent workspace.\n\n"
+    ));
+    out.push_str(
+        "Please address this review in the current workspace branch, commit any fixes if needed, and report what changed.\n\n",
+    );
+    out.push_str(&format!("Review author: @{}\n", feedback.author));
+    if let Some(submitted_at) = feedback.submitted_at.as_deref() {
+        out.push_str(&format!("Submitted: {submitted_at}\n"));
+    }
+    out.push_str(&format!("GitHub review id: {}\n", feedback.review_id));
+    out.push_str(&format!("Workspace branch: {}\n", workspace.branch_name));
+
+    if let Some(body) = feedback
+        .body
+        .as_deref()
+        .filter(|body| !body.trim().is_empty())
+    {
+        out.push_str("\nReview body:\n");
+        out.push_str(body.trim());
+        out.push('\n');
+    }
+
+    if !feedback.comments.is_empty() {
+        out.push_str("\nInline comments:\n");
+        for comment in &feedback.comments {
+            out.push_str(&format_agent_workspace_review_comment(comment));
+        }
+    }
+
+    out
+}
+
+fn format_agent_workspace_review_comment(comment: &PrReviewCommentFeedback) -> String {
+    let location = match (comment.path.as_deref(), comment.line) {
+        (Some(path), Some(line)) => format!("{path}:{line}"),
+        (Some(path), None) => path.to_string(),
+        (None, Some(line)) => format!("line {line}"),
+        (None, None) => "inline comment".to_string(),
+    };
+    format!(
+        "- @{} on {}: {}\n",
+        comment.author,
+        location,
+        comment.body.trim()
+    )
 }
 
 #[cfg(test)]

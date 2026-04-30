@@ -1,8 +1,8 @@
 use super::{
     list_canonical_prompt_backed_agents, load_canonical_agent_definition,
-    load_canonical_codex_metadata, load_harness_agent_prompt, resolve_harness_agent_prompt_path,
-    resolve_project_root_from_catalog_path, resolve_project_root_from_plugin_dir,
-    try_load_canonical_claude_metadata, AgentPromptHarness,
+    load_canonical_claude_metadata, load_canonical_codex_metadata, load_harness_agent_prompt,
+    resolve_harness_agent_prompt_path, resolve_project_root_from_catalog_path,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
 };
 use crate::infrastructure::agents::claude::get_agent_config;
 use std::fs;
@@ -173,6 +173,11 @@ const CROSS_HARNESS_GENERAL_AGENTS: &[(&str, &str, &str)] = &[
         "ralphx-general-worker",
     ),
     (
+        "ralphx-agent-workspace-repair",
+        "agent_workspace_repair",
+        "ralphx-agent-workspace-repair",
+    ),
+    (
         "ralphx-research-deep-researcher",
         "researcher",
         "deep-researcher",
@@ -195,6 +200,7 @@ const CROSS_HARNESS_READONLY_IDEATION_AGENTS: &[(&str, &str, &str)] = &[(
 const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
     "ralphx-general-explorer",
     "ralphx-general-worker",
+    "ralphx-agent-workspace-repair",
     "ralphx-ideation",
     "ralphx-ideation-readonly",
     "ralphx-execution-worker",
@@ -320,6 +326,7 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
 const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
     "ralphx-general-explorer",
     "ralphx-general-worker",
+    "ralphx-agent-workspace-repair",
     "ralphx-execution-worker",
     "ralphx-execution-coder",
     "ralphx-execution-merger",
@@ -358,6 +365,7 @@ const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
 
 const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-general-worker", "acceptEdits"),
+    ("ralphx-agent-workspace-repair", "acceptEdits"),
     ("ralphx-execution-worker", "acceptEdits"),
     ("ralphx-execution-coder", "acceptEdits"),
     ("ralphx-execution-merger", "acceptEdits"),
@@ -370,6 +378,7 @@ const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
 const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-general-explorer", "sonnet"),
     ("ralphx-general-worker", "sonnet"),
+    ("ralphx-agent-workspace-repair", "opus"),
     ("ralphx-utility-session-namer", "sonnet"),
     ("ralphx-chat-task", "sonnet"),
     ("ralphx-chat-project", "sonnet"),
@@ -416,8 +425,14 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
         &["Write", "Edit", "Bash", "LSP"],
         false,
     ),
+    (
+        "ralphx-agent-workspace-repair",
+        "base_tools",
+        &["Edit"],
+        false,
+    ),
     ("ralphx-chat-task", "base_tools", &["Task"], false),
-    ("ralphx-chat-project", "base_tools", &["Task"], false),
+    ("ralphx-chat-project", "readonly_tools", &[], false),
     ("ralphx-review-chat", "base_tools", &["Task"], false),
     ("ralphx-review-history", "base_tools", &["Task"], false),
     (
@@ -566,7 +581,8 @@ fn project_root() -> PathBuf {
 fn lexical_project_root_with_parent_segments_loads_canonical_prompts() {
     let lexical_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
 
-    let prompt = load_harness_agent_prompt(&lexical_root, "ralphx-ideation", AgentPromptHarness::Claude);
+    let prompt =
+        load_harness_agent_prompt(&lexical_root, "ralphx-ideation", AgentPromptHarness::Claude);
 
     assert!(
         prompt.is_some(),
@@ -591,6 +607,91 @@ fn codex_runtime_features_load_from_harness_metadata() {
         backend_specialist.runtime_features.get("shell_tool"),
         Some(&false),
         "Claude no-Bash specialist should map to Codex shell_tool=false"
+    );
+}
+
+#[test]
+fn project_chat_codex_surface_can_advance_ideation_send_message_actions() {
+    let root = project_root();
+    let metadata = load_canonical_codex_metadata(&root, "ralphx-chat-project");
+    let prompt = load_harness_agent_prompt(&root, "ralphx-chat-project", AgentPromptHarness::Codex)
+        .expect("missing codex prompt for ralphx-chat-project");
+
+    assert!(
+        metadata
+            .mcp_tools
+            .iter()
+            .any(|tool| tool == "v1_send_ideation_message"),
+        "project chat must be able to advance external MCP next_action=send_message flows"
+    );
+    assert!(
+        prompt.contains("next_action` yourself") && prompt.contains("v1_send_ideation_message"),
+        "project chat prompt must tell the agent to consume send_message actions itself"
+    );
+}
+
+#[test]
+fn project_chat_codex_surface_can_append_to_open_ideation_plans() {
+    let root = project_root();
+    let metadata = load_canonical_codex_metadata(&root, "ralphx-chat-project");
+    let prompt = load_harness_agent_prompt(&root, "ralphx-chat-project", AgentPromptHarness::Codex)
+        .expect("missing codex prompt for ralphx-chat-project");
+
+    assert_eq!(metadata.mcp_transport.as_deref(), Some("external"));
+    assert!(
+        metadata
+            .mcp_tools
+            .iter()
+            .any(|tool| tool == "v1_append_task_to_plan"),
+        "project chat Codex must use the external append tool for accepted ideation follow-ups"
+    );
+    assert!(
+        prompt.contains("v1_append_task_to_plan") && prompt.contains("waiting-on-PR"),
+        "project chat Codex prompt must describe append behavior for open accepted ideation plans"
+    );
+}
+
+#[test]
+fn project_chat_claude_surface_uses_external_ideation_tools() {
+    let root = project_root();
+    let metadata = load_canonical_claude_metadata(&root, "ralphx-chat-project");
+    let prompt =
+        load_harness_agent_prompt(&root, "ralphx-chat-project", AgentPromptHarness::Claude)
+            .expect("missing claude prompt for ralphx-chat-project");
+
+    assert_eq!(metadata.mcp_transport.as_deref(), Some("external"));
+    assert!(
+        metadata
+            .mcp_tools
+            .iter()
+            .any(|tool| tool == "v1_start_ideation"),
+        "project chat Claude must be able to start external MCP ideation runs"
+    );
+    assert!(
+        prompt.contains("v1_start_ideation") && prompt.contains("next_action` yourself"),
+        "project chat Claude prompt must describe the external ideation flow"
+    );
+}
+
+#[test]
+fn project_chat_claude_surface_can_append_to_open_ideation_plans() {
+    let root = project_root();
+    let metadata = load_canonical_claude_metadata(&root, "ralphx-chat-project");
+    let prompt =
+        load_harness_agent_prompt(&root, "ralphx-chat-project", AgentPromptHarness::Claude)
+            .expect("missing claude prompt for ralphx-chat-project");
+
+    assert_eq!(metadata.mcp_transport.as_deref(), Some("external"));
+    assert!(
+        metadata
+            .mcp_tools
+            .iter()
+            .any(|tool| tool == "v1_append_task_to_plan"),
+        "project chat Claude must use the external append tool for accepted ideation follow-ups"
+    );
+    assert!(
+        prompt.contains("v1_append_task_to_plan") && prompt.contains("waiting-on-PR"),
+        "project chat Claude prompt must describe append behavior for open accepted ideation plans"
     );
 }
 
@@ -1095,18 +1196,33 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
             codex_path.is_some(),
             "expected codex prompt path for {agent_name}"
         );
-        assert!(
-            claude_path
-                .as_ref()
-                .is_some_and(|path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))),
-            "expected {agent_name} claude prompt to resolve through shared/prompt.md"
-        );
-        assert!(
-            codex_path
-                .as_ref()
-                .is_some_and(|path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))),
-            "expected {agent_name} codex prompt to resolve through shared/prompt.md"
-        );
+        if *agent_name == "ralphx-chat-project" {
+            assert!(
+                claude_path.as_ref().is_some_and(
+                    |path| path.ends_with("agents/ralphx-chat-project/claude/prompt.md")
+                ),
+                "expected ralphx-chat-project claude prompt to resolve through claude/prompt.md"
+            );
+            assert!(
+                codex_path.as_ref().is_some_and(
+                    |path| path.ends_with("agents/ralphx-chat-project/codex/prompt.md")
+                ),
+                "expected ralphx-chat-project codex prompt to resolve through codex/prompt.md"
+            );
+        } else {
+            assert!(
+                claude_path.as_ref().is_some_and(
+                    |path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))
+                ),
+                "expected {agent_name} claude prompt to resolve through shared/prompt.md"
+            );
+            assert!(
+                codex_path.as_ref().is_some_and(
+                    |path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))
+                ),
+                "expected {agent_name} codex prompt to resolve through shared/prompt.md"
+            );
+        }
     }
 
     for (agent_name, _, _) in CROSS_HARNESS_SUPPORT_AGENTS {

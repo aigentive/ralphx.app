@@ -18,7 +18,9 @@ use super::has_meaningful_output;
 use crate::application::question_state::QuestionState;
 use crate::commands::ExecutionState;
 use crate::domain::agents::AgentHarnessKind;
-use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatus, TaskId};
+use crate::domain::entities::{
+    ChatContextType, ChatConversationId, InternalStatus, MessageRole, TaskId,
+};
 use crate::domain::repositories::{
     ActivityEventRepository, ArtifactRepository, ChatMessageRepository,
     IdeationSessionRepository, TaskRepository,
@@ -26,6 +28,9 @@ use crate::domain::repositories::{
 use crate::domain::services::MessageQueue;
 use crate::utils::secret_redactor::redact;
 use tokio_util::sync::CancellationToken;
+
+const HIDDEN_RESUME_IN_PLACE_MARKER_CONTENT: &str =
+    "RalphX hidden resume-in-place message was delivered.";
 
 pub(super) fn queue_processing_blocked_by_pause(
     context_type: ChatContextType,
@@ -52,6 +57,56 @@ fn with_resume_in_place_metadata(metadata_override: Option<String>) -> Option<St
     Some(value.to_string())
 }
 
+fn hidden_resume_in_place_marker_metadata(metadata_override: Option<&str>) -> Option<String> {
+    let raw = metadata_override?;
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return None;
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return None;
+    };
+    if obj
+        .get("persist_hidden_marker")
+        .and_then(|value| value.as_bool())
+        != Some(true)
+    {
+        return None;
+    }
+    obj.remove("resume_in_place");
+    obj.remove("persist_hidden_marker");
+    obj.insert("hidden_from_ui".to_string(), serde_json::json!(true));
+    obj.insert("recovery_context".to_string(), serde_json::json!(true));
+    Some(value.to_string())
+}
+
+async fn persist_hidden_resume_in_place_marker(
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    context_type: ChatContextType,
+    context_id: &str,
+    conversation_id: ChatConversationId,
+    metadata_override: Option<&str>,
+) {
+    let Some(marker_metadata) = hidden_resume_in_place_marker_metadata(metadata_override) else {
+        return;
+    };
+    let mut marker = chat_service_context::create_user_message(
+        context_type,
+        context_id,
+        HIDDEN_RESUME_IN_PLACE_MARKER_CONTENT,
+        conversation_id,
+        Some(marker_metadata),
+        None,
+    );
+    marker.role = MessageRole::System;
+    if let Err(error) = chat_message_repo.create(marker).await {
+        tracing::warn!(
+            error = %error,
+            %conversation_id,
+            "failed to persist hidden resume-in-place marker"
+        );
+    }
+}
+
 /// Process all queued messages for a context with retry loop.
 ///
 /// Returns the total number of messages processed.
@@ -63,6 +118,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
     context_type: ChatContextType,
     harness: AgentHarnessKind,
     context_id: &str,
+    queue_context_id: &str,
     conversation_id: ChatConversationId,
     session_id: &str,
     message_queue: &Arc<MessageQueue>,
@@ -93,7 +149,8 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             tracing::info!(
                 %context_type,
                 context_id,
-                pending = message_queue.get_queued(context_type, context_id).len(),
+                queue_context_id,
+                pending = message_queue.get_queued(context_type, queue_context_id).len(),
                 "[QUEUE] Execution paused, leaving queued messages pending"
             );
             break;
@@ -108,14 +165,14 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             break;
         }
 
-        let queue_count = message_queue.get_queued(context_type, context_id).len();
+        let queue_count = message_queue.get_queued(context_type, queue_context_id).len();
 
         if queue_count == 0 {
             // Queue is empty, wait briefly then check once more for race condition
             if total_processed > 0 {
                 // We processed messages, give a small window for late arrivals
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                let final_count = message_queue.get_queued(context_type, context_id).len();
+                let final_count = message_queue.get_queued(context_type, queue_context_id).len();
                 if final_count == 0 {
                     tracing::info!(
                         "[QUEUE] Queue processing complete: {} total messages processed",
@@ -134,24 +191,26 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
         }
 
         tracing::info!(
-            "[QUEUE] Processing queue: session_id={}, context={}/{}, pending={}",
+            "[QUEUE] Processing queue: session_id={}, context={}/{}, queue_context_id={}, pending={}",
             session_id,
             context_type,
             context_id,
+            queue_context_id,
             queue_count
         );
 
         // Inner loop: process all currently queued messages
-        while let Some(queued_msg) = message_queue.pop(context_type, context_id) {
+        while let Some(queued_msg) = message_queue.pop(context_type, queue_context_id) {
             if queue_processing_blocked_by_pause(context_type, execution_state.as_ref()) {
                 message_queue.queue_front_existing(
                     context_type,
-                    context_id,
+                    queue_context_id,
                     queued_msg,
                 );
                 tracing::info!(
                     %context_type,
                     context_id,
+                    queue_context_id,
                     "[QUEUE] Execution paused after dequeue, restored message to queue front"
                 );
                 break;
@@ -170,20 +229,20 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         if task.internal_status != InternalStatus::Executing
                             && task.internal_status != InternalStatus::ReExecuting
                         {
-                            let remaining = message_queue.get_queued(context_type, context_id).len();
+                            let remaining = message_queue.get_queued(context_type, queue_context_id).len();
                             tracing::info!(
                                 "[QUEUE] Task {} has transitioned to {:?}, draining {} queued messages without spawning",
                                 context_id,
                                 task.internal_status,
                                 remaining + 1,
                             );
-                            while message_queue.pop(context_type, context_id).is_some() {}
+                            while message_queue.pop(context_type, queue_context_id).is_some() {}
                             break;
                         }
                     }
                     Ok(None) => {
                         tracing::warn!("[QUEUE] Task {} not found, draining queued messages", context_id);
-                        while message_queue.pop(context_type, context_id).is_some() {}
+                        while message_queue.pop(context_type, queue_context_id).is_some() {}
                         break;
                     }
                     Err(e) => {
@@ -207,7 +266,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         message_id: queued_msg.id.clone(),
                         conversation_id: conversation_id.as_str().to_string(),
                         context_type: context_type.to_string(),
-                        context_id: context_id.to_string(),
+                        context_id: queue_context_id.to_string(),
                     },
                 );
             }
@@ -344,6 +403,11 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 working_directory,
                 session_id,
                 project_id,
+                if context_type == ChatContextType::Project {
+                    Some(conversation_id.as_str())
+                } else {
+                    None
+                },
                 team_mode,
                 Arc::clone(chat_attachment_repo),
                 Arc::clone(artifact_repo),
@@ -433,6 +497,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         None, // Queue processing doesn't track execution slots
                         None, // Queue processing doesn't persist session_id
                         split_verification_transcript,
+                        true,
                     )
                     .await
                     {
@@ -442,6 +507,16 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                             let blocks = outcome.content_blocks;
                             let provider_session_id = outcome.session_id;
                             let queue_stderr = outcome.stderr_text;
+                            if resume_in_place {
+                                persist_hidden_resume_in_place_marker(
+                                    chat_message_repo,
+                                    context_type,
+                                    context_id,
+                                    conversation_id.clone(),
+                                    queued_msg.metadata_override.as_deref(),
+                                )
+                                .await;
+                            }
                             if let Some(ref provider_session_id) = provider_session_id {
                                 let _ = chat_message_repo
                                     .update_provider_session_ref(
@@ -489,7 +564,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                                 );
                                 message_queue.queue_front_existing(
                                     context_type,
-                                    context_id,
+                                    queue_context_id,
                                     resumed_msg,
                                 );
                                 super::chat_service_handlers::apply_system_wide_provider_pause(

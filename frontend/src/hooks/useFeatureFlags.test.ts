@@ -26,10 +26,10 @@ function createWrapper() {
 // ============================================================================
 
 describe("isViewEnabled", () => {
-  const allEnabled: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true };
-  const activityDisabled: FeatureFlags = { activityPage: false, extensibilityPage: true, battleMode: true };
-  const extensibilityDisabled: FeatureFlags = { activityPage: true, extensibilityPage: false, battleMode: true };
-  const allDisabled: FeatureFlags = { activityPage: false, extensibilityPage: false, battleMode: true };
+  const allEnabled: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true, teamMode: false };
+  const activityDisabled: FeatureFlags = { activityPage: false, extensibilityPage: true, battleMode: true, teamMode: false };
+  const extensibilityDisabled: FeatureFlags = { activityPage: true, extensibilityPage: false, battleMode: true, teamMode: false };
+  const allDisabled: FeatureFlags = { activityPage: false, extensibilityPage: false, battleMode: true, teamMode: false };
 
   it("returns true for kanban regardless of flags", () => {
     expect(isViewEnabled("kanban", allDisabled)).toBe(true);
@@ -84,6 +84,7 @@ describe("useFeatureFlags", () => {
       activityPage: true,
       extensibilityPage: true,
       battleMode: true,
+      teamMode: false,
     });
   });
 
@@ -97,7 +98,12 @@ describe("useFeatureFlags", () => {
 
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
 
-    expect(result.current.data).toEqual({ activityPage: false, extensibilityPage: true, battleMode: true });
+    expect(result.current.data).toEqual({
+      activityPage: false,
+      extensibilityPage: true,
+      battleMode: true,
+      teamMode: false,
+    });
     expect(invoke).toHaveBeenCalledWith("get_ui_feature_flags");
   });
 
@@ -120,6 +126,7 @@ describe("useFeatureFlags", () => {
       activityPage: true,
       extensibilityPage: true,
       battleMode: true,
+      teamMode: false,
     });
   });
 });

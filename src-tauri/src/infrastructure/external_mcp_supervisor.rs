@@ -22,6 +22,20 @@ use tracing;
 
 use crate::infrastructure::agents::claude::ExternalMcpConfig;
 
+pub const TAURI_MCP_BYPASS_TOKEN_ENV: &str = "RALPHX_TAURI_MCP_BYPASS_TOKEN";
+
+pub fn ensure_tauri_mcp_bypass_token() -> String {
+    if let Ok(token) = std::env::var(TAURI_MCP_BYPASS_TOKEN_ENV) {
+        if !token.trim().is_empty() {
+            return token;
+        }
+    }
+
+    let token = format!("rx_tauri_{}", uuid::Uuid::new_v4().simple());
+    std::env::set_var(TAURI_MCP_BYPASS_TOKEN_ENV, &token);
+    token
+}
+
 // ── Environment detection ─────────────────────────────────────────────────
 
 fn is_test_environment() -> bool {
@@ -117,7 +131,11 @@ impl ExternalMcpSupervisor {
 
     // ── Public API ────────────────────────────────────────────────────────
 
-    pub async fn start(self: Arc<Self>, node_path: PathBuf, entry_path: PathBuf) -> Result<(), String> {
+    pub async fn start(
+        self: Arc<Self>,
+        node_path: PathBuf,
+        entry_path: PathBuf,
+    ) -> Result<(), String> {
         if is_test_environment() {
             tracing::info!("Skipping external MCP supervisor start (test environment)");
             return Ok(());
@@ -127,7 +145,8 @@ impl ExternalMcpSupervisor {
 
         let this = Arc::clone(&self);
         tokio::spawn(async move {
-            this.run_supervisor_with_panic_guard(node_path, entry_path).await;
+            this.run_supervisor_with_panic_guard(node_path, entry_path)
+                .await;
         });
 
         Ok(())
@@ -231,7 +250,9 @@ impl ExternalMcpSupervisor {
         let stderr_lines = Arc::new(Mutex::new(Vec::<String>::new()));
 
         // Pipe stdout/stderr to tracing and collect stderr
-        let child = self.attach_io_handles(child, Arc::clone(&stderr_lines)).await;
+        let child = self
+            .attach_io_handles(child, Arc::clone(&stderr_lines))
+            .await;
 
         *self.child.lock().await = Some(child);
 
@@ -253,9 +274,9 @@ impl ExternalMcpSupervisor {
             HealthCheckResult::Failed => {
                 // Check for EADDRINUSE before counting as restart attempt
                 let lines = stderr_lines.lock().await;
-                let eaddrinuse = lines.iter().any(|l| {
-                    l.contains("EADDRINUSE") || l.contains("address already in use")
-                });
+                let eaddrinuse = lines
+                    .iter()
+                    .any(|l| l.contains("EADDRINUSE") || l.contains("address already in use"));
                 drop(lines);
 
                 if eaddrinuse {
@@ -277,11 +298,17 @@ impl ExternalMcpSupervisor {
                 tracing::warn!("External MCP health check failed");
                 *attempts += 1;
                 if *attempts >= self.config.max_restart_attempts {
-                    self.emit_event("failed", Some("Health check failed after max attempts".to_string()));
+                    self.emit_event(
+                        "failed",
+                        Some("Health check failed after max attempts".to_string()),
+                    );
                     self.cancel.cancel();
                     return;
                 }
-                self.emit_event("restarting", Some(format!("Health check failed, attempt {}", attempts)));
+                self.emit_event(
+                    "restarting",
+                    Some(format!("Health check failed, attempt {}", attempts)),
+                );
                 self.kill_current().await;
                 tokio::time::sleep(Duration::from_millis(self.config.restart_delay_ms)).await;
                 return;
@@ -311,7 +338,10 @@ impl ExternalMcpSupervisor {
             runtime,
             exit_code
         );
-        self.emit_event("crashed", Some(format!("Process exited (code: {:?})", exit_code)));
+        self.emit_event(
+            "crashed",
+            Some(format!("Process exited (code: {:?})", exit_code)),
+        );
 
         *attempts += 1;
         if *attempts >= self.config.max_restart_attempts {
@@ -320,19 +350,27 @@ impl ExternalMcpSupervisor {
             return;
         }
 
-        self.emit_event("restarting", Some(format!("Restarting, attempt {}", attempts)));
+        self.emit_event(
+            "restarting",
+            Some(format!("Restarting, attempt {}", attempts)),
+        );
         tokio::time::sleep(Duration::from_millis(self.config.restart_delay_ms)).await;
     }
 
     // ── Process management ────────────────────────────────────────────────
 
-    async fn spawn_process(&self, node_path: &Path, entry_path: &Path) -> Result<Child, std::io::Error> {
+    async fn spawn_process(
+        &self,
+        node_path: &Path,
+        entry_path: &Path,
+    ) -> Result<Child, std::io::Error> {
         let mut cmd = Command::new(node_path);
         cmd.arg(entry_path);
 
         cmd.env("EXTERNAL_MCP_PORT", self.config.port.to_string());
         cmd.env("EXTERNAL_MCP_HOST", &self.config.host);
         cmd.env("RALPHX_BACKEND_URL", "http://127.0.0.1:3847");
+        cmd.env(TAURI_MCP_BYPASS_TOKEN_ENV, ensure_tauri_mcp_bypass_token());
         if let Some(token) = &self.config.auth_token {
             cmd.env("EXTERNAL_MCP_AUTH_TOKEN", token);
         }
@@ -492,10 +530,7 @@ impl ExternalMcpSupervisor {
         if let Ok(contents) = std::fs::read_to_string(&pid_path) {
             if let Ok(pid) = contents.trim().parse::<i32>() {
                 if is_external_mcp_process(pid) {
-                    tracing::warn!(
-                        "Found orphaned external MCP process (PID {}), killing",
-                        pid
-                    );
+                    tracing::warn!("Found orphaned external MCP process (PID {}), killing", pid);
                     let pgid = Pid::from_raw(pid);
                     let _ = killpg(pgid, Signal::SIGTERM);
                     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -528,12 +563,9 @@ async fn http_get_status(host: &str, port: u16, path: &str) -> Result<u16, std::
         "GET {} HTTP/1.0\r\nHost: {}\r\nConnection: close\r\n\r\n",
         path, host
     );
-    tokio::time::timeout(
-        Duration::from_secs(2),
-        stream.write_all(request.as_bytes()),
-    )
-    .await
-    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "write timeout"))??;
+    tokio::time::timeout(Duration::from_secs(2), stream.write_all(request.as_bytes()))
+        .await
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "write timeout"))??;
 
     let mut buf = [0u8; 512];
     let n = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buf))
@@ -551,25 +583,22 @@ async fn http_get_status(host: &str, port: u16, path: &str) -> Result<u16, std::
 }
 
 /// Check whether a PID belongs to an external-mcp Node process.
-/// Uses `ps` on macOS, `/proc` on Linux.
 fn is_external_mcp_process(pid: i32) -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        let output = std::process::Command::new("ps")
-            .args(["-p", &pid.to_string(), "-o", "command="])
-            .output();
-        if let Ok(o) = output {
-            let cmd = String::from_utf8_lossy(&o.stdout);
-            return cmd.contains("external-mcp") || cmd.contains("external_mcp");
-        }
-        false
+    if pid <= 0 {
+        return false;
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let cmdline =
-            std::fs::read_to_string(format!("/proc/{}/cmdline", pid)).unwrap_or_default();
-        cmdline.contains("external-mcp") || cmdline.contains("external_mcp")
+
+    let pid_arg = pid.to_string();
+    let output = std::process::Command::new("ps")
+        .args(["-p", pid_arg.as_str(), "-o", "command="])
+        .output();
+
+    if let Ok(o) = output {
+        let cmd = String::from_utf8_lossy(&o.stdout);
+        return cmd.contains("external-mcp") || cmd.contains("external_mcp");
     }
+
+    false
 }
 
 /// Returns true if a process with the given PID still exists.

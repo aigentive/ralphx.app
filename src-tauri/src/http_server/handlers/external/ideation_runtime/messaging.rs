@@ -12,6 +12,8 @@ pub struct IdeationMessageResponse {
     /// Delivery outcome: "sent" | "queued" | "spawned"
     pub status: String,
     pub session_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queued_as_pending: Option<bool>,
     pub next_action: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
@@ -151,6 +153,7 @@ then retry sending.",
                 return Ok(Json(IdeationMessageResponse {
                     status: "sent".to_string(),
                     session_id: session_id_str,
+                    queued_as_pending: None,
                     next_action: "poll_status".to_string(),
                     hint: Some(
                         "Wait for agent to respond. Poll v1_get_ideation_status (5-10s interval)"
@@ -206,6 +209,7 @@ then retry sending.",
         return Ok(Json(IdeationMessageResponse {
             status: "queued".to_string(),
             session_id: session_id_str,
+            queued_as_pending: None,
             next_action: "poll_status".to_string(),
             hint: Some(
                 "Wait for agent to respond. Poll v1_get_ideation_status (5-10s interval)"
@@ -234,14 +238,22 @@ then retry sending.",
                 IdeationSessionId::from_string(session_id_str.clone()),
                 current_phase,
             );
+            let queued_as_pending = result.queued_as_pending;
             return Ok(Json(IdeationMessageResponse {
                 status: "queued".to_string(),
                 session_id: session_id_str,
-                next_action: "poll_status".to_string(),
-                hint: Some(
+                queued_as_pending: queued_as_pending.then_some(true),
+                next_action: if queued_as_pending {
+                    "wait_for_resume".to_string()
+                } else {
+                    "poll_status".to_string()
+                },
+                hint: Some(if queued_as_pending {
+                    "The message is saved as the pending ideation prompt, but execution is paused. Resume execution to launch the run.".to_string()
+                } else {
                     "Wait for agent to respond. Poll v1_get_ideation_status (5-10s interval)"
-                        .to_string(),
-                ),
+                        .to_string()
+                }),
             }));
         }
         Ok(_) => {}
@@ -265,6 +277,7 @@ then retry sending.",
     Ok(Json(IdeationMessageResponse {
         status: "spawned".to_string(),
         session_id: session_id_str,
+        queued_as_pending: None,
         next_action: "poll_status".to_string(),
         hint: Some(
             "Wait for agent to respond. Poll v1_get_ideation_status (5-10s interval)"

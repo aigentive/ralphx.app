@@ -10,6 +10,7 @@ export type { ChildSessionStatusResponse };
  *
  * Polling strategy:
  * - 5s interval when estimated_status !== "idle"
+ * - 5s interval while the session's verification snapshot is reviewing
  * - Disabled when idle (or when sessionId is null/undefined)
  *
  * History mode guard:
@@ -30,7 +31,7 @@ export function useChildSessionStatus(
     queryFn: async () => {
       const data = await getChildSessionStatus(sessionId!);
 
-      // First-fetch history mode guard: idle + no messages + no pending prompt → permanent disable.
+      // First-fetch history mode guard: idle + no messages + no pending prompt -> permanent disable.
       // When pending_initial_prompt is set, keep polling so we detect when the drain spawns an agent.
       if (
         data.agent_state.estimated_status === "idle" &&
@@ -49,9 +50,10 @@ export function useChildSessionStatus(
       if (historyMode) return false;
       const data = query.state.data;
       if (!data) return false;
-      // Keep polling when agent is active OR when a pending prompt is waiting to be drained
+      // Keep polling when agent is active OR when a pending prompt is waiting to be drained.
       if (data.agent_state.estimated_status !== "idle") return 5_000;
       if (data.pending_initial_prompt) return 5_000;
+      if (data.verification?.status === "reviewing") return 5_000;
       return false;
     },
   });

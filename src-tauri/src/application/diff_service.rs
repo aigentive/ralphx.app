@@ -85,6 +85,58 @@ impl DiffService {
         self.get_file_changes_between_refs(project_path, base_branch, "HEAD")
     }
 
+    /// Get all files changed in the worktree compared to a base ref.
+    /// Includes committed, staged, and unstaged changes so review surfaces match what will publish.
+    pub fn get_worktree_file_changes_from_ref(
+        &self,
+        project_path: &str,
+        base_ref: &str,
+    ) -> AppResult<Vec<FileChange>> {
+        let output = Command::new("git")
+            .args(["diff", "--name-status", base_ref])
+            .current_dir(project_path)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git diff: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "git diff failed: {}",
+                stderr
+            )));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut changes = Vec::new();
+
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                let status_char = parts[0].chars().next().unwrap_or('M');
+                let file_path = parts[1];
+
+                let status = match status_char {
+                    'A' => FileChangeStatus::Added,
+                    'D' => FileChangeStatus::Deleted,
+                    _ => FileChangeStatus::Modified,
+                };
+
+                let (additions, deletions) =
+                    self.get_worktree_file_line_counts_from_ref(file_path, project_path, base_ref);
+
+                changes.push(FileChange {
+                    path: file_path.to_string(),
+                    status,
+                    additions,
+                    deletions,
+                });
+            }
+        }
+
+        changes.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(changes)
+    }
+
     /// Get line additions/deletions for a file compared to base branch
     #[allow(dead_code)]
     fn get_file_line_counts(
@@ -95,6 +147,32 @@ impl DiffService {
     ) -> (u32, u32) {
         let output = Command::new("git")
             .args(["diff", "--numstat", base_branch, "--", file_path])
+            .current_dir(project_path)
+            .output();
+
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = stdout.lines().next() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let additions: u32 = parts[0].parse().unwrap_or(0);
+                    let deletions: u32 = parts[1].parse().unwrap_or(0);
+                    return (additions, deletions);
+                }
+            }
+        }
+
+        (0, 0)
+    }
+
+    fn get_worktree_file_line_counts_from_ref(
+        &self,
+        file_path: &str,
+        project_path: &str,
+        base_ref: &str,
+    ) -> (u32, u32) {
+        let output = Command::new("git")
+            .args(["diff", "--numstat", base_ref, "--", file_path])
             .current_dir(project_path)
             .output();
 
@@ -376,7 +454,10 @@ impl DiffService {
     }
 
     /// Compute base ref for a merged task range.
-    /// If merge commit, use first parent; otherwise use merge-base with base branch.
+    /// True merge commits compare against their first parent. Non-merge recorded
+    /// task merge SHAs are usually squash/rebase commits, so compare against the
+    /// direct parent instead of a current-base merge-base that may include older
+    /// plan/agent branch work.
     pub fn get_merged_base_ref(
         &self,
         project_path: &str,
@@ -385,6 +466,18 @@ impl DiffService {
     ) -> String {
         if self.is_merge_commit(project_path, merge_commit_sha) {
             return format!("{}^1", merge_commit_sha);
+        }
+
+        let parent_ref = format!("{}^", merge_commit_sha);
+        let parent_output = Command::new("git")
+            .args(["rev-parse", "--verify", &parent_ref])
+            .current_dir(project_path)
+            .output();
+        if parent_output
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+        {
+            return parent_ref;
         }
 
         let output = Command::new("git")

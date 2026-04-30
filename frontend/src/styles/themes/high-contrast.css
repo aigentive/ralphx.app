@@ -51,6 +51,10 @@ html[data-theme="high-contrast"] main {
   --accent-hover:     #ffaa77;
   --accent-muted:     hsla(20 100% 65% / 0.2);
   --accent-border:    hsla(20 100% 65% / 0.5);
+  --chat-user-bubble-bg: hsla(20 100% 65% / 0.10);
+  --chat-user-bubble-border: hsla(20 100% 65% / 0.45);
+  --chat-user-bubble-text: #ffffff;
+  --chat-user-bubble-copy-hover: hsla(0 0% 100% / 0.10);
 
   /* Status — bright + always paired with icons. Literals per WKWebView
      rule; color-mix against the same literal keeps the alpha ladder. */
@@ -84,6 +88,11 @@ html[data-theme="high-contrast"] main {
   --border-focus:   #ff8855;
   --border-width-default: 2px;
   --border-width-focus:   3px;
+
+  /* Inline form-control border (composer wrapper, pills, etc.). Without
+     this token defined per-theme, inline `var(--form-border)` resolves
+     invalid in HC and Plus button + neighboring chips lose their stroke. */
+  --form-border: hsla(0 0% 100% / 0.30);
 
   /* Focus ring — brand orange. Literal per WKWebView rule. */
   --focus-ring: #ff8855;
@@ -179,10 +188,18 @@ html[data-theme="high-contrast"] main {
   --sidebar-ring:               var(--accent-primary);
 }
 
-/* Thicker focus ring in HC — applied globally */
+/* Thicker focus ring in HC — applied to interactive controls (buttons,
+   links, role="button" etc.). Text inputs are excluded because the
+   wrapper they live in already shows an accent border on focus, and a
+   second outline around the input itself reads as a stray frame. */
 [data-theme="high-contrast"] :focus-visible {
   outline: var(--border-width-focus) solid var(--focus-ring);
   outline-offset: 2px;
+}
+[data-theme="high-contrast"] textarea:focus-visible,
+[data-theme="high-contrast"] input:focus-visible,
+[data-theme="high-contrast"] [contenteditable]:focus-visible {
+  outline: none;
 }
 
 /* Placeholder contrast bump — --text-muted (#B0B0B0) passes AAA numerically
@@ -427,13 +444,11 @@ html[data-theme="high-contrast"] main {
   opacity: 1;
 }
 
-/* HC chat message bubbles — TextBubble's wrapper sets inline border:none.
-   Give HC a 1px soft white (54%) stroke so consecutive bubbles don't
-   merge visually without competing with accent elements (CODEX badge,
-   FROM CHAT CTA). Per 2026-04-19 feedback. */
-[data-theme="high-contrast"] [data-testid^="text-bubble"] {
-  border: 1px solid hsla(0 0% 100% / 0.54) !important;
-}
+/* Chat message bubbles intentionally have no border — the text content
+   itself carries the meaning, and consecutive bubbles separate via
+   margin/spacing rather than a stroke. (Earlier HC build added a 1px
+   white border per 2026-04-19 feedback; reverted because the box around
+   plain prose read as a frame, not as a bubble.) */
 
 /* ============================================================================
  * Phase 1 — Region perimeters (border-driven layout).
@@ -472,10 +487,7 @@ html[data-theme="high-contrast"] main {
   border: none !important;
 }
 
-/* Right-side chat panels — left fence separates chat from main content.
-   Covers both ResizeablePanel (ChatPanel on Graph/Insights/…) and the
-   integrated variant (Kanban/Ideation). */
-[data-theme="high-contrast"] [data-testid="chat-panel"],
+/* Right-side chat panels — left fence separates embedded chat from main content. */
 [data-theme="high-contrast"] [data-testid="integrated-chat-panel"] {
   border-left: 1px solid hsla(0 0% 100% / 0.15) !important;
 }
@@ -634,9 +646,12 @@ html[data-theme="high-contrast"] main {
    (white on HC), so the resting stroke is pure white. Bump to 2px on
    focus so the focus ring reads from a distance. Combined with the
    global HC yellow focus ring (outline) this gives double-emphasis on
-   active fields — matches the reference's "active input fence" look. */
-[data-theme="high-contrast"] input:where(:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="submit"]):not([type="button"])):focus,
-[data-theme="high-contrast"] textarea:focus {
+   active fields — matches the reference's "active input fence" look.
+   Skip elements that explicitly opt out of borders (`border-0`) so the
+   composer textarea (which lives inside a wrapper that paints the
+   focus stroke) doesn't get a second inner rectangle on focus. */
+[data-theme="high-contrast"] input:where(:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="submit"]):not([type="button"])):not(.border-0):focus,
+[data-theme="high-contrast"] textarea:not(.border-0):focus {
   border-width: 2px;
 }
 
@@ -647,6 +662,17 @@ html[data-theme="high-contrast"] main {
    shape is defined whatever its fill. */
 [data-theme="high-contrast"] .border-transparent {
   border-color: var(--border-inline) !important;
+}
+
+/* Composer send button disabled state — the inline style applies a 40%
+   tint of the brand orange as the bg + text-on-accent (black) for the
+   icon. On HC that resolves to dim brown + black icon, which reads as
+   "missing button". Override to a muted-white surface with primary text
+   so the affordance stays legible while still signalling "inactive". */
+[data-theme="high-contrast"] .agent-composer-action-button:disabled {
+  background: hsla(0 0% 100% / 0.10) !important;
+  color: hsla(0 0% 100% / 0.55) !important;
+  border-color: hsla(0 0% 100% / 0.30) !important;
 }
 
 /* Radix checkbox/radio unchecked state — Radix renders these with no
@@ -801,19 +827,6 @@ html[data-theme="high-contrast"] main {
 }
 [data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="border: 1.5px dashed"] {
   border-color: var(--border-subtle) !important;
-}
-
-/* User chat bubble (HC): full-saturation yellow collides with primary
-   buttons/nav pills (color-only affordance smell). Keep yellow as the
-   identity signal via a low-opacity tint + yellow stroke; text reads as
-   normal white. Styleguide §3 — color shouldn't carry two meanings. */
-[data-theme="high-contrast"] [data-testid="text-bubble-user"] {
-  background: hsla(20 100% 65% / 0.10) !important;
-  color: var(--text-primary) !important;
-  border: 1px solid hsla(20 100% 65% / 0.45) !important;
-}
-[data-theme="high-contrast"] [data-testid="text-bubble-user"] button {
-  color: var(--text-primary) !important;
 }
 
 /* Timeline entries (HC): soften the full-white button border from the

@@ -72,6 +72,16 @@ export async function getGitDefaultBranch(workingDirectory: string): Promise<str
 }
 
 /**
+ * Get the current local branch for a git repository.
+ * @param workingDirectory The path to the git repository
+ * @returns The current local branch name
+ */
+export async function getGitCurrentBranch(workingDirectory: string): Promise<string> {
+  const result = await invoke<string>("get_git_current_branch", { workingDirectory });
+  return result;
+}
+
+/**
  * Projects API object containing all typed Tauri command wrappers for projects
  */
 export const projectsApi = {
@@ -130,10 +140,22 @@ export const projectsApi = {
   /**
    * Archive a project
    * @param projectId The project ID
-   * @returns true if archived
+   * @returns The archived project
    */
   archive: (projectId: string) =>
-    typedInvoke("archive_project", { projectId }, z.boolean()),
+    typedInvokeWithTransform(
+      "archive_project",
+      { projectId },
+      ProjectResponseSchema,
+      transformProject
+    ),
+
+  /**
+   * Delete a project
+   * @param projectId The project ID
+   */
+  delete: (projectId: string) =>
+    typedInvoke("delete_project", { id: projectId }, z.void()),
 
   /**
    * Update custom analysis override for a project

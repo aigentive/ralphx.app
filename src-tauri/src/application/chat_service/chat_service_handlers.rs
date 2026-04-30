@@ -408,6 +408,7 @@ fn build_recovery_retry_background_context<R: Runtime>(
         harness: recovery_harness,
         context_type,
         context_id: context_id.to_string(),
+        runtime_context_id: context_id.to_string(),
         conversation_id,
         agent_run_id: agent_run_id.to_string(),
         stored_session_id: Some(new_session_id.clone()),
@@ -429,6 +430,7 @@ fn build_recovery_retry_background_context<R: Runtime>(
             agent_lane_settings_repo: agent_lane_settings_repo.clone(),
             ideation_effort_settings_repo: ideation_effort_settings_repo.clone(),
             ideation_model_settings_repo: ideation_model_settings_repo.clone(),
+            agent_conversation_workspace_repo: None,
             task_proposal_repo: task_proposal_repo.clone(),
             activity_event_repo: Arc::clone(activity_event_repo),
             memory_event_repo: Arc::clone(memory_event_repo),
@@ -458,6 +460,7 @@ fn build_recovery_retry_background_context<R: Runtime>(
             logical_effort: None,
             effective_effort: None,
         },
+        persist_conversation_provider_session_ref: true,
         cancellation_token: tokio_util::sync::CancellationToken::new(),
         team_service: None,
         streaming_state_cache: super::StreamingStateCache::new(),
@@ -1668,6 +1671,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                 working_directory,
                                 &new_session_id,
                                 resolved_project_id.as_deref(),
+                                if context_type == ChatContextType::Project {
+                                    Some(conversation_id.as_str())
+                                } else {
+                                    None
+                                },
                                 team_mode,
                                 Arc::clone(chat_attachment_repo),
                                 Arc::clone(artifact_repo),

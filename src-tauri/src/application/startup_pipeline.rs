@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use tracing::info;
 
+use crate::application::agent_workspace_bridge::AgentWorkspaceBridgeDeps;
 use crate::application::runtime_factory::{ChatRuntimeFactoryDeps, RuntimeFactoryDeps};
 use crate::application::startup_runtime_builders::{
     build_startup_chat_resumption_runner, build_startup_reconciliation_runner,
@@ -16,13 +17,13 @@ use crate::application::{
 };
 use crate::commands::{ActiveProjectState, ExecutionState};
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, AppStateRepository,
-    ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
-    ChatMessageRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
-    ExternalEventsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
-    IdeationSessionRepository, MemoryArchiveRepository, MemoryEntryRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskRepository, TaskStepRepository,
+    ActivityEventRepository, AgentConversationWorkspaceRepository, AgentLaneSettingsRepository,
+    AgentRunRepository, AppStateRepository, ArtifactRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionPlanRepository,
+    ExecutionSettingsRepository, ExternalEventsRepository, IdeationEffortSettingsRepository,
+    IdeationModelSettingsRepository, IdeationSessionRepository, MemoryArchiveRepository,
+    MemoryEntryRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    ReviewRepository, TaskDependencyRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::WebhookPublisher;
@@ -41,6 +42,7 @@ pub(crate) struct StartupPipelineDeps {
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     pub artifact_repo: Arc<dyn ArtifactRepository>,
     pub conversation_repo: Arc<dyn ChatConversationRepository>,
+    pub agent_conversation_workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
     pub agent_run_repo: Arc<dyn AgentRunRepository>,
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     pub activity_event_repo: Arc<dyn ActivityEventRepository>,
@@ -91,6 +93,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         chat_attachment_repo,
         artifact_repo,
         conversation_repo,
+        agent_conversation_workspace_repo,
         agent_run_repo,
         ideation_session_repo,
         activity_event_repo,
@@ -215,6 +218,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         Arc::clone(&running_agent_registry),
         Arc::clone(&memory_event_repo),
     )
+    .with_agent_conversation_workspace_repo(Some(Arc::clone(&agent_conversation_workspace_repo)))
     .with_runtime_support(
         Some(Arc::clone(&execution_settings_repo)),
         Some(Arc::clone(&agent_lane_settings_repo)),
@@ -230,6 +234,15 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         Arc::clone(&execution_state),
         recovery_chat_service_deps.clone(),
     );
+
+    tracing::info!("Running agent workspace PR startup recovery...");
+    crate::application::pr_startup_recovery::recover_agent_workspace_pr_pollers(
+        Arc::clone(&agent_conversation_workspace_repo),
+        Arc::clone(&project_repo),
+        Arc::clone(&pr_poller_registry),
+        Arc::clone(&recovery_chat_service),
+    )
+    .await;
 
     let runner = StartupJobRunner::new(
         Arc::clone(&task_repo),
@@ -365,6 +378,21 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         )
         .await;
     }
+
+    startup_background::spawn_agent_workspace_bridge_dispatcher(
+        AgentWorkspaceBridgeDeps {
+            project_repo: Arc::clone(&project_repo),
+            chat_conversation_repo: Arc::clone(&conversation_repo),
+            chat_message_repo: Arc::clone(&chat_message_repo),
+            agent_conversation_workspace_repo: Arc::clone(&agent_conversation_workspace_repo),
+            external_events_repo: Arc::clone(&external_events_repo),
+            task_repo: Arc::clone(&task_repo),
+            message_queue: Arc::clone(&message_queue),
+        },
+        recovery_chat_service_deps.clone(),
+        Arc::clone(&execution_state),
+        app_handle.clone(),
+    );
 
     startup_background::spawn_cleanup_loops(
         Arc::clone(&external_events_repo),

@@ -280,7 +280,7 @@ async fn test_startup_resumes_orphaned_executing_task_before_wall_clock_timeout(
     app_state.task_repo.create(task).await.unwrap();
 
     let conversation = ChatConversation::new_task_execution(task_id.clone());
-    let conversation_id = conversation.id.clone();
+    let conversation_id = conversation.id;
     app_state
         .chat_conversation_repo
         .create(conversation)
@@ -774,10 +774,12 @@ async fn test_revision_needed_auto_transitions_on_startup() {
     let repo = setup_git_repo();
 
     // Create a project with a task in RevisionNeeded state
-    let project = Project::new(
+    let worktrees = TempDir::new().expect("create worktree parent");
+    let mut project = Project::new(
         "Test Project".to_string(),
         repo.path().to_string_lossy().to_string(),
     );
+    project.worktree_parent_directory = Some(worktrees.path().to_string_lossy().to_string());
     app_state
         .project_repo
         .create(project.clone())
@@ -839,10 +841,12 @@ async fn test_merge_incomplete_commit_hook_rows_are_rerouted_on_startup() {
     execution_state.set_max_concurrent(10);
     let repo = setup_git_repo();
 
-    let project = Project::new(
+    let worktrees = TempDir::new().expect("create worktree parent");
+    let mut project = Project::new(
         "Test Project".to_string(),
         repo.path().to_string_lossy().to_string(),
     );
+    project.worktree_parent_directory = Some(worktrees.path().to_string_lossy().to_string());
     app_state
         .project_repo
         .create(project.clone())

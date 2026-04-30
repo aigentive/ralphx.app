@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::AppState;
 use crate::application::runtime_wiring::{create_main_window, register_managed_state};
 use crate::application::server_boot::start_server_boot;
 use crate::application::setup_settings::initialize_settings_defaults;
@@ -9,11 +8,10 @@ use crate::application::startup_cleanup::run_startup_cleanup;
 use crate::application::startup_pipeline_launch::launch_startup_pipeline;
 use crate::application::TeamStateTracker;
 use crate::commands::{ActiveProjectState, ExecutionState};
+use crate::AppState;
 use tauri::Manager;
 use tracing::{info, warn};
 
-const PLUGIN_DIR_ENV: &str = "RALPHX_PLUGIN_DIR";
-const GENERATED_PLUGIN_DIR_ENV: &str = "RALPHX_GENERATED_PLUGIN_DIR";
 const BUNDLED_PLUGIN_DIR_REL: &str = "plugins/app";
 const BUNDLED_AGENTS_DIR_REL: &str = "agents";
 const GENERATED_CLAUDE_PLUGIN_DIR_REL: &str = "generated/claude-plugin";
@@ -62,21 +60,15 @@ fn configure_bundled_runtime_env(app: &tauri::App<tauri::Wry>) {
         return;
     };
 
-    if std::env::var_os(PLUGIN_DIR_ENV).is_none() {
-        info!(
-            plugin_dir = %paths.plugin_dir.display(),
-            "Configuring bundled plugin runtime directory"
-        );
-        std::env::set_var(PLUGIN_DIR_ENV, &paths.plugin_dir);
-    }
-
-    if std::env::var_os(GENERATED_PLUGIN_DIR_ENV).is_none() {
-        info!(
-            generated_plugin_dir = %paths.generated_plugin_dir.display(),
-            "Configuring writable generated plugin runtime directory"
-        );
-        std::env::set_var(GENERATED_PLUGIN_DIR_ENV, &paths.generated_plugin_dir);
-    }
+    info!(
+        plugin_dir = %paths.plugin_dir.display(),
+        generated_plugin_dir = %paths.generated_plugin_dir.display(),
+        "Configuring bundled runtime plugin directories"
+    );
+    crate::infrastructure::agents::claude::configure_runtime_plugin_dirs(
+        paths.plugin_dir,
+        paths.generated_plugin_dir,
+    );
 }
 
 pub(crate) fn run_app_setup(

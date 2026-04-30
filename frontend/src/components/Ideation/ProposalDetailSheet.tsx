@@ -4,9 +4,13 @@
  * Design: Dark glass aesthetic with backdrop blur, warm orange accent
  */
 
-import React, { useEffect, useCallback, useState } from "react";
+import React, { useEffect, useCallback, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { X, FileEdit, Trash2, ExternalLink, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
+import { unescapeProposalText } from "@/lib/proposal-text";
 import { withAlpha } from "@/lib/theme-colors";
 import {
   AlertDialog,
@@ -45,6 +49,25 @@ export interface ProposalDetailSheetProps {
 // ============================================================================
 // Sub-components
 // ============================================================================
+
+function MarkdownText({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
+  const decoded = useMemo(() => unescapeProposalText(text), [text]);
+  return (
+    <div
+      className={`prose prose-sm prose-invert max-w-none prose-code:before:content-none prose-code:after:content-none ${className ?? ""}`.trim()}
+    >
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {decoded}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 function MetadataChip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -236,12 +259,12 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                 <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                   Description
                 </span>
-                <p
+                <div
                   className="text-[13px] leading-relaxed"
                   style={{ color: "var(--text-secondary)" }}
                 >
-                  {proposal.description}
-                </p>
+                  <MarkdownText text={proposal.description} />
+                </div>
               </div>
             )}
 
@@ -295,9 +318,12 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                       >
                         {index + 1}.
                       </span>
-                      <span className="text-[13px] leading-snug" style={{ color: "var(--text-secondary)" }}>
-                        {step}
-                      </span>
+                      <div
+                        className="text-[13px] leading-snug min-w-0 flex-1"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        <MarkdownText text={step} />
+                      </div>
                     </li>
                   ))}
                 </ol>
@@ -317,9 +343,12 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                         className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
                         style={{ color: withAlpha("var(--accent-primary)", 50) }}
                       />
-                      <span className="text-[13px] leading-snug" style={{ color: "var(--text-secondary)" }}>
-                        {criterion}
-                      </span>
+                      <div
+                        className="text-[13px] leading-snug min-w-0 flex-1"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        <MarkdownText text={criterion} />
+                      </div>
                     </li>
                   ))}
                 </ul>

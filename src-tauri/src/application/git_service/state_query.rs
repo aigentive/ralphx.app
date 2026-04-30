@@ -30,10 +30,25 @@ impl GitService {
     pub(super) fn resolve_git_dir(worktree: &Path) -> PathBuf {
         let git_path = worktree.join(".git");
 
-        if git_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&git_path) {
+        if crate::utils::path_safety::checked_is_file(&git_path, "git metadata").unwrap_or(false) {
+            if let Ok(content) =
+                crate::utils::path_safety::checked_read_to_string(&git_path, "git metadata")
+            {
                 if let Some(path) = content.strip_prefix("gitdir: ") {
-                    return PathBuf::from(path.trim());
+                    let git_dir = PathBuf::from(path.trim());
+                    let git_dir = if git_dir.is_absolute() {
+                        git_dir
+                    } else {
+                        worktree.join(git_dir)
+                    };
+                    if crate::utils::path_safety::validate_absolute_non_root_path(
+                        &git_dir,
+                        "resolved git directory",
+                    )
+                    .is_ok()
+                    {
+                        return git_dir;
+                    }
                 }
             }
         }
@@ -50,7 +65,13 @@ impl GitService {
     /// * `worktree` - Path to the git worktree or repository
     pub fn is_rebase_in_progress(worktree: &Path) -> bool {
         let git_dir = Self::resolve_git_dir(worktree);
-        git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
+        crate::utils::path_safety::checked_exists(&git_dir.join("rebase-merge"), "git rebase state")
+            .unwrap_or(false)
+            || crate::utils::path_safety::checked_exists(
+                &git_dir.join("rebase-apply"),
+                "git rebase state",
+            )
+            .unwrap_or(false)
     }
 
     /// Detects an incomplete `git merge` by checking for the MERGE_HEAD file.
@@ -62,7 +83,8 @@ impl GitService {
     /// * `worktree` - Path to the git worktree or repository
     pub fn is_merge_in_progress(worktree: &Path) -> bool {
         let git_dir = Self::resolve_git_dir(worktree);
-        git_dir.join("MERGE_HEAD").exists()
+        crate::utils::path_safety::checked_exists(&git_dir.join("MERGE_HEAD"), "git merge state")
+            .unwrap_or(false)
     }
 
     /// Collect changed file paths that are relevant for conflict-marker checks.
@@ -127,12 +149,17 @@ impl GitService {
             let file_path = worktree.join(&file);
 
             // Skip if file doesn't exist (could be deleted in working tree)
-            if !file_path.exists() {
+            if !crate::utils::path_safety::checked_exists(&file_path, "conflict marker scan")
+                .unwrap_or(false)
+            {
                 continue;
             }
 
             // Skip binary files - only check text files
-            if let Ok(content) = std::fs::read_to_string(&file_path) {
+            if let Ok(content) = crate::utils::path_safety::checked_read_to_string(
+                &file_path,
+                "conflict marker scan",
+            ) {
                 if content.lines().any(Self::is_conflict_marker_line) {
                     debug!("Found conflict marker in file: {}", file);
                     return Ok(true);

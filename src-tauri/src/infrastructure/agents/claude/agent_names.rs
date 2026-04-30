@@ -24,6 +24,7 @@ pub const SHORT_WORKER: &str = "ralphx-execution-worker";
 pub const SHORT_CODER: &str = "ralphx-execution-coder";
 pub const SHORT_GENERAL_EXPLORER: &str = "ralphx-general-explorer";
 pub const SHORT_GENERAL_WORKER: &str = "ralphx-general-worker";
+pub const SHORT_AGENT_WORKSPACE_REPAIR: &str = "ralphx-agent-workspace-repair";
 pub const SHORT_REVIEWER: &str = "ralphx-execution-reviewer";
 pub const SHORT_QA_PREP: &str = "ralphx-qa-prep";
 pub const SHORT_QA_EXECUTOR: &str = "ralphx-qa-executor";
@@ -80,6 +81,15 @@ pub const AGENT_CHAT_TASK: &str = "ralphx:ralphx-chat-task";
 
 /// Project-scoped chat (ChatContextType::Project)
 pub const AGENT_CHAT_PROJECT: &str = "ralphx:ralphx-chat-project";
+
+/// General read-only project explorer for project-scoped agent conversations
+pub const AGENT_GENERAL_EXPLORER: &str = "ralphx:ralphx-general-explorer";
+
+/// General edit worker for project-scoped agent conversations
+pub const AGENT_GENERAL_WORKER: &str = "ralphx:ralphx-general-worker";
+
+/// Agent-workspace publish repair agent
+pub const AGENT_WORKSPACE_REPAIR: &str = "ralphx:ralphx-agent-workspace-repair";
 
 /// Worker execution agent (ChatContextType::TaskExecution)
 pub const AGENT_WORKER: &str = "ralphx:ralphx-execution-worker";
