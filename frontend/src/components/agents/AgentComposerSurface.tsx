@@ -479,7 +479,7 @@ export function AgentComposerSurface({
             {mode && (
               <ComposerModeChip
                 mode={mode}
-                onClick={() => setActionMenuOpen(true)}
+                onClick={() => setActionMenuOpen((prev) => !prev)}
               />
             )}
 
@@ -595,6 +595,12 @@ function ComposerActionMenu({
           borderColor: "var(--border-subtle)",
           color: "var(--text-primary)",
         }}
+        onInteractOutside={(event) => {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("[data-composer-mode-chip='true']")) {
+            event.preventDefault();
+          }
+        }}
       >
         {enableAttachments && (
           <button
@@ -648,6 +654,7 @@ function ComposerModeChip({
       onClick={onClick}
       disabled={mode.disabled}
       data-testid={mode.testId ? `${mode.testId}-chip` : "agent-composer-mode-chip"}
+      data-composer-mode-chip="true"
       aria-label={`Mode: ${activeOption?.label ?? mode.value}. Click to change.`}
       className="inline-flex h-10 shrink-0 items-center gap-2 rounded-[12px] border px-3 transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
       style={{

@@ -149,7 +149,11 @@ const markdownComponents = {
     </p>
   ),
   ul: ({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) => (
-    <ul className="mb-4 last:mb-0 space-y-1.5 list-none pl-0" {...props}>
+    <ul
+      className="mb-4 last:mb-0 space-y-1.5 pl-5 list-disc marker:text-[var(--text-muted)]"
+      style={{ color: "var(--text-secondary)" }}
+      {...props}
+    >
       {children}
     </ul>
   ),
@@ -162,36 +166,15 @@ const markdownComponents = {
       {children}
     </ol>
   ),
-  li: ({ children, ordered: _ordered, ...props }: React.LiHTMLAttributes<HTMLLIElement> & { ordered?: boolean }) => {
-    // `ordered` is injected by react-markdown to distinguish ol/ul children.
-    // Unordered items get a custom accent dot; ordered items inherit marker
-    // styles from <ol> and only need text color + leading.
-    if (_ordered) {
-      return (
-        <li
-          className="leading-[1.65] text-[13px] pl-1"
-          style={{ color: "var(--text-secondary)" }}
-          {...props}
-        >
-          {children}
-        </li>
-      );
-    }
-    return (
-      <li
-        className="pl-5 leading-[1.65] text-[13px] relative"
-        style={{ color: "var(--text-secondary)" }}
-        {...props}
-      >
-        <span
-          aria-hidden="true"
-          className="absolute left-1 top-[9px] w-[5px] h-[5px] rounded-full"
-          style={{ background: "var(--text-muted)" }}
-        />
-        {children}
-      </li>
-    );
-  },
+  li: ({ children, ...props }: React.LiHTMLAttributes<HTMLLIElement>) => (
+    <li
+      className="leading-[1.65] text-[13px] pl-1"
+      style={{ color: "var(--text-secondary)" }}
+      {...props}
+    >
+      {children}
+    </li>
+  ),
   // H1 — plan title. Large, tight tracking, accent-tinted bottom divider.
   h1: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
     <h1
