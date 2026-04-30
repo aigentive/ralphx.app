@@ -1,5 +1,7 @@
 use super::*;
-use crate::domain::state_machine::services::ReviewStartResult;
+use crate::domain::state_machine::services::{
+    ReviewCritiquePreparation, ReviewCritiquePreparationResult, ReviewStartResult,
+};
 use crate::domain::state_machine::TransitionHandler;
 
 impl<'a> TransitionHandler<'a> {
@@ -276,8 +278,56 @@ impl<'a> TransitionHandler<'a> {
         Ok(())
     }
 
+    fn review_critique_preflight_block(result: ReviewCritiquePreparationResult) -> Option<String> {
+        match result {
+            ReviewCritiquePreparationResult::Prepared(ReviewCritiquePreparation {
+                compiled_context_artifact_id,
+                critique_artifact_id,
+                projected_gap_count,
+                verdict,
+                safe_next_action,
+            }) => Some(format!(
+                "\n\n<solution_critique_preflight>\n{}\n</solution_critique_preflight>",
+                serde_json::json!({
+                    "status": "prepared",
+                    "target_type": "task_execution",
+                    "compiled_context_artifact_id": compiled_context_artifact_id,
+                    "critique_artifact_id": critique_artifact_id,
+                    "projected_gap_count": projected_gap_count,
+                    "verdict": verdict,
+                    "safe_next_action": safe_next_action,
+                    "review_instruction": "Use get_artifact on these artifact IDs if you need the full context or critique. Treat projected gaps as review attention, not as a substitute for inspecting the actual diff and validation evidence."
+                })
+            )),
+            ReviewCritiquePreparationResult::Error(error) => Some(format!(
+                "\n\n<solution_critique_preflight>\n{}\n</solution_critique_preflight>",
+                serde_json::json!({
+                    "status": "failed",
+                    "error": error,
+                    "review_instruction": "Continue the normal review and account for the missing critique preflight in the final decision if it affects confidence."
+                })
+            )),
+            ReviewCritiquePreparationResult::Skipped { .. } => None,
+        }
+    }
+
     async fn spawn_reviewer_agent(&self, task_id: &str) {
-        let prompt = format!("Review task: {}", task_id);
+        let critique_preflight = self
+            .machine
+            .context
+            .services
+            .review_critique_preparer
+            .prepare_task_execution_critique(
+                &self.machine.context.task_id,
+                &self.machine.context.project_id,
+            )
+            .await;
+        let preflight_block = Self::review_critique_preflight_block(critique_preflight);
+        let prompt = format!(
+            "Review task: {}{}",
+            task_id,
+            preflight_block.unwrap_or_default()
+        );
 
         tracing::info!(
             task_id = task_id,

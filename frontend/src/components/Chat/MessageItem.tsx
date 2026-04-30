@@ -33,6 +33,7 @@ import {
 import {
   normalizeToolCallTranscriptPayload,
 } from "./verification-tool-calls";
+import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
 
 // ============================================================================
 // Types
@@ -57,9 +58,11 @@ export interface ContentBlockItem {
 }
 
 export interface MessageItemProps {
+  messageId?: string | undefined;
   role: string;
   content: string;
   createdAt: string;
+  critiqueSessionId?: string | null | undefined;
   isLastInList?: boolean | undefined;
   /** Pre-parsed tool calls array (parsed at API layer) */
   toolCalls?: ToolCall[] | null;
@@ -91,9 +94,11 @@ export interface MessageItemProps {
 // ============================================================================
 
 export const MessageItem = React.memo(function MessageItem({
+  messageId,
   role,
   content,
   createdAt,
+  critiqueSessionId,
   isLastInList = false,
   toolCalls,
   contentBlocks,
@@ -169,6 +174,7 @@ export const MessageItem = React.memo(function MessageItem({
     return content.trim();
   }, [content, hasContentBlocks, parsedContentBlocks]);
   const showInlineCopy = copyableText.length > 0;
+  const showCritiqueAction = !isUser && Boolean(messageId && critiqueSessionId);
   const handleCopy = useCallback(async () => {
     if (!showInlineCopy) {
       return;
@@ -353,6 +359,18 @@ export const MessageItem = React.memo(function MessageItem({
               </TooltipContent>
             </Tooltip>
           )}
+          {showCritiqueAction && messageId && critiqueSessionId && (
+            <SolutionCritiqueAction
+              sessionId={critiqueSessionId}
+              target={{
+                targetType: "chat_message",
+                id: messageId,
+                label: "Assistant message",
+              }}
+              label="Critique"
+              size="xs"
+            />
+          )}
         </div>
       </div>
     </div>
@@ -361,8 +379,10 @@ export const MessageItem = React.memo(function MessageItem({
   // Custom equality function - only re-render if these props change
   // For arrays, compare by reference (they're parsed once at API layer)
   return prev.role === next.role
+    && prev.messageId === next.messageId
     && prev.content === next.content
     && prev.createdAt === next.createdAt
+    && prev.critiqueSessionId === next.critiqueSessionId
     && prev.isLastInList === next.isLastInList
     && prev.toolCalls === next.toolCalls
     && prev.contentBlocks === next.contentBlocks

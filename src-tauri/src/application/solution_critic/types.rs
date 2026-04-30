@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::entities::{
-    ClaimReviewStatus, ContextClaimKind, ContextSourceRef, ContextTargetRef, CritiqueConfidence,
-    CritiqueSeverity, RecommendationStatus, SolutionCritiqueVerdict, VerificationGap,
+    ClaimReviewStatus, ContextClaimKind, ContextSourceRef, ContextTargetRef, ContextTargetType,
+    CritiqueConfidence, CritiqueSeverity, RecommendationStatus, SolutionCritiqueVerdict,
+    VerificationGap,
 };
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -42,7 +43,14 @@ fn clamp(value: Option<u32>, default: u32, max: u32) -> u32 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompileContextRequest {
-    pub target_artifact_id: String,
+    #[serde(default)]
+    pub target_artifact_id: Option<String>,
+    #[serde(default)]
+    pub target_type: Option<ContextTargetType>,
+    #[serde(default)]
+    pub target_id: Option<String>,
+    #[serde(default)]
+    pub target: Option<ContextTargetRequest>,
     #[serde(default)]
     pub source_limits: SourceLimits,
 }
@@ -61,8 +69,115 @@ pub struct CompiledContextReadResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CritiqueArtifactRequest {
-    pub target_artifact_id: String,
+    #[serde(default)]
+    pub target_artifact_id: Option<String>,
+    #[serde(default)]
+    pub target_type: Option<ContextTargetType>,
+    #[serde(default)]
+    pub target_id: Option<String>,
+    #[serde(default)]
+    pub target: Option<ContextTargetRequest>,
     pub compiled_context_artifact_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextTargetRequest {
+    pub target_type: ContextTargetType,
+    pub id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+impl CompileContextRequest {
+    pub fn for_target(target_type: ContextTargetType, id: impl Into<String>) -> Self {
+        Self {
+            target_artifact_id: None,
+            target_type: Some(target_type),
+            target_id: Some(id.into()),
+            target: None,
+            source_limits: SourceLimits::default(),
+        }
+    }
+
+    pub fn for_plan_artifact(target_artifact_id: impl Into<String>) -> Self {
+        Self {
+            target_artifact_id: Some(target_artifact_id.into()),
+            target_type: None,
+            target_id: None,
+            target: None,
+            source_limits: SourceLimits::default(),
+        }
+    }
+
+    pub(crate) fn target_request(&self) -> Option<ContextTargetRequest> {
+        normalized_target_request(
+            self.target.clone(),
+            self.target_type,
+            self.target_id.clone(),
+            self.target_artifact_id.clone(),
+        )
+    }
+}
+
+impl CritiqueArtifactRequest {
+    pub fn for_target(
+        target_type: ContextTargetType,
+        id: impl Into<String>,
+        compiled_context_artifact_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            target_artifact_id: None,
+            target_type: Some(target_type),
+            target_id: Some(id.into()),
+            target: None,
+            compiled_context_artifact_id: compiled_context_artifact_id.into(),
+        }
+    }
+
+    pub fn for_plan_artifact(
+        target_artifact_id: impl Into<String>,
+        compiled_context_artifact_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            target_artifact_id: Some(target_artifact_id.into()),
+            target_type: None,
+            target_id: None,
+            target: None,
+            compiled_context_artifact_id: compiled_context_artifact_id.into(),
+        }
+    }
+
+    pub(crate) fn target_request(&self) -> Option<ContextTargetRequest> {
+        normalized_target_request(
+            self.target.clone(),
+            self.target_type,
+            self.target_id.clone(),
+            self.target_artifact_id.clone(),
+        )
+    }
+}
+
+fn normalized_target_request(
+    explicit: Option<ContextTargetRequest>,
+    target_type: Option<ContextTargetType>,
+    target_id: Option<String>,
+    target_artifact_id: Option<String>,
+) -> Option<ContextTargetRequest> {
+    if let Some(target) = explicit {
+        return Some(target);
+    }
+    if let (Some(target_type), Some(id)) = (target_type, target_id) {
+        return Some(ContextTargetRequest {
+            target_type,
+            id,
+            label: None,
+        });
+    }
+    target_artifact_id.map(|id| ContextTargetRequest {
+        target_type: ContextTargetType::PlanArtifact,
+        id,
+        label: None,
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]

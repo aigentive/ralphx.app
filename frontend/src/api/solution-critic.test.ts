@@ -168,13 +168,79 @@ describe("solutionCriticApi", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          target_artifact_id: "plan-1",
+          target: {
+            target_type: "plan_artifact",
+            id: "plan-1",
+          },
           source_limits: {
             chat_messages: 5,
             task_proposals: 3,
             related_artifacts: 2,
             agent_runs: 1,
           },
+        }),
+      }
+    );
+  });
+
+  it("posts compile target requests for non-plan critique targets", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(compiledContextRaw),
+    });
+
+    await solutionCriticApi.compileTargetContext(
+      "session-1",
+      {
+        targetType: "chat_message",
+        id: "message-1",
+        label: "Assistant message",
+      },
+      { chatMessages: 10 }
+    );
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:3847/api/ideation/sessions/session-1/compiled-context",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: {
+            target_type: "chat_message",
+            id: "message-1",
+            label: "Assistant message",
+          },
+          source_limits: {
+            chat_messages: 10,
+          },
+        }),
+      }
+    );
+  });
+
+  it("posts critique target requests with compiled context linkage", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(solutionCritiqueRaw),
+    });
+
+    await solutionCriticApi.critiqueTarget(
+      "session-1",
+      { targetType: "task_execution", id: "task-1" },
+      "context-1"
+    );
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:3847/api/ideation/sessions/session-1/solution-critique",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: {
+            target_type: "task_execution",
+            id: "task-1",
+          },
+          compiled_context_artifact_id: "context-1",
         }),
       }
     );

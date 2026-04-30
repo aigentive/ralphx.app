@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use ralphx_lib::application::solution_critic::{
     CompileContextRequest, CritiqueArtifactRequest, RawContextBundle, SolutionCritiqueGenerator,
-    SolutionCritiqueService, SourceLimits,
+    SolutionCritiqueService,
 };
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactId, ArtifactRelationType, ArtifactType, CompiledContext, IdeationSession,
@@ -177,10 +177,7 @@ async fn compile_context_resolves_stale_target_artifact_to_latest_version() {
     let context = service
         .compile_context(
             session_id.as_str(),
-            CompileContextRequest {
-                target_artifact_id: original_plan_id.as_str().to_string(),
-                source_limits: SourceLimits::default(),
-            },
+            CompileContextRequest::for_plan_artifact(original_plan_id.as_str()),
         )
         .await
         .unwrap();
@@ -199,10 +196,10 @@ async fn compile_context_resolves_stale_target_artifact_to_latest_version() {
     let critique = service
         .critique_artifact(
             session_id.as_str(),
-            CritiqueArtifactRequest {
-                target_artifact_id: original_plan_id.as_str().to_string(),
-                compiled_context_artifact_id: context.artifact_id,
-            },
+            CritiqueArtifactRequest::for_plan_artifact(
+                original_plan_id.as_str(),
+                context.artifact_id,
+            ),
         )
         .await
         .unwrap();
@@ -241,10 +238,7 @@ async fn unknown_model_evidence_source_is_rejected_before_persistence() {
     let error = service
         .compile_context(
             session_id.as_str(),
-            CompileContextRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                source_limits: SourceLimits::default(),
-            },
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
         )
         .await
         .unwrap_err();
@@ -290,10 +284,7 @@ async fn unknown_critique_evidence_source_is_rejected_before_findings_persistenc
     let context = service
         .compile_context(
             session_id.as_str(),
-            CompileContextRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                source_limits: SourceLimits::default(),
-            },
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
         )
         .await
         .unwrap();
@@ -301,10 +292,10 @@ async fn unknown_critique_evidence_source_is_rejected_before_findings_persistenc
     let error = service
         .critique_artifact(
             session_id.as_str(),
-            CritiqueArtifactRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                compiled_context_artifact_id: context.artifact_id,
-            },
+            CritiqueArtifactRequest::for_plan_artifact(
+                plan_artifact_id.as_str(),
+                context.artifact_id,
+            ),
         )
         .await
         .unwrap_err();
@@ -342,20 +333,17 @@ async fn compile_and_critique_do_not_mutate_session_verification_state() {
     let context = service
         .compile_context(
             session_id.as_str(),
-            CompileContextRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                source_limits: SourceLimits::default(),
-            },
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
         )
         .await
         .unwrap();
     service
         .critique_artifact(
             session_id.as_str(),
-            CritiqueArtifactRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                compiled_context_artifact_id: context.artifact_id,
-            },
+            CritiqueArtifactRequest::for_plan_artifact(
+                plan_artifact_id.as_str(),
+                context.artifact_id,
+            ),
         )
         .await
         .unwrap();

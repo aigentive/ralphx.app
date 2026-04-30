@@ -1,7 +1,19 @@
+const CRITIQUE_TARGET_TYPE_SCHEMA = {
+    type: "string",
+    enum: [
+        "plan_artifact",
+        "artifact",
+        "chat_message",
+        "agent_run",
+        "task",
+        "task_execution",
+        "review_report",
+    ],
+};
 export const SOLUTION_CRITIC_TOOLS = [
     {
         name: "compile_context",
-        description: "Read-generation helper that collects deterministic ideation context for the selected plan artifact and persists a CompiledContext artifact. " +
+        description: "Read-generation helper that collects deterministic ideation context for the selected critique target and persists a CompiledContext artifact. " +
             "For verifier-owned runs, omit session_id; the backend resolves the parent ideation session from the active verification child context.",
         inputSchema: {
             type: "object",
@@ -12,7 +24,15 @@ export const SOLUTION_CRITIC_TOOLS = [
                 },
                 target_artifact_id: {
                     type: "string",
-                    description: "The plan artifact ID to compile context for. Stale plan artifact IDs are resolved to the latest version.",
+                    description: "Legacy shorthand for a plan artifact target. Stale plan artifact IDs are resolved to the latest version.",
+                },
+                target_type: {
+                    ...CRITIQUE_TARGET_TYPE_SCHEMA,
+                    description: "Optional typed target kind. Use with target_id for non-plan targets.",
+                },
+                target_id: {
+                    type: "string",
+                    description: "Optional typed target ID. Use with target_type for assistant messages, artifacts, task execution, or review reports.",
                 },
                 source_limits: {
                     type: "object",
@@ -26,7 +46,7 @@ export const SOLUTION_CRITIC_TOOLS = [
                     description: "Optional bounded source limits for context collection. Omit for backend defaults.",
                 },
             },
-            required: ["target_artifact_id"],
+            required: [],
         },
     },
     {
@@ -49,7 +69,7 @@ export const SOLUTION_CRITIC_TOOLS = [
     },
     {
         name: "critique_artifact",
-        description: "Read-generation helper that critiques the selected plan artifact against a CompiledContext artifact, persists a SolutionCritique artifact, and returns backend-projected verification gaps. " +
+        description: "Read-generation helper that critiques the selected target against a CompiledContext artifact, persists a SolutionCritique artifact, and returns backend-projected verification gaps. " +
             "Do not hand-derive gaps from the full critique payload; use the returned projected_gaps when a gap projection is needed.",
         inputSchema: {
             type: "object",
@@ -60,14 +80,22 @@ export const SOLUTION_CRITIC_TOOLS = [
                 },
                 target_artifact_id: {
                     type: "string",
-                    description: "The plan artifact ID to critique. Stale plan artifact IDs are resolved to the latest version.",
+                    description: "Legacy shorthand for a plan artifact target. Stale plan artifact IDs are resolved to the latest version.",
+                },
+                target_type: {
+                    ...CRITIQUE_TARGET_TYPE_SCHEMA,
+                    description: "Optional typed target kind. Use with target_id for non-plan targets.",
+                },
+                target_id: {
+                    type: "string",
+                    description: "Optional typed target ID. Use with target_type for assistant messages, artifacts, task execution, or review reports.",
                 },
                 compiled_context_artifact_id: {
                     type: "string",
                     description: "The CompiledContext artifact ID to critique against.",
                 },
             },
-            required: ["target_artifact_id", "compiled_context_artifact_id"],
+            required: ["compiled_context_artifact_id"],
         },
     },
     {

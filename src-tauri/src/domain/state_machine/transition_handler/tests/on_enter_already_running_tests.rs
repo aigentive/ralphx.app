@@ -8,11 +8,34 @@
 // Mock agent spawning only → verify call_count() and absence of spawn_failure metadata.
 
 use super::helpers::*;
-use crate::domain::entities::{
-    InternalStatus, MergeRecoveryMetadata, Project, ProjectId, Task,
+use crate::domain::entities::{InternalStatus, MergeRecoveryMetadata, Project, ProjectId, Task};
+use crate::domain::state_machine::services::{
+    ReviewCritiquePreparation, ReviewCritiquePreparationResult, ReviewCritiquePreparer,
+    TaskScheduler,
 };
-use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::{State, TransitionHandler};
+use async_trait::async_trait;
+
+struct StaticReviewCritiquePreparer;
+
+#[async_trait]
+impl ReviewCritiquePreparer for StaticReviewCritiquePreparer {
+    async fn prepare_task_execution_critique(
+        &self,
+        task_id: &str,
+        project_id: &str,
+    ) -> ReviewCritiquePreparationResult {
+        assert!(!task_id.is_empty(), "review preflight receives the task id");
+        assert_eq!(project_id, "proj-1");
+        ReviewCritiquePreparationResult::Prepared(ReviewCritiquePreparation {
+            compiled_context_artifact_id: "context-1".to_string(),
+            critique_artifact_id: "critique-1".to_string(),
+            projected_gap_count: 2,
+            verdict: Some("at_risk".to_string()),
+            safe_next_action: Some("Inspect projected gaps before approving.".to_string()),
+        })
+    }
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Shared helper: TaskServices with a MockChatService that returns
@@ -74,7 +97,10 @@ async fn merging_double_on_enter_agent_already_running_is_noop() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
 
     let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "Merging double on_enter test".to_string());
+    let mut task = Task::new(
+        project_id.clone(),
+        "Merging double on_enter test".to_string(),
+    );
     task.internal_status = InternalStatus::Merging;
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
@@ -92,13 +118,16 @@ async fn merging_double_on_enter_agent_already_running_is_noop() {
 
     // First on_enter(Merging): succeeds
     {
-        let services =
-            build_services_from_chat(&chat_service, &task_repo, &project_repo);
+        let services = build_services_from_chat(&chat_service, &task_repo, &project_repo);
         let context = TaskContext::new(task_id.as_str(), "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let handler = TransitionHandler::new(&mut machine);
         let result = handler.on_enter(&State::Merging).await;
-        assert!(result.is_ok(), "First on_enter(Merging) should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "First on_enter(Merging) should succeed: {:?}",
+            result.err()
+        );
     }
 
     assert_eq!(
@@ -109,8 +138,7 @@ async fn merging_double_on_enter_agent_already_running_is_noop() {
 
     // Second on_enter(Merging): AgentAlreadyRunning → should be no-op (Ok)
     {
-        let services =
-            build_services_from_chat(&chat_service, &task_repo, &project_repo);
+        let services = build_services_from_chat(&chat_service, &task_repo, &project_repo);
         let context = TaskContext::new(task_id.as_str(), "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let handler = TransitionHandler::new(&mut machine);
@@ -130,14 +158,19 @@ async fn merging_double_on_enter_agent_already_running_is_noop() {
 
     // Key assertion: no spawn_failure metadata written (record_merger_spawn_failure was skipped)
     let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
-    let recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
-        .unwrap_or(None);
+    let recovery =
+        MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref()).unwrap_or(None);
 
     if let Some(ref r) = recovery {
         let attempt_failed_count = r
             .events
             .iter()
-            .filter(|e| matches!(e.kind, crate::domain::entities::MergeRecoveryEventKind::AttemptFailed))
+            .filter(|e| {
+                matches!(
+                    e.kind,
+                    crate::domain::entities::MergeRecoveryEventKind::AttemptFailed
+                )
+            })
             .count();
         assert_eq!(
             attempt_failed_count, 0,
@@ -164,7 +197,10 @@ async fn reviewing_double_on_enter_agent_already_running_is_noop() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
 
     let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "Reviewing double on_enter test".to_string());
+    let mut task = Task::new(
+        project_id.clone(),
+        "Reviewing double on_enter test".to_string(),
+    );
     task.internal_status = InternalStatus::Reviewing;
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
@@ -188,13 +224,16 @@ async fn reviewing_double_on_enter_agent_already_running_is_noop() {
 
     // First on_enter(Reviewing): succeeds
     {
-        let services =
-            build_services_from_chat(&chat_service, &task_repo, &project_repo);
+        let services = build_services_from_chat(&chat_service, &task_repo, &project_repo);
         let context = TaskContext::new(task_id.as_str(), "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let handler = TransitionHandler::new(&mut machine);
         let result = handler.on_enter(&State::Reviewing).await;
-        assert!(result.is_ok(), "First on_enter(Reviewing) should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "First on_enter(Reviewing) should succeed: {:?}",
+            result.err()
+        );
     }
 
     assert_eq!(
@@ -205,8 +244,7 @@ async fn reviewing_double_on_enter_agent_already_running_is_noop() {
 
     // Second on_enter(Reviewing): AgentAlreadyRunning → should be no-op (Ok)
     {
-        let services =
-            build_services_from_chat(&chat_service, &task_repo, &project_repo);
+        let services = build_services_from_chat(&chat_service, &task_repo, &project_repo);
         let context = TaskContext::new(task_id.as_str(), "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let handler = TransitionHandler::new(&mut machine);
@@ -223,6 +261,58 @@ async fn reviewing_double_on_enter_agent_already_running_is_noop() {
         2,
         "Both on_enter calls should have reached chat_service (call_count == 2)"
     );
+}
+
+#[tokio::test]
+async fn reviewing_injects_solution_critique_preflight_into_reviewer_prompt() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(
+        project_id.clone(),
+        "Reviewing critique preflight test".to_string(),
+    );
+    task.internal_status = InternalStatus::Reviewing;
+    task.worktree_path = Some(std::env::temp_dir().to_string_lossy().to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new(
+        "test-project".to_string(),
+        "/tmp/nonexistent-review-critique-preflight".to_string(),
+    );
+    project.id = project_id;
+    project_repo.create(project).await.unwrap();
+
+    let chat_service = Arc::new(MockChatService::new());
+    let services = build_services_from_chat(&chat_service, &task_repo, &project_repo)
+        .with_review_critique_preparer(
+            Arc::new(StaticReviewCritiquePreparer) as Arc<dyn ReviewCritiquePreparer>
+        );
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let result = handler.on_enter(&State::Reviewing).await;
+
+    assert!(
+        result.is_ok(),
+        "on_enter(Reviewing) should spawn reviewer with critique preflight: {:?}",
+        result.err()
+    );
+    let messages = chat_service.get_sent_messages().await;
+    assert_eq!(messages.len(), 1, "reviewer should receive one prompt");
+    let prompt = &messages[0];
+    assert!(prompt.starts_with(&format!("Review task: {}", task_id.as_str())));
+    assert!(prompt.contains("<solution_critique_preflight>"));
+    assert!(prompt.contains("\"status\":\"prepared\""));
+    assert!(prompt.contains("\"target_type\":\"task_execution\""));
+    assert!(prompt.contains("\"compiled_context_artifact_id\":\"context-1\""));
+    assert!(prompt.contains("\"critique_artifact_id\":\"critique-1\""));
+    assert!(prompt.contains("\"projected_gap_count\":2"));
+    assert!(prompt.contains("\"verdict\":\"at_risk\""));
+    assert!(prompt.contains("Treat projected gaps as review attention"));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -294,7 +384,11 @@ async fn executing_was_queued_is_noop() {
         "on_enter(Executing) with was_queued must return Ok (no-op): {:?}",
         result.err()
     );
-    assert_eq!(chat_service.call_count(), 1, "send_message must be called once");
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be called once"
+    );
 }
 
 /// on_enter(Executing) with genuine Err → error is propagated as Err.
@@ -309,7 +403,11 @@ async fn executing_genuine_error_is_propagated() {
         result.is_err(),
         "on_enter(Executing) with genuine Err must propagate error, not silently swallow it"
     );
-    assert_eq!(chat_service.call_count(), 1, "send_message must be attempted once");
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be attempted once"
+    );
 }
 
 /// on_enter(Executing) with was_queued: false → normal spawn, returns Ok.
@@ -325,7 +423,11 @@ async fn executing_normal_spawn_succeeds() {
         "on_enter(Executing) normal spawn must return Ok: {:?}",
         result.err()
     );
-    assert_eq!(chat_service.call_count(), 1, "send_message must be called once for normal spawn");
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be called once for normal spawn"
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -345,7 +447,11 @@ async fn re_executing_was_queued_is_noop() {
         "on_enter(ReExecuting) with was_queued must return Ok (no-op): {:?}",
         result.err()
     );
-    assert_eq!(chat_service.call_count(), 1, "send_message must be called once");
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be called once"
+    );
 }
 
 /// on_enter(ReExecuting) with genuine Err → error is propagated as Err.
@@ -360,7 +466,11 @@ async fn re_executing_genuine_error_is_propagated() {
         result.is_err(),
         "on_enter(ReExecuting) with genuine Err must propagate error, not silently swallow it"
     );
-    assert_eq!(chat_service.call_count(), 1, "send_message must be attempted once");
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be attempted once"
+    );
 }
 
 /// on_enter(ReExecuting) with was_queued: false → normal spawn, returns Ok.
@@ -376,7 +486,11 @@ async fn re_executing_normal_spawn_succeeds() {
         "on_enter(ReExecuting) normal spawn must return Ok: {:?}",
         result.err()
     );
-    assert_eq!(chat_service.call_count(), 1, "send_message must be called once for normal spawn");
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be called once for normal spawn"
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -391,7 +505,10 @@ async fn reviewing_genuine_error_is_not_propagated() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
 
     let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "Reviewing genuine error test".to_string());
+    let mut task = Task::new(
+        project_id.clone(),
+        "Reviewing genuine error test".to_string(),
+    );
     task.internal_status = InternalStatus::Reviewing;
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
@@ -423,7 +540,11 @@ async fn reviewing_genuine_error_is_not_propagated() {
         "on_enter(Reviewing) must not propagate spawn errors (errors are logged only): {:?}",
         result.err()
     );
-    assert_eq!(chat_service.call_count(), 1, "send_message must be attempted once");
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be attempted once"
+    );
 }
 
 /// on_enter(Merging) with genuine Err → handler returns Ok (error logged + recorded, not propagated).
@@ -459,5 +580,9 @@ async fn merging_genuine_error_is_not_propagated() {
         "on_enter(Merging) must not propagate spawn errors (errors are logged + recorded only): {:?}",
         result.err()
     );
-    assert_eq!(chat_service.call_count(), 1, "send_message must be attempted once");
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be attempted once"
+    );
 }

@@ -76,10 +76,11 @@ Start with `get_review_notes(task_id)`:
 
 <state name="FIRST-REVIEW">
 1. **Gather** — `get_task_context(task_id)` (acceptance criteria, scope drift, existing `followup_sessions`) + `get_task_steps(task_id)` (step IDs for issue linking)
-2. **Examine** — check `task.base_branch` from `get_task_context` first (do NOT assume `main`), then: `git diff {base_branch}..HEAD --stat` then `git diff {base_branch}..HEAD`
-3. **Validate** — `get_project_analysis(project_id, task_id)` → run `validate` commands for modified paths (see validation-rules)
-4. **Evaluate** — apply review-checklist
-5. **Submit** — call `complete_review` (see appendix for schema, decision guide, examples)
+2. **Critique preflight** — if the startup prompt includes `solution_critique_preflight`, inspect the referenced context or critique artifact with `get_artifact` when it would clarify unsupported worker claims. Treat projected gaps as review attention, not as a substitute for diff and validation evidence.
+3. **Examine** — check `task.base_branch` from `get_task_context` first (do NOT assume `main`), then: `git diff {base_branch}..HEAD --stat` then `git diff {base_branch}..HEAD`
+4. **Validate** — `get_project_analysis(project_id, task_id)` → run `validate` commands for modified paths (see validation-rules)
+5. **Evaluate** — apply review-checklist
+6. **Submit** — call `complete_review` (see appendix for schema, decision guide, examples)
 </state>
 
 <state name="RE-REVIEW">

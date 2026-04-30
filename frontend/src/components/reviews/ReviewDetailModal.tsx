@@ -43,6 +43,7 @@ import { getTaskCategoryLabel } from "@/lib/task-category";
 import { withAlpha } from "@/lib/theme-colors";
 import type { Commit } from "@/components/diff";
 import type { ReviewNoteResponse } from "@/lib/tauri";
+import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
 
 interface ReviewDetailModalProps {
   taskId: string;
@@ -374,7 +375,7 @@ export function ReviewDetailModal({
   });
 
   // Fetch reviews for this task (for hasAiReview indicator)
-  const { hasAiReview } = useReviewsByTaskId(taskId);
+  const { hasAiReview, latestReview } = useReviewsByTaskId(taskId);
 
   // Use pre-fetched history from prop, or fetch if not provided
   const { data: fetchedHistory } = useTaskStateHistory(taskId, { enabled: !historyProp });
@@ -503,6 +504,18 @@ export function ReviewDetailModal({
               Review: {task?.title ?? "Loading..."}
             </h2>
             <RevisionCountBadge count={revisionCount} />
+            {task?.ideationSessionId && latestReview && (
+              <SolutionCritiqueAction
+                sessionId={task.ideationSessionId}
+                target={{
+                  targetType: "review_report",
+                  id: latestReview.id,
+                  label: `Review: ${task.title}`,
+                }}
+                label="Critique"
+                size="xs"
+              />
+            )}
           </div>
           <Button
             data-testid="review-detail-modal-close"

@@ -159,6 +159,21 @@ export const SolutionCritiqueReadResponseSchema = z.object({
 export type CompiledContextReadResponse = z.infer<typeof CompiledContextReadResponseSchema>;
 export type SolutionCritiqueReadResponse = z.infer<typeof SolutionCritiqueReadResponseSchema>;
 
+export type SolutionCritiqueTargetType =
+  | "plan_artifact"
+  | "artifact"
+  | "chat_message"
+  | "agent_run"
+  | "task"
+  | "task_execution"
+  | "review_report";
+
+export interface SolutionCritiqueTargetInput {
+  targetType: SolutionCritiqueTargetType;
+  id: string;
+  label?: string;
+}
+
 export interface SourceLimitsInput {
   chatMessages?: number;
   taskProposals?: number;
@@ -190,6 +205,16 @@ function sourceLimitsToApi(sourceLimits?: SourceLimitsInput): Record<string, num
   };
 }
 
+function targetToApi(target: SolutionCritiqueTargetInput): Record<string, unknown> {
+  return {
+    target: {
+      target_type: target.targetType,
+      id: target.id,
+      ...(target.label ? { label: target.label } : {}),
+    },
+  };
+}
+
 export const solutionCriticApi = {
   getLatestCompiledContext: (sessionId: string): Promise<CompiledContextReadResponse | null> =>
     solutionCriticFetch(
@@ -215,13 +240,24 @@ export const solutionCriticApi = {
     targetArtifactId: string,
     sourceLimits?: SourceLimitsInput
   ): Promise<CompiledContextReadResponse> =>
+    solutionCriticApi.compileTargetContext(
+      sessionId,
+      { targetType: "plan_artifact", id: targetArtifactId },
+      sourceLimits
+    ),
+
+  compileTargetContext: (
+    sessionId: string,
+    target: SolutionCritiqueTargetInput,
+    sourceLimits?: SourceLimitsInput
+  ): Promise<CompiledContextReadResponse> =>
     solutionCriticFetch(
       `${API_BASE}/ideation/sessions/${encodeURIComponent(sessionId)}/compiled-context`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          target_artifact_id: targetArtifactId,
+          ...targetToApi(target),
           source_limits: sourceLimitsToApi(sourceLimits),
         }),
       },
@@ -253,13 +289,24 @@ export const solutionCriticApi = {
     targetArtifactId: string,
     compiledContextArtifactId: string
   ): Promise<SolutionCritiqueReadResponse> =>
+    solutionCriticApi.critiqueTarget(
+      sessionId,
+      { targetType: "plan_artifact", id: targetArtifactId },
+      compiledContextArtifactId
+    ),
+
+  critiqueTarget: (
+    sessionId: string,
+    target: SolutionCritiqueTargetInput,
+    compiledContextArtifactId: string
+  ): Promise<SolutionCritiqueReadResponse> =>
     solutionCriticFetch(
       `${API_BASE}/ideation/sessions/${encodeURIComponent(sessionId)}/solution-critique`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          target_artifact_id: targetArtifactId,
+          ...targetToApi(target),
           compiled_context_artifact_id: compiledContextArtifactId,
         }),
       },

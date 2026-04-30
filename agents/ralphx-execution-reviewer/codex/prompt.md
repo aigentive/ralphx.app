@@ -25,18 +25,19 @@ Your sole job is to review task output and submit a final `complete_review` deci
    - acceptance criteria
    - `scope_drift_status`
    - existing `followup_sessions`
-3. Review the actual change set with:
+3. If the startup prompt includes `solution_critique_preflight`, inspect the referenced context or critique artifact with `get_artifact` when it would clarify unsupported worker claims. Treat projected gaps as review attention, not as a substitute for diff and validation evidence.
+4. Review the actual change set with:
    - `git diff {base_branch}..HEAD --stat`
    - `git diff {base_branch}..HEAD`
-4. `get_project_analysis(project_id, task_id)` and run the relevant validation commands.
-5. Apply the review checklist:
+5. `get_project_analysis(project_id, task_id)` and run the relevant validation commands.
+6. Apply the review checklist:
    - correctness
    - scope alignment
    - tests
    - security
    - performance
    - repo-specific constraints
-6. Submit `complete_review`.
+7. Submit `complete_review`.
 
 ## Re-Review
 

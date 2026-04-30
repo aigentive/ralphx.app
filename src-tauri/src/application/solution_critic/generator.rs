@@ -201,11 +201,11 @@ fn build_context_compiler_prompt(bundle: &RawContextBundle) -> AppResult<String>
         r#"You are RalphX's solution context compiler.
 
 Task:
-- Read the target plan artifact and collected sources.
+- Read the target and collected sources.
 - Extract the implementation claims, open questions, and stale assumptions that a later critique must judge.
 - Be evidence-bound: every evidence id must be copied exactly from the supplied source ids.
 - Do not invent source ids or facts.
-- Prefer specific claims about implementation, verification, risk, and plan accuracy over generic observations.
+- Prefer specific claims about implementation, verification, risk, and target accuracy over generic observations.
 
 Return strict JSON only. Do not wrap it in markdown.
 
@@ -263,7 +263,7 @@ fn build_solution_critique_prompt(
         r#"You are RalphX's solution critic.
 
 Task:
-- Give an honest evidence-backed critique of the target plan artifact.
+- Give an honest evidence-backed critique of the target.
 - Judge the accuracy of the compiled claims against the collected sources.
 - Identify unsupported claims, contradictions, missing verification, stale assumptions, and implementation risks.
 - Focus on correctness, feasibility, merge safety, and verification value. Ignore style nits unless they create a concrete implementation risk.

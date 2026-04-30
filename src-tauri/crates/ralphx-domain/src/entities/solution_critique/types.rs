@@ -16,6 +16,9 @@ pub enum ContextTargetType {
     Artifact,
     ChatMessage,
     AgentRun,
+    Task,
+    TaskExecution,
+    ReviewReport,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -33,6 +36,7 @@ pub struct ContextSourceRef {
 #[serde(rename_all = "snake_case")]
 pub enum ContextSourceType {
     PlanArtifact,
+    Task,
     ChatMessage,
     TaskProposal,
     VerificationStatus,
@@ -40,6 +44,9 @@ pub enum ContextSourceType {
     ProjectAnalysis,
     Artifact,
     AgentRun,
+    Review,
+    ReviewNote,
+    ReviewIssue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

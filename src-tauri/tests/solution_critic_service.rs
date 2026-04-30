@@ -1,11 +1,11 @@
-use std::{pin::Pin, sync::Arc};
+use std::{collections::HashSet, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use futures::stream;
 use ralphx_lib::application::solution_critic::{
-    CompileContextRequest, CritiqueArtifactRequest, RawContextBundle, SolutionCritiqueGenerator,
-    SolutionCritiqueService, SourceLimits,
+    CompileContextRequest, ContextTargetRequest, CritiqueArtifactRequest, RawContextBundle,
+    SolutionCritiqueGenerator, SolutionCritiqueService, SourceLimits,
 };
 use ralphx_lib::domain::agents::{
     AgentConfig, AgentHandle, AgentOutput, AgentResponse, AgentResult, AgenticClient,
@@ -13,8 +13,10 @@ use ralphx_lib::domain::agents::{
 };
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactId, ArtifactRelationType, ArtifactType, ChatMessage, ChatMessageId,
-    CompiledContext, ContextSourceType, IdeationSession, IdeationSessionId, Project, ProjectId,
-    ProposalCategory, TaskProposal, TaskProposalId, VerificationStatus,
+    CompiledContext, ContextSourceType, ContextTargetType, IdeationSession, IdeationSessionId,
+    IssueSeverity, Project, ProjectId, ProposalCategory, Review, ReviewIssueEntity, ReviewNote,
+    ReviewOutcome, ReviewerType, Task, TaskId, TaskProposal, TaskProposalId, TeamArtifactMetadata,
+    VerificationStatus,
 };
 use ralphx_lib::{AppResult, AppState};
 use tokio::sync::Mutex;
@@ -181,6 +183,43 @@ fn critique_json(plan_id: &ArtifactId) -> String {
     )
 }
 
+fn compile_for_source_json(source_id: &str, claim_text: &str) -> String {
+    format!(
+        r#"{{
+            "claims": [{{
+                "id": "claim-target",
+                "text": "{claim_text}",
+                "classification": "fact",
+                "confidence": "high",
+                "evidence": [{{"id": "{source_id}"}}]
+            }}],
+            "open_questions": [],
+            "stale_assumptions": []
+        }}"#
+    )
+}
+
+fn critique_for_source_json(source_id: &str, claim_text: &str) -> String {
+    format!(
+        r#"{{
+            "verdict": "investigate",
+            "confidence": "medium",
+            "claims": [{{
+                "id": "claim-target-review",
+                "claim": "{claim_text}",
+                "status": "unclear",
+                "confidence": "medium",
+                "evidence": [{{"id": "{source_id}"}}],
+                "notes": "The target needs evidence review."
+            }}],
+            "recommendations": [],
+            "risks": [],
+            "verification_plan": [],
+            "safe_next_action": "Inspect the target context."
+        }}"#
+    )
+}
+
 fn model_compile_response(plan_id: &ArtifactId) -> String {
     format!(
         r#"```json
@@ -277,7 +316,11 @@ async fn collector_respects_limits_and_truncates_sources() {
     let bundle = service
         .collect_raw_context(
             session_id.as_str(),
-            plan_artifact_id.as_str(),
+            ContextTargetRequest {
+                target_type: ContextTargetType::PlanArtifact,
+                id: plan_artifact_id.as_str().to_string(),
+                label: None,
+            },
             &SourceLimits {
                 chat_messages: Some(2),
                 task_proposals: Some(1),
@@ -324,10 +367,7 @@ async fn compile_context_persists_context_artifact_and_relation() {
     let result = service
         .compile_context(
             session_id.as_str(),
-            CompileContextRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                source_limits: SourceLimits::default(),
-            },
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
         )
         .await
         .unwrap();
@@ -363,6 +403,251 @@ async fn compile_context_persists_context_artifact_and_relation() {
 }
 
 #[tokio::test]
+async fn compile_context_supports_chat_message_targets_without_artifact_relation() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id: _,
+    } = setup_fixture().await;
+    let message_id = ChatMessageId::from_string("assistant-message-1");
+    let mut message =
+        ChatMessage::orchestrator_in_session(session_id.clone(), "The implementation is complete.");
+    message.id = message_id.clone();
+    state.chat_message_repo.create(message).await.unwrap();
+
+    let source_id = format!("chat_message:{}", message_id.as_str());
+    let service = SolutionCritiqueService::from_app_state_with_generator(
+        &state,
+        generator(
+            compile_for_source_json(
+                &source_id,
+                "The assistant message makes an implementation claim.",
+            ),
+            "{}".to_string(),
+        ),
+    );
+
+    let result = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest::for_target(ContextTargetType::ChatMessage, message_id.as_str()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        result.compiled_context.target.target_type,
+        ContextTargetType::ChatMessage
+    );
+    assert_eq!(result.compiled_context.target.id, message_id.as_str());
+    assert!(result
+        .compiled_context
+        .sources
+        .iter()
+        .any(|source| source.id == source_id));
+
+    let relations = state
+        .artifact_repo
+        .get_relations(&ArtifactId::from_string(&result.artifact_id))
+        .await
+        .unwrap();
+    assert!(!relations
+        .iter()
+        .any(|relation| relation.relation_type == ArtifactRelationType::RelatedTo));
+
+    let read = service
+        .get_compiled_context(session_id.as_str(), &result.artifact_id)
+        .await
+        .unwrap();
+    assert_eq!(read.compiled_context.target.id, message_id.as_str());
+}
+
+#[tokio::test]
+async fn compile_context_accepts_team_artifacts_scoped_to_session() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id: _,
+    } = setup_fixture().await;
+    let artifact_id = ArtifactId::from_string("team-artifact-1");
+    let mut artifact = Artifact::new_inline(
+        "Backend research",
+        ArtifactType::TeamResearch,
+        "The specialist found the backend path is implemented.",
+        "backend-specialist",
+    );
+    artifact.id = artifact_id.clone();
+    artifact.metadata = artifact.metadata.with_team_metadata(TeamArtifactMetadata {
+        team_name: "research-team".to_string(),
+        author_teammate: "backend-specialist".to_string(),
+        session_id: Some(session_id.as_str().to_string()),
+        team_phase: Some("research".to_string()),
+        verification_finding: None,
+    });
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    let source_id = format!("artifact:{}", artifact_id.as_str());
+    let service = SolutionCritiqueService::from_app_state_with_generator(
+        &state,
+        generator(
+            compile_for_source_json(&source_id, "The team artifact is valid critique context."),
+            "{}".to_string(),
+        ),
+    );
+
+    let result = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest::for_target(ContextTargetType::Artifact, artifact_id.as_str()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        result.compiled_context.target.target_type,
+        ContextTargetType::Artifact
+    );
+    assert_eq!(result.compiled_context.target.id, artifact_id.as_str());
+    assert!(result
+        .compiled_context
+        .sources
+        .iter()
+        .any(|source| source.id == source_id));
+
+    let read = service
+        .get_compiled_context(session_id.as_str(), &result.artifact_id)
+        .await
+        .unwrap();
+    assert_eq!(read.compiled_context.target.id, artifact_id.as_str());
+}
+
+#[tokio::test]
+async fn task_execution_targets_collect_diff_transcript_and_review_context() {
+    let Fixture {
+        state,
+        session_id,
+        plan_artifact_id,
+    } = setup_fixture().await;
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let task_id = TaskId::from_string("task-execution-1".to_string());
+    let mut task = Task::new(
+        session.project_id.clone(),
+        "Implement solution critic UI".to_string(),
+    );
+    task.id = task_id.clone();
+    task.description =
+        Some("Wire critique targets across execution and review surfaces.".to_string());
+    task.ideation_session_id = Some(session_id.clone());
+    task.plan_artifact_id = Some(plan_artifact_id);
+    state.task_repo.create(task).await.unwrap();
+
+    let diff_id = ArtifactId::from_string("task-diff-1");
+    let mut diff = Artifact::new_inline(
+        "Worker Diff",
+        ArtifactType::Diff,
+        "diff --git a/frontend/src/components/Ideation/SolutionCritiqueSummary.tsx",
+        "worker",
+    )
+    .with_task(task_id.clone());
+    diff.id = diff_id.clone();
+    state.artifact_repo.create(diff).await.unwrap();
+
+    let mut transcript =
+        ChatMessage::user_about_task(task_id.clone(), "Worker claims all critique UI is done.");
+    transcript.id = ChatMessageId::from_string("task-message-1");
+    state.chat_message_repo.create(transcript).await.unwrap();
+
+    let mut review = Review::new(session.project_id, task_id.clone(), ReviewerType::Ai);
+    review.request_changes("Missing tests for arbitrary critique targets.".to_string());
+    state.review_repo.create(&review).await.unwrap();
+
+    let note = ReviewNote::with_notes(
+        task_id.clone(),
+        ReviewerType::Ai,
+        ReviewOutcome::ChangesRequested,
+        "The worker claim is unsupported without frontend tests.".to_string(),
+    );
+    let note_id = note.id.clone();
+    state.review_repo.add_note(&note).await.unwrap();
+    let mut issue = ReviewIssueEntity::new(
+        note_id.clone(),
+        task_id.clone(),
+        "Open reviewer issue".to_string(),
+        IssueSeverity::Major,
+    );
+    issue.description = Some("The latest worker claim still needs proof.".to_string());
+    let issue_id = issue.id.clone();
+    state.review_issue_repo.create(issue).await.unwrap();
+
+    let task_source_id = format!("task:{}", task_id.as_str());
+    let service = SolutionCritiqueService::from_app_state_with_generator(
+        &state,
+        generator(
+            compile_for_source_json(&task_source_id, "The task execution target is reviewable."),
+            critique_for_source_json(&task_source_id, "The task execution target is reviewable."),
+        ),
+    );
+
+    let context = service
+        .compile_context(
+            session_id.as_str(),
+            CompileContextRequest::for_target(ContextTargetType::TaskExecution, task_id.as_str()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        context.compiled_context.target.target_type,
+        ContextTargetType::TaskExecution
+    );
+    let source_ids = context
+        .compiled_context
+        .sources
+        .iter()
+        .map(|source| source.id.as_str())
+        .collect::<Vec<_>>();
+    let unique_source_ids = source_ids.iter().collect::<HashSet<_>>();
+    assert_eq!(unique_source_ids.len(), source_ids.len());
+    let diff_source_id = format!("artifact:{}", diff_id.as_str());
+    let note_source_id = format!("review_note:{}", note_id.as_str());
+    let issue_source_id = format!("review_issue:{}", issue_id.as_str());
+    assert!(source_ids.contains(&task_source_id.as_str()));
+    assert!(source_ids.contains(&diff_source_id.as_str()));
+    assert!(source_ids.contains(&note_source_id.as_str()));
+    assert!(source_ids.contains(&issue_source_id.as_str()));
+    assert!(source_ids.contains(&"chat_message:task-message-1"));
+
+    let context_artifact_id = context.artifact_id.clone();
+    let critique = service
+        .critique_artifact(
+            session_id.as_str(),
+            CritiqueArtifactRequest::for_target(
+                ContextTargetType::TaskExecution,
+                task_id.as_str(),
+                context_artifact_id.clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(critique.solution_critique.artifact_id, task_id.as_str());
+    assert_eq!(
+        critique.solution_critique.context_artifact_id,
+        context_artifact_id
+    );
+    let read = service
+        .get_solution_critique(session_id.as_str(), &critique.artifact_id)
+        .await
+        .unwrap();
+    assert_eq!(read.solution_critique.artifact_id, task_id.as_str());
+}
+
+#[tokio::test]
 async fn critique_artifact_persists_findings_artifact_and_relations() {
     let Fixture {
         state,
@@ -379,10 +664,7 @@ async fn critique_artifact_persists_findings_artifact_and_relations() {
     let context = service
         .compile_context(
             session_id.as_str(),
-            CompileContextRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                source_limits: SourceLimits::default(),
-            },
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
         )
         .await
         .unwrap();
@@ -390,10 +672,10 @@ async fn critique_artifact_persists_findings_artifact_and_relations() {
     let result = service
         .critique_artifact(
             session_id.as_str(),
-            CritiqueArtifactRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                compiled_context_artifact_id: context.artifact_id.clone(),
-            },
+            CritiqueArtifactRequest::for_plan_artifact(
+                plan_artifact_id.as_str(),
+                context.artifact_id.clone(),
+            ),
         )
         .await
         .unwrap();
@@ -463,20 +745,17 @@ async fn default_service_uses_agent_client_for_context_and_critique() {
     let context = service
         .compile_context(
             session_id.as_str(),
-            CompileContextRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                source_limits: SourceLimits::default(),
-            },
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
         )
         .await
         .unwrap();
     let critique = service
         .critique_artifact(
             session_id.as_str(),
-            CritiqueArtifactRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                compiled_context_artifact_id: context.artifact_id.clone(),
-            },
+            CritiqueArtifactRequest::for_plan_artifact(
+                plan_artifact_id.as_str(),
+                context.artifact_id.clone(),
+            ),
         )
         .await
         .unwrap();
@@ -544,10 +823,7 @@ async fn invalid_model_json_persists_no_partial_artifacts() {
     let error = service
         .compile_context(
             session_id.as_str(),
-            CompileContextRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                source_limits: SourceLimits::default(),
-            },
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
         )
         .await
         .unwrap_err();
@@ -603,20 +879,17 @@ async fn read_methods_reject_artifacts_from_another_session_plan() {
     let context = service
         .compile_context(
             session_id.as_str(),
-            CompileContextRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                source_limits: SourceLimits::default(),
-            },
+            CompileContextRequest::for_plan_artifact(plan_artifact_id.as_str()),
         )
         .await
         .unwrap();
     let critique = service
         .critique_artifact(
             session_id.as_str(),
-            CritiqueArtifactRequest {
-                target_artifact_id: plan_artifact_id.as_str().to_string(),
-                compiled_context_artifact_id: context.artifact_id.clone(),
-            },
+            CritiqueArtifactRequest::for_plan_artifact(
+                plan_artifact_id.as_str(),
+                context.artifact_id.clone(),
+            ),
         )
         .await
         .unwrap();

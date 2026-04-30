@@ -1224,6 +1224,7 @@ export function IntegratedChatPanel({
               contextKey={showTeamUi && activeTeam ? storeContextKey : undefined}
               providerHarness={activeConversationMeta?.providerHarness ?? null}
               providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+              solutionCritiqueSessionId={ideationSessionId ?? null}
               contentWidthClassName={contentWidthClassName}
               topInsetClassName={transcriptTopInsetClassName}
               hasOlderMessages={

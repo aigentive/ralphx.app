@@ -7,8 +7,8 @@ use serde_json::json;
 use crate::domain::entities::{
     AgentRun, Artifact, ArtifactContent, ChatMessage, ClaimReview, CompiledContext,
     ContextAssumption, ContextClaim, ContextQuestion, ContextSourceRef, ContextSourceType,
-    IdeationSession, Project, RecommendationReview, RiskAssessment, SolutionCritique,
-    TaskProposal, VerificationRequirement,
+    IdeationSession, Project, RecommendationReview, Review, ReviewIssueEntity, ReviewNote,
+    RiskAssessment, SolutionCritique, Task, TaskProposal, VerificationRequirement,
 };
 use crate::error::{AppError, AppResult};
 
@@ -43,11 +43,32 @@ pub(super) fn ensure_plan_target(
     }
 }
 
+pub(super) fn ensure_task_in_session_project(
+    session: &IdeationSession,
+    task: &Task,
+) -> AppResult<()> {
+    if task.project_id != session.project_id {
+        return Err(AppError::Validation(
+            "Critique target task is outside the ideation session project".to_string(),
+        ));
+    }
+    if task
+        .ideation_session_id
+        .as_ref()
+        .is_some_and(|id| id.as_str() != session.id.as_str())
+    {
+        return Err(AppError::Validation(
+            "Critique target task belongs to a different ideation session".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn inline_artifact_content(artifact: &Artifact) -> AppResult<String> {
     match &artifact.content {
         ArtifactContent::Inline { text } => Ok(text.clone()),
         ArtifactContent::File { .. } => Err(AppError::Validation(format!(
-            "Artifact {} uses file content; solution critique Phase 1 does not read filesystem paths",
+            "Artifact {} uses file content; solution critique does not read filesystem paths",
             artifact.id
         ))),
     }
@@ -78,6 +99,27 @@ pub(super) fn chat_message_source(message: &ChatMessage) -> ContextSourceRef {
     }
 }
 
+pub(super) fn task_source(task: &Task) -> ContextSourceRef {
+    let excerpt = json!({
+        "id": task.id.as_str(),
+        "title": task.title,
+        "description": task.description,
+        "status": task.internal_status.to_string(),
+        "branch": task.task_branch,
+        "worktree_path": task.worktree_path,
+        "metadata": task.metadata,
+    })
+    .to_string();
+
+    ContextSourceRef {
+        source_type: ContextSourceType::Task,
+        id: format!("task:{}", task.id.as_str()),
+        label: task.title.clone(),
+        excerpt: Some(truncate_text(&excerpt, SOURCE_EXCERPT_LIMIT)),
+        created_at: Some(task.created_at),
+    }
+}
+
 pub(super) fn task_proposal_source(proposal: &TaskProposal) -> ContextSourceRef {
     let excerpt = [
         Some(format!("Title: {}", proposal.title)),
@@ -105,6 +147,75 @@ pub(super) fn task_proposal_source(proposal: &TaskProposal) -> ContextSourceRef 
         label: proposal.title.clone(),
         excerpt: Some(truncate_text(&excerpt, SOURCE_EXCERPT_LIMIT)),
         created_at: Some(proposal.created_at),
+    }
+}
+
+pub(super) fn review_source(review: &Review) -> ContextSourceRef {
+    let excerpt = json!({
+        "id": review.id.as_str(),
+        "task_id": review.task_id.as_str(),
+        "reviewer_type": review.reviewer_type.to_string(),
+        "status": review.status.to_string(),
+        "notes": review.notes,
+        "completed_at": review.completed_at,
+    })
+    .to_string();
+
+    ContextSourceRef {
+        source_type: ContextSourceType::Review,
+        id: format!("review:{}", review.id.as_str()),
+        label: format!("{} review", review.reviewer_type),
+        excerpt: Some(truncate_text(&excerpt, SOURCE_EXCERPT_LIMIT)),
+        created_at: Some(review.created_at),
+    }
+}
+
+pub(super) fn review_note_source(note: &ReviewNote) -> ContextSourceRef {
+    let excerpt = json!({
+        "id": note.id.as_str(),
+        "task_id": note.task_id.as_str(),
+        "reviewer": note.reviewer.to_string(),
+        "outcome": note.outcome.to_string(),
+        "summary": note.summary,
+        "notes": note.notes,
+        "issues": note.issues,
+    })
+    .to_string();
+
+    ContextSourceRef {
+        source_type: ContextSourceType::ReviewNote,
+        id: format!("review_note:{}", note.id.as_str()),
+        label: format!("{} review note", note.reviewer),
+        excerpt: Some(truncate_text(&excerpt, SOURCE_EXCERPT_LIMIT)),
+        created_at: Some(note.created_at),
+    }
+}
+
+pub(super) fn review_issue_source(issue: &ReviewIssueEntity) -> ContextSourceRef {
+    let excerpt = json!({
+        "id": issue.id.as_str(),
+        "task_id": issue.task_id.as_str(),
+        "review_note_id": issue.review_note_id.as_str(),
+        "status": issue.status.to_string(),
+        "severity": issue.severity.to_string(),
+        "category": issue.category.as_ref().map(ToString::to_string),
+        "title": &issue.title,
+        "description": &issue.description,
+        "step_id": issue.step_id.as_ref().map(|id| id.as_str()),
+        "no_step_reason": &issue.no_step_reason,
+        "file_path": &issue.file_path,
+        "line_number": issue.line_number,
+        "code_snippet": &issue.code_snippet,
+        "resolution_notes": &issue.resolution_notes,
+    })
+    .to_string();
+
+    ContextSourceRef {
+        source_type: ContextSourceType::ReviewIssue,
+        id: format!("review_issue:{}", issue.id.as_str()),
+        label: issue.title.clone(),
+        excerpt: Some(truncate_text(&excerpt, SOURCE_EXCERPT_LIMIT)),
+        created_at: Some(issue.created_at),
     }
 }
 
@@ -273,8 +384,9 @@ pub(super) fn parse_inline_artifact<T: serde::de::DeserializeOwned>(
 }
 
 pub(super) fn to_pretty_json<T: Serialize>(value: &T) -> AppResult<String> {
-    serde_json::to_string_pretty(value)
-        .map_err(|error| AppError::Validation(format!("Failed to serialize artifact JSON: {error}")))
+    serde_json::to_string_pretty(value).map_err(|error| {
+        AppError::Validation(format!("Failed to serialize artifact JSON: {error}"))
+    })
 }
 
 pub(super) fn sort_sources(sources: &mut [ContextSourceRef]) {
@@ -420,12 +532,16 @@ fn canonical_evidence(
 fn source_type_rank(source_type: ContextSourceType) -> u8 {
     match source_type {
         ContextSourceType::PlanArtifact => 0,
-        ContextSourceType::ChatMessage => 1,
-        ContextSourceType::TaskProposal => 2,
-        ContextSourceType::VerificationStatus => 3,
-        ContextSourceType::VerificationGap => 4,
-        ContextSourceType::ProjectAnalysis => 5,
-        ContextSourceType::Artifact => 6,
-        ContextSourceType::AgentRun => 7,
+        ContextSourceType::Task => 1,
+        ContextSourceType::ChatMessage => 2,
+        ContextSourceType::TaskProposal => 3,
+        ContextSourceType::Review => 4,
+        ContextSourceType::ReviewNote => 5,
+        ContextSourceType::ReviewIssue => 6,
+        ContextSourceType::VerificationStatus => 7,
+        ContextSourceType::VerificationGap => 8,
+        ContextSourceType::ProjectAnalysis => 9,
+        ContextSourceType::Artifact => 10,
+        ContextSourceType::AgentRun => 11,
     }
 }

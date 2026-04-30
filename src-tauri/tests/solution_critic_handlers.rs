@@ -7,9 +7,7 @@ use axum::{
     Router,
 };
 use http_body_util::BodyExt;
-use ralphx_lib::application::solution_critic::{
-    CompileContextRequest, CritiqueArtifactRequest, SourceLimits,
-};
+use ralphx_lib::application::solution_critic::{CompileContextRequest, CritiqueArtifactRequest};
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
@@ -166,10 +164,9 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
     let (state, session_id, plan_artifact_id) = setup_state().await;
     let app = solution_critic_app(state);
 
-    let compile_body = serde_json::to_vec(&CompileContextRequest {
-        target_artifact_id: plan_artifact_id.as_str().to_string(),
-        source_limits: SourceLimits::default(),
-    })
+    let compile_body = serde_json::to_vec(&CompileContextRequest::for_plan_artifact(
+        plan_artifact_id.as_str(),
+    ))
     .unwrap();
     let compile_response = app
         .clone()
@@ -232,10 +229,10 @@ async fn solution_critic_routes_compile_context_and_critique_artifact() {
         .unwrap();
     assert_eq!(context_read_response.status(), StatusCode::OK);
 
-    let critique_body = serde_json::to_vec(&CritiqueArtifactRequest {
-        target_artifact_id: plan_artifact_id.as_str().to_string(),
-        compiled_context_artifact_id: context_artifact_id,
-    })
+    let critique_body = serde_json::to_vec(&CritiqueArtifactRequest::for_plan_artifact(
+        plan_artifact_id.as_str(),
+        context_artifact_id,
+    ))
     .unwrap();
     let critique_response = app
         .clone()
@@ -316,10 +313,9 @@ async fn solution_critic_routes_enforce_project_scope() {
     let (state, session_id, plan_artifact_id) = setup_state().await;
     let app = solution_critic_app(state.clone());
 
-    let compile_body = serde_json::to_vec(&CompileContextRequest {
-        target_artifact_id: plan_artifact_id.as_str().to_string(),
-        source_limits: SourceLimits::default(),
-    })
+    let compile_body = serde_json::to_vec(&CompileContextRequest::for_plan_artifact(
+        plan_artifact_id.as_str(),
+    ))
     .unwrap();
     let response = app
         .oneshot(
@@ -352,10 +348,10 @@ async fn solution_critic_route_requires_existing_context_artifact() {
     let (state, session_id, plan_artifact_id) = setup_state().await;
     let app = solution_critic_app(state.clone());
 
-    let critique_body = serde_json::to_vec(&CritiqueArtifactRequest {
-        target_artifact_id: plan_artifact_id.as_str().to_string(),
-        compiled_context_artifact_id: "missing-context-artifact".to_string(),
-    })
+    let critique_body = serde_json::to_vec(&CritiqueArtifactRequest::for_plan_artifact(
+        plan_artifact_id.as_str(),
+        "missing-context-artifact",
+    ))
     .unwrap();
     let response = app
         .oneshot(

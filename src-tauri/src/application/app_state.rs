@@ -283,6 +283,11 @@ impl AppState {
         let deps = RuntimeFactoryDeps::from_app_state(self);
 
         build_transition_service_from_deps(app_handle, execution_state, &deps)
+            .with_review_critique_preparer(Arc::new(
+                crate::application::solution_critic::SolutionCritiqueReviewPreparer::from_app_state(
+                    self,
+                ),
+            ))
     }
 
     pub fn build_task_scheduler_for_runtime<R: Runtime>(

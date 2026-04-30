@@ -48,8 +48,8 @@ use crate::domain::services::{
     MessageQueue, PlanPrPublisher, PrReviewState, RunningAgentRegistry,
 };
 use crate::domain::state_machine::services::{
-    AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
-    TaskScheduler, WebhookPublisher,
+    AgentSpawner, DependencyManager, EventEmitter, NoOpReviewCritiquePreparer, Notifier,
+    ReviewCritiquePreparer, ReviewStartResult, ReviewStarter, TaskScheduler, WebhookPublisher,
 };
 use crate::domain::state_machine::transition_handler::metadata_builder::{
     build_stop_metadata, build_trigger_origin_metadata, MetadataUpdate,
@@ -845,6 +845,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     notifier: Arc<dyn Notifier>,
     dependency_manager: Arc<dyn DependencyManager>,
     review_starter: Arc<dyn ReviewStarter>,
+    review_critique_preparer: Arc<dyn ReviewCritiquePreparer>,
     chat_service: Arc<dyn ChatService>,
     message_queue: Arc<MessageQueue>,
     memory_event_repo: Arc<dyn MemoryEventRepository>,
@@ -1180,6 +1181,8 @@ impl<R: Runtime> TaskTransitionService<R> {
                 app_handle.clone(),
             ));
         let review_starter: Arc<dyn ReviewStarter> = Arc::new(NoOpReviewStarter);
+        let review_critique_preparer: Arc<dyn ReviewCritiquePreparer> =
+            Arc::new(NoOpReviewCritiquePreparer);
 
         Self {
             task_repo,
@@ -1195,6 +1198,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             notifier,
             dependency_manager,
             review_starter,
+            review_critique_preparer,
             chat_service,
             message_queue,
             memory_event_repo,
@@ -1280,6 +1284,14 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// Set the review repository for system review-note persistence (builder pattern).
     pub fn with_review_repo(mut self, repo: Arc<dyn ReviewRepository>) -> Self {
         self.review_repo = Some(repo);
+        self
+    }
+
+    pub fn with_review_critique_preparer(
+        mut self,
+        preparer: Arc<dyn ReviewCritiquePreparer>,
+    ) -> Self {
+        self.review_critique_preparer = preparer;
         self
     }
 
@@ -2517,6 +2529,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&self.review_starter),
             Arc::clone(&self.chat_service),
         )
+        .with_review_critique_preparer(Arc::clone(&self.review_critique_preparer))
         .with_execution_state(Arc::clone(&self.execution_state))
         .with_task_repo(Arc::clone(&self.task_repo))
         .with_project_repo(Arc::clone(&self.project_repo));

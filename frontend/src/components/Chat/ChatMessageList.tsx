@@ -373,6 +373,7 @@ interface ChatMessageListProps {
   /** Provider metadata for the active conversation */
   providerHarness?: string | null | undefined;
   providerSessionId?: string | null | undefined;
+  solutionCritiqueSessionId?: string | null | undefined;
   contentWidthClassName?: string | undefined;
   topInsetClassName?: string | undefined;
   hasOlderMessages?: boolean;
@@ -407,6 +408,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       contextKey,
       providerHarness,
       providerSessionId,
+      solutionCritiqueSessionId,
       contentWidthClassName,
       topInsetClassName,
       hasOlderMessages = false,
@@ -1433,9 +1435,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         <div className="px-3 w-full" style={contentContainerStyle}>
           <ContentShell className={contentWidthClassName}>
             <MessageItem
+              messageId={msg.id}
               role={msg.role}
               content={msg.content}
               createdAt={msg.createdAt}
+              critiqueSessionId={solutionCritiqueSessionId}
               isLastInList={isLastTimelineItem}
               toolCalls={msg.toolCalls ?? null}
               contentBlocks={msg.contentBlocks ?? null}
@@ -1459,7 +1463,16 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           </ContentShell>
         </div>
       );
-    }, [contentWidthClassName, footerContent, getTeammateInfo, handleFooterRef, providerHarness, providerSessionId, timeline.length]);
+    }, [
+      contentWidthClassName,
+      footerContent,
+      getTeammateInfo,
+      handleFooterRef,
+      providerHarness,
+      providerSessionId,
+      solutionCritiqueSessionId,
+      timeline.length,
+    ]);
 
     if (isTestEnv) {
       return (
@@ -1558,9 +1571,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
                 <ContentShell className={contentWidthClassName}>
                   <MessageItem
+                    messageId={msg.id}
                     role={msg.role}
                     content={msg.content}
                     createdAt={msg.createdAt}
+                    critiqueSessionId={solutionCritiqueSessionId}
                     isLastInList={index === timeline.length - 1}
                     toolCalls={msg.toolCalls ?? null}
                     contentBlocks={msg.contentBlocks ?? null}

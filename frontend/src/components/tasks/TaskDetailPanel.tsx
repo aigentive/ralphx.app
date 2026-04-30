@@ -34,6 +34,7 @@ import { getTaskCategoryLabel } from "@/lib/task-category";
 import { withAlpha } from "@/lib/theme-colors";
 import { TaskDetailContextProvider } from "./detail-views/shared/TaskDetailContextProvider";
 import type { TaskDetailViewMode } from "./detail-views/shared/TaskDetailContext";
+import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
 
 // Import state-specific detail view components
 import {
@@ -465,18 +466,31 @@ export function TaskDetailPanel({
       )}
 
       {/* View Context Button */}
-      {hasContext && (
-        <div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowContext(!showContext)}
-            data-testid="view-context-button"
-            className="w-full justify-center"
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            {showContext ? "Hide Context" : "View Context"}
-          </Button>
+      {(hasContext || task.ideationSessionId) && (
+        <div className="space-y-2">
+          {hasContext && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowContext(!showContext)}
+              data-testid="view-context-button"
+              className="w-full justify-center"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              {showContext ? "Hide Context" : "View Context"}
+            </Button>
+          )}
+          {task.ideationSessionId && (
+            <SolutionCritiqueAction
+              sessionId={task.ideationSessionId}
+              target={{
+                targetType: "task_execution",
+                id: task.id,
+                label: task.title,
+              }}
+              className="w-full justify-center"
+            />
+          )}
         </div>
       )}
 

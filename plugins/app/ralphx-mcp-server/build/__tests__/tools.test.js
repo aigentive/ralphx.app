@@ -346,13 +346,15 @@ describe('getFilteredTools', () => {
         expect(readContextTool).toBeDefined();
         expect(readCritiqueTool).toBeDefined();
         expect(compileTool?.description).toContain('Read-generation helper');
+        expect(compileTool?.description).toContain('selected critique target');
         expect(critiqueTool?.description).toContain('backend-projected verification gaps');
         expect(critiqueTool?.description).toContain('Do not hand-derive gaps');
-        expect(compileTool?.inputSchema.required).toEqual(['target_artifact_id']);
-        expect(critiqueTool?.inputSchema.required).toEqual([
-            'target_artifact_id',
-            'compiled_context_artifact_id',
-        ]);
+        expect(compileTool?.inputSchema.required).toEqual([]);
+        expect(critiqueTool?.inputSchema.required).toEqual(['compiled_context_artifact_id']);
+        expect(compileTool?.inputSchema.properties).toHaveProperty('target_type');
+        expect(compileTool?.inputSchema.properties).toHaveProperty('target_id');
+        expect(critiqueTool?.inputSchema.properties).toHaveProperty('target_type');
+        expect(critiqueTool?.inputSchema.properties).toHaveProperty('target_id');
         expect(readContextTool?.inputSchema.required).toEqual(['artifact_id']);
         expect(readCritiqueTool?.inputSchema.required).toEqual(['artifact_id']);
     });
