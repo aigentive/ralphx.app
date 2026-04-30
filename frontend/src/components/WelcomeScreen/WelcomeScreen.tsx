@@ -40,8 +40,8 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
           onClick={onClose}
           className="absolute top-6 right-6 z-50 p-2 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
           style={{
-            backgroundColor: "rgba(255, 255, 255, 0.05)",
-            border: "1px solid rgba(255, 255, 255, 0.1)",
+            backgroundColor: "var(--overlay-weak)",
+            border: "1px solid var(--overlay-moderate)",
             color: "var(--text-secondary)",
           }}
           aria-label="Close welcome screen"
@@ -56,12 +56,15 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
         <AgentConstellation />
       </div>
 
-      {/* Gradient overlay for text readability - subtle dark mask at center */}
+      {/* Gradient overlay for text readability — fades the canvas color
+          (--bg-base) toward transparent so the central text reads well in
+          every theme. Avoid hardcoded dark colors that turn into a smudge
+          on light/HC. */}
       <div
         className="absolute inset-0 pointer-events-none z-30"
         style={{
           background:
-            "radial-gradient(circle at center, hsla(220 10% 8% / 0.85) 0%, hsla(220 10% 8% / 0.6) 180px, hsla(220 10% 8% / 0.2) 280px, transparent 380px)",
+            "radial-gradient(circle at center, color-mix(in srgb, var(--bg-base) 85%, transparent) 0%, color-mix(in srgb, var(--bg-base) 60%, transparent) 180px, color-mix(in srgb, var(--bg-base) 20%, transparent) 280px, transparent 380px)",
           isolation: "isolate",
         }}
       />
