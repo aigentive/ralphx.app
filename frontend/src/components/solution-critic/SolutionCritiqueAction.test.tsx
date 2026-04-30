@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { solutionCriticApi, solutionCriticQueryKeys } from "@/api/solution-critic";
+import { verificationStatusKey } from "@/hooks/useVerificationStatus";
 import { SolutionCritiqueAction } from "./SolutionCritiqueAction";
 
 vi.mock("@/api/solution-critic", async (importOriginal) => {
@@ -400,7 +401,8 @@ describe("SolutionCritiqueAction", () => {
       verificationGeneration: 7,
     });
 
-    renderAction();
+    const { client } = renderAction();
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
 
     await userEvent.click(await screen.findByRole("button", { name: "Open critique: Investigate" }));
     const promoteButtons = await screen.findAllByRole("button", { name: "Promote" });
@@ -418,5 +420,8 @@ describe("SolutionCritiqueAction", () => {
     expect(solutionCriticApi.compileTargetContext).not.toHaveBeenCalled();
     expect(solutionCriticApi.critiqueTarget).not.toHaveBeenCalled();
     expect(await screen.findByText("Promoted")).toBeInTheDocument();
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: verificationStatusKey("session-1"),
+    });
   });
 });

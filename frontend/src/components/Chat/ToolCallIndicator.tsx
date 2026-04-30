@@ -31,6 +31,32 @@ interface ToolCallIndicatorProps {
   isStreaming?: boolean;
 }
 
+interface GenericToolCallIndicatorProps extends ToolCallIndicatorProps {
+  summary: ReturnType<typeof createSummary>;
+  verb: string;
+  hasError: boolean;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
+}
+
+class ToolCallWidgetBoundary extends React.Component<
+  { fallback: React.ReactNode; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -66,6 +92,19 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   const summary = useMemo(() => createSummary(toolCall), [toolCall]);
   const verb = useMemo(() => getToolVerb(toolCall.name), [toolCall.name]);
   const hasError = Boolean(toolCall.error);
+  const genericFallback = (
+    <GenericToolCallIndicator
+      toolCall={toolCall}
+      className={className}
+      compact={compact}
+      isStreaming={isStreaming}
+      summary={summary}
+      verb={verb}
+      hasError={hasError}
+      isExpanded={isExpanded}
+      onToggleExpanded={() => setIsExpanded((expanded) => !expanded)}
+    />
+  );
 
   // Delegate Edit/Write to DiffToolCallView for inline diff rendering
   // Quick check: arguments must have file_path for diff to work (same gate as DiffToolCallView)
@@ -86,12 +125,31 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   const SpecializedWidget = getToolCallWidget(toolCall.name);
   if (SpecializedWidget) {
     return (
-      <Suspense fallback={null}>
-        {React.createElement(SpecializedWidget, { toolCall, compact, className })}
-      </Suspense>
+      <ToolCallWidgetBoundary
+        key={`${toolCall.id ?? toolCall.name}:${toolCall.name}`}
+        fallback={genericFallback}
+      >
+        <Suspense fallback={null}>
+          {React.createElement(SpecializedWidget, { toolCall, compact, className })}
+        </Suspense>
+      </ToolCallWidgetBoundary>
     );
   }
 
+  return genericFallback;
+});
+
+function GenericToolCallIndicator({
+  toolCall,
+  className = "",
+  compact = false,
+  isStreaming = false,
+  summary,
+  verb,
+  hasError,
+  isExpanded,
+  onToggleExpanded,
+}: GenericToolCallIndicatorProps) {
   const iconSize = compact ? 12 : 14;
   const chevronSize = compact ? 12 : 14;
 
@@ -108,7 +166,7 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
       {/* Header - Always visible */}
       <button
         data-testid="tool-call-toggle"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={onToggleExpanded}
         className={`w-full ${compact ? "px-2 py-1.5" : "px-3 py-2"} text-left hover:opacity-80 transition-opacity`}
         aria-expanded={isExpanded}
         aria-label={`Tool call: ${toolCall.name}. Click to ${isExpanded ? "collapse" : "expand"} details.`}
@@ -296,4 +354,4 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
       )}
     </div>
   );
-});
+}

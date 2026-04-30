@@ -37,7 +37,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { getModelLabel } from "@/lib/model-utils";
-import type { IdeationSession, VerificationStatus } from "@/types/ideation";
+import type { IdeationSession, VerificationGap, VerificationStatus } from "@/types/ideation";
 import type { VerificationStatusResponse } from "@/api/ideation.types";
 
 // ============================================================================
@@ -178,6 +178,18 @@ function verificationDataHasDisplayEvidence(
       (data.rounds?.length ?? 0) > 0 ||
       (data.roundDetails?.length ?? 0) > 0,
   );
+}
+
+function isSolutionCritiqueGap(gap: VerificationGap): boolean {
+  return gap.source?.startsWith("solution_critique:") === true ||
+    gap.category?.startsWith("solution_critique_") === true;
+}
+
+function critiqueGapSourceLabel(source: string | undefined): string {
+  if (!source?.startsWith("solution_critique:")) return "Solution critique";
+  const [, critiqueId] = source.split(":");
+  if (!critiqueId) return "Solution critique";
+  return `Critique ${critiqueId.slice(0, 8)}`;
 }
 
 // ============================================================================
@@ -692,6 +704,12 @@ export function VerificationPanel({
   const gapScore = verificationData?.gapScore ?? (session.gapScore != null ? session.gapScore : undefined);
   const hasGaps = gaps.length > 0;
   const hasRounds = rounds.length > 0 || roundDetails.length > 0;
+  const critiquePromotedGaps = gaps.filter(isSolutionCritiqueGap);
+  const showCritiquePromotedGapsState =
+    verificationStatus === "needs_revision" &&
+    !isInProgress &&
+    !hasRounds &&
+    critiquePromotedGaps.length > 0;
   const currentRunSelected =
     currentGeneration != null && autoDisplayGeneration === currentGeneration;
   const verificationChild = displayedVerificationHasEvidence
@@ -908,6 +926,137 @@ export function VerificationPanel({
         enabled={hasPlan && session.sessionPurpose !== "verification"}
       />
 
+      {showCritiquePromotedGapsState && (
+        <div
+          data-testid="critique-promoted-gaps-state"
+          className="rounded-xl p-4 space-y-3"
+          style={{
+            background: "var(--overlay-faint)",
+            border: "1px solid var(--overlay-weak)",
+          }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div
+                className="text-[11px] font-semibold uppercase tracking-wider"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Verification Required
+              </div>
+              <h3
+                className="mt-1 text-[15px] font-semibold"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Critique-promoted gaps pending verification
+              </h3>
+              <p
+                className="mt-1.5 text-[12px] leading-relaxed"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                These gaps came from a solution critique and have not gone through a verification round yet.
+              </p>
+            </div>
+            <span
+              className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold uppercase"
+              style={{
+                color: "var(--status-warning)",
+                background: "var(--status-warning-muted)",
+                border: "1px solid var(--status-warning-border)",
+              }}
+            >
+              {pluralize(critiquePromotedGaps.length, "gap")}
+            </span>
+          </div>
+
+          <div className="space-y-1.5">
+            {critiquePromotedGaps.slice(0, 3).map((gap, index) => (
+              <div
+                key={`${gap.source ?? gap.category}-${index}`}
+                className="rounded-lg px-3 py-2"
+                style={{
+                  background: "var(--overlay-weak)",
+                  border: "1px solid var(--overlay-faint)",
+                }}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="text-[10px] font-semibold uppercase"
+                    style={{ color: "var(--status-warning)" }}
+                  >
+                    {gap.severity}
+                  </span>
+                  <span
+                    className="rounded-md px-1.5 py-0.5 text-[10px]"
+                    style={{
+                      color: "var(--text-muted)",
+                      background: "var(--overlay-faint)",
+                      border: "1px solid var(--overlay-faint)",
+                    }}
+                  >
+                    {critiqueGapSourceLabel(gap.source)}
+                  </span>
+                </div>
+                <div
+                  className="mt-1 text-[12px] leading-relaxed"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  {gap.description}
+                </div>
+              </div>
+            ))}
+            {critiquePromotedGaps.length > 3 && (
+              <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                {critiquePromotedGaps.length - 3} more critique-promoted gaps are listed below.
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleTriggerVerification}
+              data-testid="run-critique-promoted-verification-button"
+              className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
+              style={{
+                color: "var(--accent-primary)",
+                background: withAlpha("var(--accent-primary)", 10),
+                border: "1px solid var(--accent-border)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = withAlpha("var(--accent-primary)", 15);
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = withAlpha("var(--accent-primary)", 10);
+              }}
+            >
+              <ShieldCheck className="w-3 h-3" />
+              Run verification round
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleAddressGaps}
+              data-testid="address-critique-promoted-gaps-button"
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
+              style={{
+                color: "var(--text-secondary)",
+                background: "transparent",
+                border: "1px solid var(--overlay-weak)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--overlay-weak)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <Wand2 className="w-3 h-3" />
+              Address gaps in chat
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* In-progress badge — terminal states are conveyed by the
           VERIFICATION GAPS card and the action row below, so we no longer
           render a separate terminal status banner. */}
@@ -1074,7 +1223,7 @@ export function VerificationPanel({
       {/* Verification action row — surfaces Address Gaps, Re-verify Plan,
           and Skip side-by-side. Replaces the dedicated terminal status
           banner that previously hosted Skip. */}
-      {(showAddressGaps || showReVerify || showSkipVerification) && (
+      {!showCritiquePromotedGapsState && (showAddressGaps || showReVerify || showSkipVerification) && (
         <div className="flex flex-wrap items-center gap-2">
           {showAddressGaps && (
             <Button

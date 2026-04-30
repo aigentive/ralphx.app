@@ -1,11 +1,13 @@
 import { useMemo, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { FileSearch, ListChecks, ShieldAlert } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileSearch, ListChecks, SearchCheck, ShieldAlert } from "lucide-react";
 import {
   solutionCriticApi,
   type CompiledContextReadResponse,
   type SolutionCritiqueReadResponse,
+  type SolutionCritiqueTargetInput,
 } from "@/api/solution-critic";
+import { Button } from "@/components/ui/button";
 import {
   buildCritiqueDigest,
   critiqueGapOriginLabel,
@@ -41,6 +43,8 @@ const solutionCriticKeys = {
     ["solutionCritic", sessionId, "latestCompiledContext"] as const,
   latestSolutionCritique: (sessionId: string) =>
     ["solutionCritic", sessionId, "latestSolutionCritique"] as const,
+  rollup: (sessionId: string) =>
+    ["solutionCritic", sessionId, "rollup"] as const,
 };
 
 function formatCount(count: number, singular: string): string {
@@ -81,6 +85,61 @@ function targetScopeLabel(targetType: string | undefined): string {
     default:
       return "Target";
   }
+}
+
+function sameTarget(
+  left: { targetType: string; id: string } | undefined,
+  right: { targetType: string; id: string } | undefined,
+): boolean {
+  return Boolean(left && right && left.targetType === right.targetType && left.id === right.id);
+}
+
+function shortTargetId(id: string | undefined): string | null {
+  if (!id) return null;
+  const lastPart = id.split(":").filter(Boolean).pop() ?? id;
+  return lastPart.length > 12 ? lastPart.slice(-12) : lastPart;
+}
+
+function targetScopeDescription(
+  target: { targetType: string; id: string; label?: string } | undefined,
+): string {
+  const shortId = shortTargetId(target?.id);
+  let label: string;
+  switch (target?.targetType) {
+    case "plan_artifact":
+      label = "Plan artifact";
+      break;
+    case "chat_message":
+      label = "Assistant response";
+      break;
+    case "task_execution":
+      label = "Task execution";
+      break;
+    case "review_report":
+      label = "Review report";
+      break;
+    case "agent_run":
+      label = "Agent run";
+      break;
+    case "task":
+      label = "Task";
+      break;
+    case "artifact":
+      label = target.label ?? "Artifact";
+      break;
+    default:
+      label = target?.label ?? "Target";
+      break;
+  }
+  return shortId ? `${label} · ${shortId}` : label;
+}
+
+function contextTargetToInput(target: CompiledContext["target"]): SolutionCritiqueTargetInput {
+  return {
+    targetType: target.targetType as SolutionCritiqueTargetInput["targetType"],
+    id: target.id,
+    ...(target.label ? { label: target.label } : {}),
+  };
 }
 
 function topProjectedGaps(gaps: VerificationGap[]): VerificationGap[] {
@@ -154,6 +213,7 @@ export function SolutionCritiqueSummary({
   sessionId,
   enabled,
 }: SolutionCritiqueSummaryProps) {
+  const queryClient = useQueryClient();
   const { data: contextData } = useQuery({
     queryKey: solutionCriticKeys.latestCompiledContext(sessionId),
     queryFn: () => solutionCriticApi.getLatestCompiledContext(sessionId),
@@ -172,6 +232,13 @@ export function SolutionCritiqueSummary({
       : false,
     retry: false,
   });
+  const { data: rollupData } = useQuery({
+    queryKey: solutionCriticKeys.rollup(sessionId),
+    queryFn: () => solutionCriticApi.getSolutionCritiqueRollup(sessionId),
+    enabled,
+    staleTime: 30_000,
+    retry: false,
+  });
 
   const context = contextData?.compiledContext;
   const critique = critiqueData?.solutionCritique;
@@ -181,11 +248,46 @@ export function SolutionCritiqueSummary({
   const visibleGaps = useMemo(() => topProjectedGaps(projectedGaps), [projectedGaps]);
   const hasCritique = Boolean(critique);
   const targetScope = targetScopeLabel(context?.target.targetType);
+  const targetDescription = targetScopeDescription(context?.target);
+  const latestOtherTarget = useMemo(() => {
+    if (!context) return null;
+    return [...(rollupData?.targets ?? [])]
+      .filter((item) => !sameTarget(item.target, context.target))
+      .sort((left, right) => Date.parse(right.generatedAt) - Date.parse(left.generatedAt))[0] ?? null;
+  }, [context, rollupData?.targets]);
+  const showPlanCritiqueMissing =
+    !hasCritique &&
+    context?.target.targetType === "plan_artifact" &&
+    latestOtherTarget != null;
   const digest = buildCritiqueDigest({
     context: contextData ?? null,
     result: critiqueData ?? null,
     isLoading: false,
     error: null,
+  });
+  const planCritiqueMutation = useMutation({
+    mutationFn: async () => {
+      if (!context) throw new Error("No compiled plan context is available.");
+      const target = contextTargetToInput(context.target);
+      const compiledContext = await solutionCriticApi.compileTargetContext(sessionId, target);
+      const solutionCritique = await solutionCriticApi.critiqueTarget(
+        sessionId,
+        target,
+        compiledContext.artifactId,
+      );
+      return { compiledContext, solutionCritique };
+    },
+    onSuccess: (response) => {
+      queryClient.setQueryData(
+        solutionCriticKeys.latestCompiledContext(sessionId),
+        response.compiledContext,
+      );
+      queryClient.setQueryData(
+        solutionCriticKeys.latestSolutionCritique(sessionId),
+        response.solutionCritique,
+      );
+      void queryClient.invalidateQueries({ queryKey: solutionCriticKeys.rollup(sessionId) });
+    },
   });
 
   if (!context && !critique) return null;
@@ -209,6 +311,9 @@ export function SolutionCritiqueSummary({
             style={{ color: "var(--text-primary)" }}
           >
           {hasCritique ? verdictLabel(critique?.verdict) : `Compiled ${targetScope.toLowerCase()} context ready`}
+          </div>
+          <div className="mt-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            Target: {targetDescription}
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -304,6 +409,46 @@ export function SolutionCritiqueSummary({
         <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
           Model critique has not been persisted for this context yet.
         </p>
+      )}
+
+      {showPlanCritiqueMissing && latestOtherTarget && (
+        <div
+          data-testid="plan-critique-missing-row"
+          className="flex flex-col gap-2 rounded-md px-2.5 py-2 sm:flex-row sm:items-center sm:justify-between"
+          style={{
+            background: "var(--overlay-weak)",
+            border: "1px solid var(--overlay-faint)",
+          }}
+        >
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold" style={{ color: "var(--text-primary)" }}>
+              Plan critique not yet run
+            </div>
+            <div className="mt-0.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+              Latest saved critique is for {targetScopeDescription(latestOtherTarget.target)}.
+            </div>
+            {planCritiqueMutation.error instanceof Error && (
+              <div className="mt-1 text-[11px]" style={{ color: "var(--status-danger)" }}>
+                {planCritiqueMutation.error.message}
+              </div>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => planCritiqueMutation.mutate()}
+            disabled={planCritiqueMutation.isPending}
+            className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg shrink-0"
+            style={{
+              color: "var(--accent-primary)",
+              background: "var(--overlay-faint)",
+              border: "1px solid var(--accent-border)",
+            }}
+          >
+            <SearchCheck className="w-3 h-3" />
+            {planCritiqueMutation.isPending ? "Critiquing plan" : "Critique plan"}
+          </Button>
+        </div>
       )}
 
       <div className="grid gap-2 lg:grid-cols-2">

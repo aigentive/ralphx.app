@@ -14,10 +14,16 @@ import type { IdeationSession } from "@/types/ideation";
 
 const mockSetQueryData = vi.fn();
 const mockUseQueryClient = vi.fn(() => ({ setQueryData: mockSetQueryData }));
+const mockUseMutation = vi.fn(() => ({
+  mutate: vi.fn(),
+  isPending: false,
+  error: null,
+}));
 let mockQueryResult: { data: unknown; isLoading: boolean } = { data: undefined, isLoading: false };
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: vi.fn(() => mockQueryResult),
+  useMutation: mockUseMutation,
   useQueryClient: mockUseQueryClient,
 }));
 
@@ -108,6 +114,11 @@ describe("VerificationPanel — page-load hydration", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockQueryResult = { data: undefined, isLoading: false };
+    mockUseMutation.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      error: null,
+    });
     mockStoreState = {
       activeVerificationChildId: {},
       setActiveVerificationChildId: mockSetActiveVerificationChildId,
@@ -294,6 +305,49 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
     expect(screen.getByTestId("address-gaps-button")).toBeInTheDocument();
     expect(screen.getByTestId("re-verify-button")).toBeInTheDocument();
+  });
+
+  it("shows critique-promoted gaps as pending verification instead of the no-verification empty state", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const verificationData = {
+      sessionId: "session-1",
+      status: "needs_revision",
+      inProgress: false,
+      gaps: [
+        {
+          severity: "high",
+          category: "solution_critique_verification",
+          description: "Required verification: confirm README.md still does not exist.",
+          source: "solution_critique:critique-1:projected-gap-1",
+        },
+      ],
+      rounds: [],
+      roundDetails: [],
+      runHistory: [
+        {
+          generation: 6,
+          status: "needs_revision",
+          inProgress: false,
+          roundCount: 0,
+          gapCount: 1,
+        },
+      ],
+    };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("verification-empty-state")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("critique-promoted-gaps-state")).toBeInTheDocument();
+    expect(screen.getByText("Critique-promoted gaps pending verification")).toBeInTheDocument();
+    expect(screen.getByText("Required verification: confirm README.md still does not exist.")).toBeInTheDocument();
+    expect(screen.getByTestId("run-critique-promoted-verification-button")).toBeInTheDocument();
+    expect(screen.getByTestId("address-critique-promoted-gaps-button")).toBeInTheDocument();
   });
 
   it("shows empty state when query returns null (404 — no verification ever started)", async () => {

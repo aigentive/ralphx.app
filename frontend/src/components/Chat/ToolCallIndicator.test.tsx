@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
+import { lazy } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 import { makeToolCall } from "./__tests__/chatRenderFixtures";
+import { TOOL_CALL_WIDGETS } from "./tool-widgets/registry";
 
 vi.mock("@/hooks/useChildSessionStatus", () => ({
   useChildSessionStatus: vi.fn(() => ({
@@ -108,6 +110,34 @@ describe("ToolCallIndicator", () => {
 
       const indicator = container.querySelector(".custom-class");
       expect(indicator).toBeInTheDocument();
+    });
+
+    it("falls back to the generic renderer when a lazy specialized widget import fails", async () => {
+      const original = TOOL_CALL_WIDGETS.broken_lazy_widget;
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      TOOL_CALL_WIDGETS.broken_lazy_widget = lazy(async () => {
+        throw new TypeError("Importing a module script failed.");
+      });
+
+      try {
+        const toolCall: ToolCall = makeToolCall("broken_lazy_widget", {
+          id: "call-broken-lazy",
+          arguments: { action: "test" },
+        });
+
+        render(<ToolCallIndicator toolCall={toolCall} />);
+
+        expect(await screen.findByTestId("tool-call-indicator")).toBeInTheDocument();
+        expect(screen.getByText("broken_lazy_widget")).toBeInTheDocument();
+        expect(screen.getByText("broken lazy widget")).toBeInTheDocument();
+      } finally {
+        if (original) {
+          TOOL_CALL_WIDGETS.broken_lazy_widget = original;
+        } else {
+          delete TOOL_CALL_WIDGETS.broken_lazy_widget;
+        }
+        consoleError.mockRestore();
+      }
     });
   });
 
