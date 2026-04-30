@@ -22,7 +22,8 @@ interface SolutionCritiqueDetailsProps {
   digest: CritiqueDigest;
   isLoading: boolean;
   error: string | null;
-  onRefresh: () => void;
+  onRefresh?: () => void;
+  readOnly?: boolean;
 }
 
 const toneClasses: Record<CritiqueDigest["tone"], string> = {
@@ -41,6 +42,7 @@ export function SolutionCritiqueDetails({
   isLoading,
   error,
   onRefresh,
+  readOnly = false,
 }: SolutionCritiqueDetailsProps) {
   const critique = result?.solutionCritique;
 
@@ -208,18 +210,20 @@ export function SolutionCritiqueDetails({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--overlay-weak)] px-4 py-3">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onRefresh}
-          disabled={isLoading}
-          className="h-8 rounded-md text-[12px]"
-        >
-          {critique ? "Refresh critique" : "Run critique"}
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--overlay-weak)] px-4 py-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRefresh}
+            disabled={isLoading}
+            className="h-8 rounded-md text-[12px]"
+          >
+            {critique ? "Refresh critique" : "Run critique"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

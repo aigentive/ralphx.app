@@ -5,14 +5,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { solutionCriticApi } from "@/api/solution-critic";
 import { SolutionCritiqueAction } from "./SolutionCritiqueAction";
 
-vi.mock("@/api/solution-critic", () => ({
-  solutionCriticApi: {
-    getLatestTargetCompiledContext: vi.fn(),
-    getLatestTargetSolutionCritique: vi.fn(),
-    compileTargetContext: vi.fn(),
-    critiqueTarget: vi.fn(),
-  },
-}));
+vi.mock("@/api/solution-critic", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/solution-critic")>();
+  return {
+    ...actual,
+    solutionCriticApi: {
+      getLatestTargetCompiledContext: vi.fn(),
+      getLatestTargetSolutionCritique: vi.fn(),
+      compileTargetContext: vi.fn(),
+      critiqueTarget: vi.fn(),
+    },
+  };
+});
 
 const critiqueResponse = {
   artifactId: "critique-1",

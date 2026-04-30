@@ -27,6 +27,7 @@ import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 import type { Task } from "@/types/task";
 import { BranchBadge } from "@/components/shared/BranchBadge";
+import { SolutionCritiqueRecord } from "@/components/solution-critic/SolutionCritiqueRecord";
 import { DurationDisplay } from "./shared/DurationDisplay";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 import { statusTint } from "@/lib/theme-colors";
@@ -199,6 +200,16 @@ export function MergedTaskDetail({
           />
         }
         {...(bannerAction !== null && { action: bannerAction })}
+      />
+
+      <SolutionCritiqueRecord
+        sessionId={task.ideationSessionId}
+        target={{
+          targetType: "task_execution",
+          id: task.id,
+          label: `Task execution: ${task.title}`,
+        }}
+        title="Merged Outcome Critique"
       />
 
       {/* Duration (static) */}

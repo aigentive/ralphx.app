@@ -41,10 +41,16 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { navigateToIdeationSession } from "@/lib/navigation";
 import { getTaskCategoryLabel } from "@/lib/task-category";
 import { withAlpha } from "@/lib/theme-colors";
+import {
+  solutionCriticApi,
+  solutionCriticQueryKeys,
+  type SolutionCritiqueTargetInput,
+} from "@/api/solution-critic";
 import type { Commit } from "@/components/diff";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import { SolutionCritiqueAction } from "@/components/solution-critic/SolutionCritiqueAction";
 import { ReviewCritiquePreflightBanner } from "@/components/solution-critic/ReviewCritiquePreflightBanner";
+import { buildCritiqueApprovalWarning } from "@/components/solution-critic/reviewCritiqueApproval";
 
 interface ReviewDetailModalProps {
   taskId: string;
@@ -400,6 +406,33 @@ export function ReviewDetailModal({
   // Check if task is in a state that allows human approval
   // (review_passed or escalated)
   const canApprove = task?.internalStatus === "review_passed" || task?.internalStatus === "escalated";
+  const critiqueTarget = useMemo<SolutionCritiqueTargetInput | null>(
+    () =>
+      task
+        ? {
+            targetType: "task_execution",
+            id: task.id,
+            label: `Task execution: ${task.title}`,
+          }
+        : null,
+    [task],
+  );
+  const { data: approvalCritique } = useQuery({
+    queryKey: solutionCriticQueryKeys.targetCritique(
+      task?.ideationSessionId,
+      critiqueTarget ?? { targetType: "task_execution", id: taskId },
+    ),
+    queryFn: () => {
+      if (!task?.ideationSessionId || !critiqueTarget) return Promise.resolve(null);
+      return solutionCriticApi.getLatestTargetSolutionCritique(
+        task.ideationSessionId,
+        critiqueTarget,
+      );
+    },
+    enabled: showActions && Boolean(task?.ideationSessionId && critiqueTarget),
+    staleTime: 30_000,
+    retry: false,
+  });
 
   // Get latest approved review for summary
   const latestApproved = useMemo(() => {
@@ -445,15 +478,16 @@ export function ReviewDetailModal({
   }, [showFeedbackInput, feedback, requestChangesMutation]);
 
   const handleApprove = useCallback(async () => {
+    const critiqueWarning = buildCritiqueApprovalWarning(approvalCritique);
     const confirmed = await confirm({
-      title: "Approve this task?",
-      description: "The task will be marked as approved and completed.",
-      confirmText: "Approve",
-      variant: "default",
+      title: critiqueWarning?.title ?? "Approve this task?",
+      description: critiqueWarning?.description ?? "The task will be marked as approved and completed.",
+      confirmText: critiqueWarning?.confirmText ?? "Approve",
+      variant: critiqueWarning?.variant ?? "default",
     });
     if (!confirmed) return;
     approveMutation.mutate();
-  }, [confirm, approveMutation]);
+  }, [approvalCritique, confirm, approveMutation]);
 
   const handleCommitSelect = useCallback((_commit: Commit) => {
     // In a real implementation, this would fetch files changed in the commit

@@ -174,6 +174,20 @@ export interface SolutionCritiqueTargetInput {
   label?: string;
 }
 
+type SolutionCritiqueTargetKeyInput = Pick<SolutionCritiqueTargetInput, "targetType" | "id">;
+
+export const solutionCriticQueryKeys = {
+  session: (sessionId: string | null | undefined) => ["solutionCritic", sessionId ?? "none"] as const,
+  targetContext: (
+    sessionId: string | null | undefined,
+    target: SolutionCritiqueTargetKeyInput
+  ) => ["solutionCritic", sessionId ?? "none", "targetContext", target.targetType, target.id] as const,
+  targetCritique: (
+    sessionId: string | null | undefined,
+    target: SolutionCritiqueTargetKeyInput
+  ) => ["solutionCritic", sessionId ?? "none", "target", target.targetType, target.id] as const,
+} as const;
+
 export interface SourceLimitsInput {
   chatMessages?: number;
   taskProposals?: number;

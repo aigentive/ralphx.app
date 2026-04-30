@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, SearchCheck } from "lucide-react";
 import {
   solutionCriticApi,
+  solutionCriticQueryKeys,
   type CompiledContextReadResponse,
   type SolutionCritiqueReadResponse,
   type SolutionCritiqueTargetInput,
@@ -34,20 +35,6 @@ function humanize(value: string): string {
     .join(" ");
 }
 
-function targetCritiqueKey(
-  sessionId: string | null | undefined,
-  target: SolutionCritiqueTargetInput,
-) {
-  return ["solutionCritic", sessionId ?? "none", "target", target.targetType, target.id] as const;
-}
-
-function targetContextKey(
-  sessionId: string | null | undefined,
-  target: SolutionCritiqueTargetInput,
-) {
-  return ["solutionCritic", sessionId ?? "none", "targetContext", target.targetType, target.id] as const;
-}
-
 export function SolutionCritiqueAction({
   sessionId,
   target,
@@ -61,8 +48,14 @@ export function SolutionCritiqueAction({
   const [context, setContext] = useState<CompiledContextReadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const targetQueryKey = useMemo(() => targetCritiqueKey(sessionId, target), [sessionId, target]);
-  const targetContextQueryKey = useMemo(() => targetContextKey(sessionId, target), [sessionId, target]);
+  const targetQueryKey = useMemo(
+    () => solutionCriticQueryKeys.targetCritique(sessionId, target),
+    [sessionId, target],
+  );
+  const targetContextQueryKey = useMemo(
+    () => solutionCriticQueryKeys.targetContext(sessionId, target),
+    [sessionId, target],
+  );
 
   const latestContextQuery = useQuery({
     queryKey: targetContextQueryKey,
@@ -97,7 +90,7 @@ export function SolutionCritiqueAction({
       setResult(response.critique);
       queryClient.setQueryData(targetContextQueryKey, response.compiledContext);
       queryClient.setQueryData(targetQueryKey, response.critique);
-      void queryClient.invalidateQueries({ queryKey: ["solutionCritic", sessionId] });
+      void queryClient.invalidateQueries({ queryKey: solutionCriticQueryKeys.session(sessionId) });
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Failed to run solution critique");
