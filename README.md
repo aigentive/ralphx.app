@@ -26,24 +26,6 @@
   </a>
 </p>
 
-<p align="center">
-  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-lib">
-    <img alt="Rust lib coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-lib&label=rust-lib&logo=codecov&logoColor=white">
-  </a>
-  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-ipc">
-    <img alt="Rust IPC coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-ipc&label=rust-ipc&logo=codecov&logoColor=white">
-  </a>
-  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=frontend">
-    <img alt="Frontend coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=frontend&label=frontend&logo=codecov&logoColor=white">
-  </a>
-  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=plugin-internal-mcp">
-    <img alt="Internal MCP coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=plugin-internal-mcp&label=internal-mcp&logo=codecov&logoColor=white">
-  </a>
-  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=plugin-external-mcp">
-    <img alt="External MCP coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=plugin-external-mcp&label=external-mcp&logo=codecov&logoColor=white">
-  </a>
-</p>
-
 ---
 
 ## What It Is
@@ -296,6 +278,20 @@ The tool was built by the thing it builds.
 Apache 2.0. See [LICENSE](LICENSE).
 
 Use it however you want. Build commercial products with it. Modify it. Distribute it. The patent grant means your legal team can approve it.
+
+## Code Coverage
+
+The top README badge shows aggregate coverage for `main`. The suite badges below use Codecov flags so each coverage report can be tracked independently while still contributing to the overall project report.
+
+| Suite | Coverage | Covered Areas | Notes |
+|---|---|---|---|
+| Rust library | [![Rust lib coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-lib&label=rust-lib&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-lib) | [src-tauri/](src-tauri/) | Backend library coverage from `cargo llvm-cov nextest --lib`. |
+| Rust IPC contracts | [![Rust IPC coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-ipc&label=rust-ipc&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-ipc) | [src-tauri/tests/](src-tauri/tests/) and IPC command paths in [src-tauri/](src-tauri/) | Focused integration coverage for Tauri command contracts. |
+| Frontend | [![Frontend coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=frontend&label=frontend&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=frontend) | [frontend/src/](frontend/src/) and [frontend/tests/](frontend/tests/) | React and TypeScript coverage from Vitest's V8 coverage provider. |
+| Internal MCP | [![Internal MCP coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=plugin-internal-mcp&label=internal-mcp&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=plugin-internal-mcp) | [plugins/app/ralphx-mcp-server/](plugins/app/ralphx-mcp-server/) | Internal agent MCP server coverage from its Vitest suite. |
+| External MCP | [![External MCP coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=plugin-external-mcp&label=external-mcp&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=plugin-external-mcp) | [plugins/app/ralphx-external-mcp/](plugins/app/ralphx-external-mcp/) | External HTTP MCP bridge coverage from its Vitest suite. |
+
+PRs run only the affected coverage suites when possible. Pushes to `main` run every suite and refresh the default-branch Codecov badges.
 
 ---
 
