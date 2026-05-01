@@ -21,26 +21,26 @@
   <a href="https://github.com/aigentive/ralphx.app/releases">
     <img alt="Homebrew version" src="https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2Faigentive%2Fhomebrew-ralphx%2Fmain%2FCasks%2Fralphx.rb&search=version%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=brew&logo=homebrew&logoColor=white">
   </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ">
+  <a href="https://app.codecov.io/gh/aigentive/ralphx.app">
+    <img alt="Coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&label=coverage&logo=codecov&logoColor=white">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Rust lib coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=rust-lib">
+  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-lib">
+    <img alt="Rust lib coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-lib&label=rust-lib&logo=codecov&logoColor=white">
   </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Rust IPC coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=rust-ipc">
+  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-ipc">
+    <img alt="Rust IPC coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-ipc&label=rust-ipc&logo=codecov&logoColor=white">
   </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Frontend coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=frontend">
+  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=frontend">
+    <img alt="Frontend coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=frontend&label=frontend&logo=codecov&logoColor=white">
   </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Internal MCP coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=plugin-internal-mcp">
+  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=plugin-internal-mcp">
+    <img alt="Internal MCP coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=plugin-internal-mcp&label=internal-mcp&logo=codecov&logoColor=white">
   </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="External MCP coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=plugin-external-mcp">
+  <a href="https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=plugin-external-mcp">
+    <img alt="External MCP coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=plugin-external-mcp&label=external-mcp&logo=codecov&logoColor=white">
   </a>
 </p>
 
