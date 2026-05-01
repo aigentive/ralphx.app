@@ -27,6 +27,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -480,6 +481,7 @@ export function ReviewDetailModal({
           "p-0 gap-0 overflow-hidden flex flex-col",
           "max-w-[95vw] w-[95vw] h-[95vh]"
         )}
+        aria-describedby={undefined}
         style={{
           backgroundColor: "var(--bg-surface)",
           border: "1px solid var(--border-subtle)",
@@ -495,13 +497,13 @@ export function ReviewDetailModal({
           }}
         >
           <div className="flex items-center gap-3">
-            <h2
+            <DialogTitle
               data-testid="review-detail-modal-title"
               className="text-base font-semibold text-text-primary/90"
               style={{ letterSpacing: "-0.02em" }}
             >
               Review: {task?.title ?? "Loading..."}
-            </h2>
+            </DialogTitle>
             <RevisionCountBadge count={revisionCount} />
           </div>
           <Button

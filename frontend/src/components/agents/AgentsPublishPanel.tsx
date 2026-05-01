@@ -24,7 +24,12 @@ import type {
   FileChange as DiffViewerFileChange,
 } from "@/components/diff";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { GitAuthRepairPanel } from "@/components/git/GitAuthRepairPanel";
 import {
   DropdownMenu,
@@ -542,6 +547,10 @@ export function AgentPublishPanel({
             border: "1px solid var(--border-subtle)",
           }}
         >
+          <DialogTitle className="sr-only">Review workspace changes</DialogTitle>
+          <DialogDescription className="sr-only">
+            Inspect changed files and commits before publishing this agent workspace.
+          </DialogDescription>
           {reviewOpen && (
             <Suspense fallback={<EmptyArtifactState title="Loading workspace diff..." />}>
               <LazyDiffViewer

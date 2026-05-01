@@ -124,6 +124,19 @@ export const CHAT_CONTEXT_REGISTRY: Record<ContextType, ChatContextConfig> = {
     supportsTeamMode: false,
     teamActivityPanelPosition: null,
   },
+  delegation: {
+    storeKeyPrefix: "delegation",
+    placeholder: "Message delegated agent...",
+    label: "Delegation",
+    agentType: "chat",
+    supportsStreamingText: true,
+    supportsSubagentTasks: true,
+    supportsDiffViews: false,
+    supportsHookEvents: false,
+    supportsQueue: true,
+    supportsTeamMode: false,
+    teamActivityPanelPosition: null,
+  },
 };
 
 // ============================================================================

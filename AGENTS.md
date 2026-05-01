@@ -24,6 +24,7 @@ Primary project docs:
 - `.claude/rules/release-script-validation.md` for safe validation of release proposal/wrapper scripts without triggering real publish steps
 - `.claude/rules/icon-only-buttons.md` for accessible tooltip requirements on icon-only controls
 - `.claude/rules/frontend-interaction-performance.md` for non-negotiable lazy loading, first-paint-safe UI transitions, deferred hydration/teardown, and decoupled panel/drawer interactions
+- `.claude/rules/pr-descriptions.md` for reviewer-focused PR bodies: context, impact, decisions, risks; validation logs stay secondary
 
 ## Codex Rules
 
@@ -40,6 +41,7 @@ Primary project docs:
 - PR branch freshness (NON-NEGOTIABLE): before opening, updating, or handing off a PR, fetch the base branch, rebase onto the latest `origin/<base>`, and push the rebased branch so GitHub does not show it as behind.
 - Existing PR fixes (NON-NEGOTIABLE): when patching an open PR, land the fix on that PR branch, then rebase it onto current `origin/<base>` before asking for checks or review.
 - PR/commit naming (NON-NEGOTIABLE): do not prefix PR titles or commit subjects with `[codex]`.
+- PR descriptions: follow `.claude/rules/pr-descriptions.md`; lead with context, user impact, decisions, and risks instead of local validation transcripts.
 - Legacy harness compatibility (NON-NEGOTIABLE): provider-neutral changes stay additive/derivable from legacy Claude-only persisted data until an explicit migration removes that requirement.
 - Minimal diffs: avoid formatter churn and opportunistic refactors.
 - Context-preservation trackers (NON-NEGOTIABLE): for multi-step investigations or fixes, create and keep updating a local tracker under `.artifacts/specs/<topic>/tracker.md` so findings and decisions survive context compaction.

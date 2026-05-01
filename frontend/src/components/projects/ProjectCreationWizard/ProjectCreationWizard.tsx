@@ -261,6 +261,7 @@ export function ProjectCreationWizard({
         data-testid="project-creation-wizard"
         hideCloseButton={isFirstRun}
         className="max-w-lg p-0"
+        aria-describedby={undefined}
         onPointerDownOutside={(e) => {
           // Prevent closing on backdrop click in first-run mode
           if (isFirstRun || isCreating) {
