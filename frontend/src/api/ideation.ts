@@ -2,6 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
+import { backendApiUrl } from "@/api/backend";
 import { IdeationSettingsResponseSchema } from "../types/ideation-config";
 import type { IdeationSettings } from "../types/ideation-config";
 import {
@@ -663,7 +664,7 @@ export const ideationApi = {
   },
 
   /**
-   * Plan verification operations (HTTP endpoints at :3847)
+   * Plan verification operations through the configured local backend
    */
   verification: {
     /**
@@ -679,7 +680,7 @@ export const ideationApi = {
         ? `?generation=${encodeURIComponent(String(generation))}`
         : "";
       const res = await fetch(
-        `http://localhost:3847/api/ideation/sessions/${sessionId}/verification${search}`
+        backendApiUrl(`ideation/sessions/${sessionId}/verification${search}`)
       );
       if (!res.ok) {
         throw new Error(`Failed to get verification status: ${res.status}`);
@@ -696,7 +697,7 @@ export const ideationApi = {
      */
     skip: async (sessionId: string): Promise<VerificationStatusResponse> => {
       const res = await fetch(
-        `http://localhost:3847/api/ideation/sessions/${sessionId}/verification`,
+        backendApiUrl(`ideation/sessions/${sessionId}/verification`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -728,7 +729,7 @@ export const ideationApi = {
       planVersionToRestore: string
     ): Promise<VerificationStatusResponse> => {
       const res = await fetch(
-        `http://localhost:3847/api/ideation/sessions/${sessionId}/revert-and-skip`,
+        backendApiUrl(`ideation/sessions/${sessionId}/revert-and-skip`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -745,7 +746,7 @@ export const ideationApi = {
   },
 
   /**
-   * Acceptance gate operations (HTTP endpoints at :3847)
+   * Acceptance gate operations through the configured local backend
    */
   acceptance: {
     /**
@@ -754,7 +755,7 @@ export const ideationApi = {
      */
     accept: async (sessionId: string): Promise<{ status: string; sessionId: string }> => {
       const res = await fetch(
-        `http://localhost:3847/api/ideation/sessions/${sessionId}/accept-finalize`,
+        backendApiUrl(`ideation/sessions/${sessionId}/accept-finalize`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -775,7 +776,7 @@ export const ideationApi = {
      */
     reject: async (sessionId: string): Promise<{ status: string; sessionId: string }> => {
       const res = await fetch(
-        `http://localhost:3847/api/ideation/sessions/${sessionId}/reject-finalize`,
+        backendApiUrl(`ideation/sessions/${sessionId}/reject-finalize`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

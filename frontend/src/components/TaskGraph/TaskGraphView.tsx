@@ -1566,7 +1566,7 @@ function TaskGraphViewInner({
   // are already scoped by ideationSessionId and do not require a global plan.
   if (requiresActivePlan && !activePlanId) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full" data-testid="graph-empty-state">
         <EmptyState
           variant="neutral"
           icon={<AlertCircle />}

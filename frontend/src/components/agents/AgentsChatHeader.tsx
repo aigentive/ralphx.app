@@ -9,6 +9,7 @@ import {
   GitPullRequestArrow,
   Lightbulb,
   Loader2,
+  Menu,
   MessageSquare,
   PanelRightClose,
   PanelRightOpen,
@@ -38,6 +39,7 @@ import { useChatStore } from "@/stores/chatStore";
 import type { AgentArtifactTab } from "@/stores/agentSessionStore";
 import type { ModelDisplay } from "@/types/chat-conversation";
 
+import { useAgentsSidebarVisibility } from "./useAgentsSidebarVisibility";
 import {
   getAgentConversationStoreKey,
   type AgentConversation,
@@ -316,6 +318,9 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
     conversationStoreKey ? state.isSending[conversationStoreKey] ?? false : false,
   );
   const isAgentActive = isSending || agentStatus === "generating";
+  const sidebarVisibility = useAgentsSidebarVisibility();
+  const showOpenSidebarButton =
+    sidebarVisibility !== null && sidebarVisibility.isCollapsed;
 
   useEffect(() => {
     if (!isEditing) {
@@ -348,6 +353,27 @@ export const AgentsChatHeader = memo(function AgentsChatHeader({
         className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden"
         data-testid="agents-chat-title-group"
       >
+        {showOpenSidebarButton && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 shrink-0 p-0"
+                onClick={sidebarVisibility.onToggle}
+                aria-label="Open sidebar"
+                data-testid="agents-chat-header-open-sidebar"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <Menu className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              Open sidebar
+            </TooltipContent>
+          </Tooltip>
+        )}
         <div className="min-w-0 flex-1">
           {isEditing ? (
             <Input

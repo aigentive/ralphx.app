@@ -9,12 +9,13 @@ use crate::application::{
 use crate::commands::git_commands::{CommitInfoResponse, TaskCommitsResponse};
 use crate::domain::entities::{ChatConversationId, PlanBranch, Project, Task, TaskId};
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::tool_paths::resolve_git_cli_path;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::State;
 
 fn resolve_merge_base(repo: &Path, base: &str, target: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = Command::new(resolve_git_cli_path())
         .args(["merge-base", base, target])
         .current_dir(repo)
         .output()

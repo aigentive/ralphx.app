@@ -146,6 +146,8 @@ pub fn build_codex_mcp_overrides(
         mcp_server_path.to_string_lossy().into_owned(),
         "--agent-type".to_string(),
         short_name.to_string(),
+        "--tauri-api-url".to_string(),
+        crate::utils::backend_endpoint::backend_http_base_url(),
     ];
 
     if let Some(runtime_context) = runtime_context {
@@ -356,22 +358,7 @@ pub fn normalize_codex_exec_output(raw_stdout: &str) -> String {
 }
 
 pub fn find_codex_cli() -> Option<PathBuf> {
-    if let Ok(path) = which::which("codex") {
-        return Some(path);
-    }
-
-    for candidate in [
-        "/opt/homebrew/bin/codex",
-        "/usr/local/bin/codex",
-        "/usr/bin/codex",
-    ] {
-        let path = PathBuf::from(candidate);
-        if path.exists() {
-            return Some(path);
-        }
-    }
-
-    None
+    crate::infrastructure::tool_paths::find_codex_cli_path()
 }
 
 #[cfg(test)]

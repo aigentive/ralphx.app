@@ -88,6 +88,18 @@ function ensureMockData(): void {
 
 export const mockIdeationApi = {
   sessions: {
+    seedWithData: (data: SessionWithDataResponse): void => {
+      mockSessions.set(data.session.id, data.session);
+      for (const [proposalId, proposal] of Array.from(mockProposals.entries())) {
+        if (proposal.sessionId === data.session.id) {
+          mockProposals.delete(proposalId);
+        }
+      }
+      for (const proposal of data.proposals) {
+        mockProposals.set(proposal.id, proposal);
+      }
+    },
+
     create: async (
       projectId: string,
       title?: string,

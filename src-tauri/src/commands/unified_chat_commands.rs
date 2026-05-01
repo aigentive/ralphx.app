@@ -1133,11 +1133,18 @@ pub async fn start_agent_conversation(
         "[START_AGENT_CONVERSATION] command invoked"
     );
 
-    crate::application::validate_chat_runtime_for_context(
+    let harness_override = input
+        .provider_harness
+        .as_deref()
+        .map(str::parse::<AgentHarnessKind>)
+        .transpose()?;
+
+    crate::application::validate_chat_runtime_for_context_with_override(
         &state,
         ChatContextType::Project,
         &input.project_id,
         "start_agent_conversation",
+        harness_override,
     )
     .await?;
 
@@ -1251,11 +1258,6 @@ pub async fn start_agent_conversation(
         &execution_state,
         Some(team_service.inner().clone()),
     );
-    let harness_override = input
-        .provider_harness
-        .as_deref()
-        .map(str::parse::<AgentHarnessKind>)
-        .transpose()?;
     let model_override = input
         .model_override
         .as_deref()
@@ -1455,6 +1457,11 @@ pub async fn send_agent_message(
         "[SEND_MSG] send_agent_message command invoked"
     );
     let context_type = parse_context_type(&input.context_type)?;
+    let harness_override = input
+        .provider_harness
+        .as_deref()
+        .map(str::parse::<AgentHarnessKind>)
+        .transpose()?;
 
     let mut service = create_chat_service(
         &state,
@@ -1494,11 +1501,12 @@ pub async fn send_agent_message(
         }
     }
 
-    crate::application::validate_chat_runtime_for_context(
+    crate::application::validate_chat_runtime_for_context_with_override(
         &state,
         context_type,
         &input.context_id,
         "send_agent_message",
+        harness_override,
     )
     .await?;
 
@@ -1542,11 +1550,6 @@ pub async fn send_agent_message(
         );
     }
 
-    let harness_override = input
-        .provider_harness
-        .as_deref()
-        .map(str::parse::<AgentHarnessKind>)
-        .transpose()?;
     let model_override = input
         .model_override
         .as_deref()

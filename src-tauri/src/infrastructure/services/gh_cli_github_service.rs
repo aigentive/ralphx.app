@@ -22,6 +22,7 @@ use crate::domain::services::github_service::{
     PrReviewFeedback, PrStatus, PrSyncState,
 };
 use crate::error::AppError;
+use crate::infrastructure::tool_paths::{resolve_gh_cli_path, resolve_git_cli_path};
 use crate::utils::secret_redactor::redact;
 use crate::AppResult;
 
@@ -132,7 +133,7 @@ impl GhCliGithubService {
         I: IntoIterator<Item = S>,
         S: AsRef<std::ffi::OsStr>,
     {
-        let mut child = tokio::process::Command::new("gh")
+        let mut child = tokio::process::Command::new(resolve_gh_cli_path())
             .args(args)
             .current_dir(working_dir)
             .stdout(Stdio::piped())
@@ -175,7 +176,7 @@ impl GhCliGithubService {
         I: IntoIterator<Item = S>,
         S: AsRef<std::ffi::OsStr>,
     {
-        let mut child = tokio::process::Command::new("git")
+        let mut child = tokio::process::Command::new(resolve_git_cli_path())
             .args(args)
             .current_dir(working_dir)
             .stdout(Stdio::null())
@@ -512,7 +513,7 @@ impl GithubServiceTrait for GhCliGithubService {
     async fn delete_remote_branch(&self, working_dir: &Path, branch: &str) -> AppResult<()> {
         // git push origin --delete <branch>
         // Already-deleted → "remote ref does not exist" → treat as no-op
-        let mut child = tokio::process::Command::new("git")
+        let mut child = tokio::process::Command::new(resolve_git_cli_path())
             .args(["push", "origin", "--delete", branch])
             .current_dir(working_dir)
             .stdout(Stdio::null())

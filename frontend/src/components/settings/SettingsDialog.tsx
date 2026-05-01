@@ -154,6 +154,9 @@ export default function SettingsDialog({
                         key={section.id}
                         role="button"
                         tabIndex={0}
+                        data-section={section.id}
+                        data-testid={`settings-section-${section.id}`}
+                        aria-label={section.label}
                         onClick={() => setActiveSection(section.id)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {

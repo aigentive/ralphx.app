@@ -12,7 +12,7 @@ import { EventProvider } from "@/providers/EventProvider";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { ReviewsPanel } from "@/components/reviews/ReviewsPanel";
 import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar";
-import { KanbanSplitLayout, Navigation } from "@/components/layout";
+import { KanbanSplitLayout, LeftNavRail } from "@/components/layout";
 import { PermissionDialog } from "@/components/PermissionDialog";
 import { IdeationView, ProposalEditModal, FinalizeConfirmationDialog, VerificationConfirmDialog } from "@/components/Ideation";
 import { ProposalDetailSheet } from "@/components/Ideation/ProposalDetailSheet";
@@ -779,9 +779,9 @@ function AppContent() {
       {/* Update checker - runs on mount, shows toast if update available */}
       <UpdateChecker />
 
-      {/* Header - macOS Tahoe Liquid Glass */}
+      {/* Header - macOS Tahoe Liquid Glass (slim — primary nav lives in left rail) */}
         <header
-          className="fixed top-0 left-0 right-0 h-14 flex items-center justify-between pr-4 pl-24 border-b z-50 select-none"
+          className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between pr-4 pl-24 border-b z-50 select-none"
           style={{
             background: "color-mix(in srgb, var(--bg-base) 85%, transparent)",
             backdropFilter: "blur(24px)",
@@ -791,34 +791,7 @@ function AppContent() {
           data-tauri-drag-region
           data-testid="app-header"
         >
-          {/* Left Section: Branding + Navigation */}
-          <div className="flex items-center gap-6">
-            {/* App Branding */}
-            <h1
-              className="text-xl font-bold tracking-tight select-none"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Ralph
-              <span
-                style={{
-                  color: "var(--accent-primary)",
-                  textShadow: "0 0 12px color-mix(in srgb, var(--accent-primary) 50%, transparent)",
-                }}
-              >
-                X
-              </span>
-            </h1>
-
-            {/* View Navigation */}
-            <Navigation
-              currentView={currentView}
-              onViewChange={handleViewChange}
-              onOpenSettings={handleOpenSettings}
-              hideViews={hasNoProjects || showWelcomeOverlay}
-            />
-          </div>
-
-          {/* Spacer */}
+          {/* Left Section reserved for window chrome (traffic lights via pl-24) */}
           <div className="flex-1" />
 
           {/* Right Section: Project Selector + Panel Toggles */}
@@ -920,7 +893,16 @@ function AppContent() {
         </header>
 
       {/* Spacer for fixed header */}
-      <div className="h-14 flex-shrink-0" />
+      <div className="h-12 flex-shrink-0" />
+
+      {/* App body: left nav rail + main content */}
+      <div className="flex-1 flex overflow-hidden">
+        <LeftNavRail
+          currentView={currentView}
+          onViewChange={handleViewChange}
+          onOpenSettings={handleOpenSettings}
+          hideViews={hasNoProjects || showWelcomeOverlay}
+        />
 
       {/* Main content area - shows WelcomeScreen or normal content */}
       {(hasNoProjects || showWelcomeOverlay) ? (
@@ -1091,7 +1073,7 @@ function AppContent() {
               the viewport instead of leaving a ~84px void. */}
           {reviewsPanelOpen && (
             <div
-              className="fixed top-14 right-0 w-[400px] z-50 flex flex-col"
+              className="fixed top-12 right-0 w-[400px] z-50 flex flex-col"
               style={{
                 bottom: (currentView === "kanban" || currentView === "graph" || currentView === "ideation") ? "76px" : "0px",
                 background: "var(--bg-elevated)",
@@ -1119,6 +1101,7 @@ function AppContent() {
 
         </div>
       )}
+      </div>
 
       {/* Project Creation Wizard */}
       <ProjectCreationWizard

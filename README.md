@@ -186,6 +186,29 @@ brew tap aigentive/ralphx
 brew install --cask ralphx
 ```
 
+Upgrade an existing Homebrew install:
+
+```bash
+brew update
+brew upgrade --cask ralphx
+```
+
+If a new RalphX release exists but Homebrew still reports that `ralphx` is already up to date, refresh the tap metadata and retry:
+
+```bash
+brew update-reset aigentive/ralphx
+brew upgrade --cask ralphx
+```
+
+If `/Applications/RalphX.app` was deleted manually and `brew upgrade --cask ralphx` fails with `App source '/Applications/RalphX.app' is not there`, repair the Homebrew cask receipt and reinstall:
+
+```bash
+brew uninstall --cask --force ralphx
+brew install --cask ralphx
+```
+
+Do not use `--zap` unless you intentionally want to remove local RalphX app data.
+
 #### GitHub Releases
 
 Download signed builds from the [GitHub Releases page](https://github.com/aigentive/ralphx.app/releases).
@@ -201,6 +224,7 @@ npm run tauri dev
 ```
 
 First build compiles the Rust backend. Subsequent starts are faster.
+Source dev uses backend port `3857`, so it can run while the installed app keeps production port `3847`.
 
 For a fresh native dev start from the repo root:
 

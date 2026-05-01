@@ -282,6 +282,14 @@ fn build_codex_mcp_overrides_passes_runtime_context_over_cli_args() {
         "expected context-type CLI arg in overrides: {args_override}"
     );
     assert!(
+        args_override.contains("--tauri-api-url"),
+        "expected tauri-api-url CLI arg in overrides: {args_override}"
+    );
+    assert!(
+        args_override.contains("http://127.0.0.1:"),
+        "expected loopback Tauri API URL value in overrides: {args_override}"
+    );
+    assert!(
         args_override.contains("ideation"),
         "expected context-type value in overrides: {args_override}"
     );

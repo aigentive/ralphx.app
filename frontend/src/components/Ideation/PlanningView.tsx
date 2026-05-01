@@ -799,7 +799,7 @@ export function PlanningView({
               style={{
                 position: "fixed",
                 inset: 0,
-                top: 56,
+                top: 48,
                 background: "var(--overlay-scrim)",
                 zIndex: 34,
               }}
@@ -843,9 +843,9 @@ export function PlanningView({
               className="plan-browser-slide-in"
               style={{
                 position: "fixed",
-                top: 56,
+                top: 48,
                 left: 0,
-                height: "calc(100vh - 56px)",
+                height: "calc(100vh - 48px)",
                 width: 340,
                 zIndex: 35,
               }}

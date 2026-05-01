@@ -17,6 +17,7 @@ use crate::domain::entities::{
     ProjectId,
 };
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
+use crate::infrastructure::tool_paths::resolve_git_cli_path;
 
 /// Deserializes a JSON field as `None` when absent, `Some(None)` when `null`, and `Some(Some(v))` when present.
 /// Used for nullable patch fields where absent means "don't change" and null means "clear".
@@ -127,7 +128,7 @@ pub async fn get_project(
 
 /// Check if git is initialized in the given directory
 fn is_git_initialized(path: &str) -> bool {
-    Command::new("git")
+    Command::new(resolve_git_cli_path())
         .args(["rev-parse", "--git-dir"])
         .current_dir(path)
         .output()
@@ -147,7 +148,7 @@ fn ensure_git_initialized(path: &str) -> Result<(), String> {
     }
 
     // Initialize git
-    let output = Command::new("git")
+    let output = Command::new(resolve_git_cli_path())
         .args(["init"])
         .current_dir(path)
         .output()
@@ -159,7 +160,7 @@ fn ensure_git_initialized(path: &str) -> Result<(), String> {
     }
 
     // Create initial commit so HEAD exists (needed for diff operations)
-    let _ = Command::new("git")
+    let _ = Command::new(resolve_git_cli_path())
         .args([
             "commit",
             "--allow-empty",
@@ -191,7 +192,7 @@ pub async fn ensure_git_initialized_async(path: &str) -> Result<(), String> {
     let git_dir = std::path::Path::new(path).join(".git");
     if !git_dir.exists() {
         // Run git init
-        let output = TokioCommand::new("git")
+        let output = TokioCommand::new(resolve_git_cli_path())
             .args(["init"])
             .current_dir(path)
             .output()
@@ -205,7 +206,7 @@ pub async fn ensure_git_initialized_async(path: &str) -> Result<(), String> {
     }
 
     // Check if HEAD has any commits (git log returns success only if commits exist)
-    let has_commits = TokioCommand::new("git")
+    let has_commits = TokioCommand::new(resolve_git_cli_path())
         .args(["log", "--oneline", "-1"])
         .current_dir(path)
         .output()
@@ -215,7 +216,7 @@ pub async fn ensure_git_initialized_async(path: &str) -> Result<(), String> {
 
     if !has_commits {
         // Create empty initial commit so HEAD is valid for worktree operations
-        let commit_result = TokioCommand::new("git")
+        let commit_result = TokioCommand::new(resolve_git_cli_path())
             .args([
                 "commit",
                 "--allow-empty",
@@ -440,7 +441,7 @@ pub async fn get_git_current_branch(working_directory: String) -> Result<String,
         return Err("Not a git repository".to_string());
     }
 
-    let output = Command::new("git")
+    let output = Command::new(resolve_git_cli_path())
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(&working_directory)
         .output()
@@ -462,7 +463,7 @@ pub async fn get_git_current_branch(working_directory: String) -> Result<String,
 /// Executes `git branch -a` in the specified directory and parses the output
 #[tauri::command]
 pub async fn get_git_branches(working_directory: String) -> Result<Vec<String>, String> {
-    let output = Command::new("git")
+    let output = Command::new(resolve_git_cli_path())
         .args(["branch", "-a"])
         .current_dir(&working_directory)
         .output()
@@ -671,7 +672,7 @@ pub async fn get_git_remote_url(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Project not found: {}", pid.as_str()))?;
 
-    let child = tokio::process::Command::new("git")
+    let child = tokio::process::Command::new(resolve_git_cli_path())
         .args(["remote", "get-url", "origin"])
         .current_dir(&project.working_directory)
         .stdout(Stdio::piped())
@@ -706,7 +707,9 @@ pub async fn get_git_remote_url(
 /// This command never returns `Err` — failures become `false`.
 #[tauri::command]
 pub async fn check_gh_auth() -> Result<bool, String> {
-    let mut child = match tokio::process::Command::new("gh")
+    let mut child = match tokio::process::Command::new(
+        crate::infrastructure::tool_paths::resolve_gh_cli_path(),
+    )
         .args(["auth", "status"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
