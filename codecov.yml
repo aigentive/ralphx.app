@@ -9,8 +9,9 @@ coverage:
         threshold: 2%
     patch:
       default:
-        target: auto
-        threshold: 10%
+        target: 90%
+        threshold: 0%
+        only_pulls: true
 
 comment:
   layout: "reach, diff, flags, files"
@@ -28,8 +29,9 @@ flag_management:
         target: auto
         threshold: 2%
       - type: patch
-        target: auto
-        threshold: 10%
+        target: 90%
+        threshold: 0%
+        only_pulls: true
 
 github_checks:
   annotations: false
