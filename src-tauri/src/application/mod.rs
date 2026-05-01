@@ -145,6 +145,8 @@ mod app_state_shared_state_tests;
 #[cfg(test)]
 mod agent_lane_resolution_tests;
 #[cfg(test)]
+mod agent_terminal_tests;
+#[cfg(test)]
 mod chat_service_output_tests;
 #[cfg(test)]
 mod ideation_harness_availability_tests;

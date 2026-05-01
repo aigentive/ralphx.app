@@ -17,6 +17,12 @@
   <a href="#who-its-for">Who It's For</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/aigentive/ralphx.app/releases">
+    <img alt="Homebrew version" src="https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2Faigentive%2Fhomebrew-ralphx%2Fmain%2FCasks%2Fralphx.rb&search=version%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=brew&logo=homebrew&logoColor=white">
+  </a>
+</p>
+
 ---
 
 ## What It Is
