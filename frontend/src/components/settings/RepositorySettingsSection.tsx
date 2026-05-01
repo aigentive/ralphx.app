@@ -388,7 +388,10 @@ export function RepositorySettingsSection() {
           )}
         </SettingRow>
         <div className="px-2 pb-2">
-          <GitAuthRepairPanel projectId={project.id} />
+          <GitAuthRepairPanel
+            projectId={project.id}
+            requiresGhAuth={project.githubPrEnabled ?? false}
+          />
         </div>
       </div>
 

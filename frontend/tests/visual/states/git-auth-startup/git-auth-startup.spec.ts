@@ -51,10 +51,6 @@ test.describe("Git Auth Startup Warning", () => {
     await confirmation.getByRole("button", { name: "Use SSH" }).click();
     await expect(page.getByTestId("git-auth-switch-ssh")).toBeHidden({ timeout: 6000 });
     await expect(page.getByTestId("git-auth-copy-gh-login")).toBeHidden();
-    await expect(repairPanel).toContainText("Fetch SSH / Push SSH");
-    await expect(repairPanel).toContainText("GitHub CLI is not authenticated");
-    await expect(repairPanel).toHaveScreenshot("git-auth-startup-after-ssh.png", {
-      maxDiffPixelRatio: 0.01,
-    });
+    await expect(repairPanel).toBeHidden();
   });
 });

@@ -32,6 +32,7 @@ const {
   useGhAuthStatusMock,
   switchGitOriginToSshMock,
   setupGhGitAuthMock,
+  loginGhWithBrowserMock,
   resumeDeferredGitStartupMock,
   openUrlMock,
 } = vi.hoisted(() => ({
@@ -54,6 +55,7 @@ const {
   useGhAuthStatusMock: vi.fn(),
   switchGitOriginToSshMock: vi.fn(),
   setupGhGitAuthMock: vi.fn(),
+  loginGhWithBrowserMock: vi.fn(),
   resumeDeferredGitStartupMock: vi.fn(),
   openUrlMock: vi.fn(),
 }));
@@ -180,6 +182,10 @@ vi.mock("@/hooks/useGithubSettings", () => ({
   }),
   useSetupGhGitAuth: () => ({
     mutateAsync: setupGhGitAuthMock,
+    isPending: false,
+  }),
+  useLoginGhWithBrowser: () => ({
+    mutateAsync: loginGhWithBrowserMock,
     isPending: false,
   }),
   useResumeDeferredGitStartup: () => ({
@@ -484,6 +490,22 @@ describe("AgentsArtifactPane", () => {
     expect(screen.getByTestId("git-auth-repair-panel")).toBeInTheDocument();
     expect(screen.getByText(/Fetch and push use different auth modes/i)).toBeInTheDocument();
     expect(screen.getByTestId("git-auth-switch-ssh")).toBeInTheDocument();
+  });
+
+  it("shows a GitHub PR sign-in action for all-SSH publish workspaces when gh is missing", () => {
+    useGhAuthStatusMock.mockReturnValue({
+      data: false,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderPane("publish", workspace({ mode: "edit" }));
+
+    expect(screen.getByTestId("git-auth-repair-panel")).toBeInTheDocument();
+    expect(screen.getByText("GitHub PR Access")).toBeInTheDocument();
+    expect(screen.getByTestId("git-auth-login-gh")).toBeInTheDocument();
+    expect(screen.queryByText(/Run gh auth login/i)).not.toBeInTheDocument();
   });
 
   it("renders the publish tab for ideation workspaces linked to execution branches", () => {

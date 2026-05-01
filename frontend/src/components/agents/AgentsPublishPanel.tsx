@@ -408,7 +408,11 @@ export function AgentPublishPanel({
           )}
         </section>
 
-        <GitAuthRepairPanel projectId={workspace.projectId} surface="publish" />
+        <GitAuthRepairPanel
+          projectId={workspace.projectId}
+          surface="publish"
+          requiresGhAuth
+        />
 
         <section
           className="rounded-lg border p-4"
