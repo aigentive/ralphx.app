@@ -34,19 +34,16 @@ jobs:
         with:
           filters: |
             plugins:
-              - '.github/workflows/coverage.yml'
               - 'scripts/summarize-coverage.mjs'
               - 'plugins/app/ralphx-external-mcp/**'
               - 'plugins/app/ralphx-mcp-server/**'
             rust:
-              - '.github/workflows/coverage.yml'
               - 'scripts/summarize-coverage.mjs'
               - 'src-tauri/**'
               - 'rust-toolchain.toml'
               - 'scripts/ci-install-linux-deps.sh'
               - 'scripts/validate_sqlite_migrations.py'
             frontend:
-              - '.github/workflows/coverage.yml'
               - 'scripts/summarize-coverage.mjs'
               - 'frontend/**'
 
