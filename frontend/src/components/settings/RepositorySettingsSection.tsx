@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { api, getGitDefaultBranch } from "@/lib/tauri";
+import { GitAuthRepairPanel } from "@/components/git/GitAuthRepairPanel";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import type { MergeValidationMode } from "@/types/project";
 import {
@@ -386,6 +387,9 @@ export function RepositorySettingsSection() {
             </div>
           )}
         </SettingRow>
+        <div className="px-2 pb-2">
+          <GitAuthRepairPanel projectId={project.id} />
+        </div>
       </div>
 
       {isSaving && (

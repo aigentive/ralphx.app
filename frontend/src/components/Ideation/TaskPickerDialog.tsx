@@ -87,6 +87,7 @@ export function TaskPickerDialog({
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent
         className="max-w-md max-h-[70vh] overflow-hidden flex flex-col"
+        aria-describedby={undefined}
         style={{
           backgroundColor: "var(--bg-elevated)",
           borderColor: "var(--border-subtle)",

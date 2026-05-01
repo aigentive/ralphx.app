@@ -69,6 +69,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
         data-testid="audit-trail-dialog"
         hideCloseButton
         className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh]"
+        aria-describedby={undefined}
         style={{
           backgroundColor: "var(--bg-surface)",
           border: "1px solid var(--border-subtle)",

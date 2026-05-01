@@ -477,6 +477,21 @@ async function seedAgentsScenario(page: Page) {
   });
 }
 
+async function seedGitAuthRepairIssue(page: Page) {
+  await page.evaluate(() => {
+    window.__mockGhAuthStatus = true;
+    window.__mockGitAuthDiagnostics = {
+      fetchUrl: "https://github.com/mock/project.git",
+      pushUrl: "git@github.com:mock/project.git",
+      fetchKind: "HTTPS",
+      pushKind: "SSH",
+      mixedAuthModes: true,
+      canSwitchToSsh: true,
+      suggestedSshUrl: "git@github.com:mock/project.git",
+    };
+  });
+}
+
 test.describe("Agents View", () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -520,6 +535,25 @@ test.describe("Agents View", () => {
     await expect(page.getByTestId("agents-publish-event-published")).toBeVisible();
 
     await expect(page).toHaveScreenshot("agents-edit-publish-pane.png", {
+      fullPage: false,
+      maxDiffPixelRatio: 0.01,
+    });
+  });
+
+  test("commit publish pane shows git auth repair actions", async ({ page }) => {
+    await setupAgentsView(page);
+    await seedGitAuthRepairIssue(page);
+    await seedAgentsScenario(page);
+    await selectAgentConversation(page, editConversationId);
+
+    await expect(page.getByTestId("agents-publish-workspace")).toBeVisible();
+    await page.getByTestId("agents-publish-workspace").click();
+    await expect(page.getByTestId("agents-publish-pane")).toBeVisible();
+    await expect(page.getByTestId("git-auth-repair-panel")).toBeVisible();
+    await expect(page.getByTestId("git-auth-switch-ssh")).toBeVisible();
+    await expect(page.getByTestId("git-auth-setup-gh")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("agents-publish-git-auth-repair.png", {
       fullPage: false,
       maxDiffPixelRatio: 0.01,
     });

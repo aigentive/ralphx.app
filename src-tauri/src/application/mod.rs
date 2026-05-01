@@ -55,6 +55,7 @@ pub mod startup_jobs;
 pub mod startup_background;
 pub mod startup_bootstrap;
 pub mod startup_cleanup;
+pub mod startup_git_auth_preflight;
 pub mod startup_pipeline;
 pub mod startup_pipeline_launch;
 pub mod startup_runtime_builders;
@@ -144,6 +145,8 @@ pub use webhook_service::WebhookService;
 mod app_state_shared_state_tests;
 #[cfg(test)]
 mod agent_lane_resolution_tests;
+#[cfg(test)]
+mod agent_terminal_tests;
 #[cfg(test)]
 mod chat_service_output_tests;
 #[cfg(test)]

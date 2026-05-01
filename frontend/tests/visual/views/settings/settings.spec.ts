@@ -59,6 +59,33 @@ test.describe("Settings Dialog", () => {
     await expect(settingsPage.externalMcpSaveButton).toBeVisible();
   });
 
+  test("repository section shows git auth repair actions", async ({ page }) => {
+    await page.evaluate(() => {
+      window.__mockGhAuthStatus = true;
+      window.__mockGitAuthDiagnostics = {
+        fetchUrl: "https://github.com/mock/project.git",
+        pushUrl: "git@github.com:mock/project.git",
+        fetchKind: "HTTPS",
+        pushKind: "SSH",
+        mixedAuthModes: true,
+        canSwitchToSsh: true,
+        suggestedSshUrl: "git@github.com:mock/project.git",
+      };
+    });
+    await settingsPage.openViaStore("repository");
+
+    const repairPanel = page.getByTestId("git-auth-repair-panel");
+    await repairPanel.scrollIntoViewIfNeeded();
+    await expect(repairPanel).toBeVisible();
+    await expect(page.getByTestId("git-auth-switch-ssh")).toBeVisible();
+    await expect(page.getByTestId("git-auth-setup-gh")).toBeVisible();
+
+    await settingsPage.waitForAnimations();
+    await expect(repairPanel).toHaveScreenshot("settings-repository-git-auth-repair-panel.png", {
+      maxDiffPixelRatio: 0.01,
+    });
+  });
+
   test("matches snapshot - default state (execution section)", async ({ page }) => {
     await settingsPage.waitForAnimations();
     await expect(page).toHaveScreenshot("settings-dialog-default.png", {

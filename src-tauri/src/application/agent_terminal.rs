@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -549,9 +550,7 @@ impl AgentTerminalProcessFactory for PortablePtyProcessFactory {
             })
             .map_err(|error| AppError::Infrastructure(format!("Failed to open PTY: {error}")))?;
 
-        let shell = terminal_shell_path();
-        let mut command = CommandBuilder::new(shell);
-        command.cwd(&request.cwd);
+        let command = build_terminal_command(&request.cwd);
         let child = pair.slave.spawn_command(command).map_err(|error| {
             AppError::Infrastructure(format!("Failed to spawn terminal shell: {error}"))
         })?;
@@ -777,6 +776,96 @@ fn terminal_shell_path() -> &'static str {
     } else {
         "/bin/sh"
     }
+}
+
+fn build_terminal_command(cwd: &Path) -> CommandBuilder {
+    let shell = terminal_shell_path();
+    let mut command = CommandBuilder::new(shell);
+    if cfg!(target_os = "macos") && shell == "/bin/zsh" {
+        command.arg("-l");
+    }
+    command.cwd(cwd);
+    command.env("TERM", "xterm-256color");
+    command.env("COLORTERM", "truecolor");
+    command.env("CLICOLOR", "1");
+    command.env("SHELL", shell);
+    command.env("PWD", cwd.as_os_str());
+    command.env("PATH", terminal_env_path());
+    command
+}
+
+fn terminal_env_path() -> OsString {
+    terminal_env_path_from_parts(
+        std::env::var_os("PATH").as_deref(),
+        dirs::home_dir().as_deref(),
+    )
+}
+
+fn terminal_env_path_from_parts(
+    existing_path: Option<&OsStr>,
+    home_dir: Option<&Path>,
+) -> OsString {
+    let mut entries = Vec::new();
+    if let Some(existing_path) = existing_path {
+        entries.extend(std::env::split_paths(existing_path));
+    }
+
+    entries.extend(
+        [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/local/sbin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ]
+        .into_iter()
+        .map(PathBuf::from),
+    );
+
+    if let Some(home_dir) = home_dir {
+        entries.extend(
+            [
+                ".local/bin",
+                "bin",
+                ".cargo/bin",
+                ".rbenv/bin",
+                ".rbenv/shims",
+                ".asdf/bin",
+                ".asdf/shims",
+                ".pyenv/bin",
+                ".pyenv/shims",
+                ".nodenv/bin",
+                ".nodenv/shims",
+                ".volta/bin",
+            ]
+            .into_iter()
+            .map(|relative| home_dir.join(relative)),
+        );
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    entries.retain(|entry| seen.insert(entry.as_os_str().to_os_string()));
+    std::env::join_paths(entries).unwrap_or_else(|_| {
+        existing_path
+            .map(OsStr::to_os_string)
+            .unwrap_or_else(|| OsString::from("/usr/bin:/bin:/usr/sbin:/sbin"))
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn build_terminal_command_for_test(cwd: &Path) -> CommandBuilder {
+    build_terminal_command(cwd)
+}
+
+#[cfg(test)]
+pub(crate) fn terminal_env_path_from_parts_for_test(
+    existing_path: Option<&OsStr>,
+    home_dir: Option<&Path>,
+) -> OsString {
+    terminal_env_path_from_parts(existing_path, home_dir)
 }
 
 #[cfg(test)]

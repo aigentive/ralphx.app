@@ -13,6 +13,7 @@
     "tauri": "cd .. && ./frontend/node_modules/.bin/tauri",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:visual": "playwright test tests/visual --workers=1",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",

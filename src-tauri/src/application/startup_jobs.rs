@@ -155,6 +155,9 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     chat_service: Option<Arc<dyn ChatService>>,
     /// Ideation session repository for validating sessions before recovery.
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    /// Projects whose startup Git/GitHub preflight failed. Startup recovery for
+    /// these projects is deferred so recovery does not immediately hit known-bad auth.
+    git_startup_blocked_project_ids: Arc<HashSet<ProjectId>>,
 }
 
 impl<R: Runtime> StartupJobRunner<R> {
@@ -244,6 +247,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             review_repo: None,
             chat_service: None,
             ideation_session_repo,
+            git_startup_blocked_project_ids: Arc::new(HashSet::new()),
         }
     }
 
@@ -509,6 +513,15 @@ impl<R: Runtime> StartupJobRunner<R> {
         self
     }
 
+    /// Set projects whose Git/GitHub startup work should be deferred until repaired.
+    pub fn with_git_startup_blocked_projects(
+        mut self,
+        project_ids: Arc<HashSet<ProjectId>>,
+    ) -> Self {
+        self.git_startup_blocked_project_ids = project_ids;
+        self
+    }
+
     /// Run startup jobs, resuming tasks in agent-active states.
     ///
     /// Skips if execution is paused. Stops early if max_concurrent is reached.
@@ -706,6 +719,16 @@ impl<R: Runtime> StartupJobRunner<R> {
                 }
             }
         };
+
+        if let Some(ref active_pid) = active_project_id {
+            if self.git_startup_blocked_project_ids.contains(active_pid) {
+                tracing::warn!(
+                    project_id = active_pid.as_str(),
+                    "Startup Git auth preflight blocked active-project task recovery; deferring task and merge resumption"
+                );
+                return HashSet::new();
+            }
+        }
 
         let mut resumed = 0u32;
 

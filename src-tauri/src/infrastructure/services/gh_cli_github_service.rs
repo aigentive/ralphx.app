@@ -10,6 +10,7 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -22,6 +23,9 @@ use crate::domain::services::github_service::{
     PrReviewFeedback, PrStatus, PrSyncState,
 };
 use crate::error::AppError;
+use crate::infrastructure::git_auth::{
+    apply_git_subprocess_env, git_auth_error_from_failure, GitNetworkOperation,
+};
 use crate::infrastructure::tool_paths::{resolve_gh_cli_path, resolve_git_cli_path};
 use crate::utils::secret_redactor::redact;
 use crate::AppResult;
@@ -176,8 +180,19 @@ impl GhCliGithubService {
         I: IntoIterator<Item = S>,
         S: AsRef<std::ffi::OsStr>,
     {
-        let mut child = tokio::process::Command::new(resolve_git_cli_path())
-            .args(args)
+        let args: Vec<OsString> = args
+            .into_iter()
+            .map(|arg| arg.as_ref().to_os_string())
+            .collect();
+        let arg_strings: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+        let operation = GitNetworkOperation::from_args(&arg_strings);
+        let mut command = tokio::process::Command::new(resolve_git_cli_path());
+        apply_git_subprocess_env(&mut command);
+        let mut child = command
+            .args(&args)
             .current_dir(working_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
@@ -213,6 +228,13 @@ impl GhCliGithubService {
         if !status.success() {
             let code = status.code().unwrap_or(-1);
             let err_msg = stderr.join("\n");
+            if let Some(operation) = operation {
+                if let Some(error) =
+                    git_auth_error_from_failure(operation, working_dir, &err_msg).await
+                {
+                    return Err(error);
+                }
+            }
             return Err(AppError::Infrastructure(format!(
                 "git exited with code {code}: {err_msg}"
             )));
@@ -513,7 +535,9 @@ impl GithubServiceTrait for GhCliGithubService {
     async fn delete_remote_branch(&self, working_dir: &Path, branch: &str) -> AppResult<()> {
         // git push origin --delete <branch>
         // Already-deleted → "remote ref does not exist" → treat as no-op
-        let mut child = tokio::process::Command::new(resolve_git_cli_path())
+        let mut command = tokio::process::Command::new(resolve_git_cli_path());
+        apply_git_subprocess_env(&mut command);
+        let mut child = command
             .args(["push", "origin", "--delete", branch])
             .current_dir(working_dir)
             .stdout(Stdio::null())
@@ -563,9 +587,20 @@ impl GithubServiceTrait for GhCliGithubService {
             return Ok(());
         }
 
+        let stderr_text = stderr.join("\n");
+        if let Some(error) = git_auth_error_from_failure(
+            GitNetworkOperation::DeleteRemoteBranch,
+            working_dir,
+            &stderr_text,
+        )
+        .await
+        {
+            return Err(error);
+        }
+
         Err(AppError::Infrastructure(format!(
             "git push --delete failed: {}",
-            stderr.join("\n")
+            stderr_text
         )))
     }
 
