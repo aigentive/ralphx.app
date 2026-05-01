@@ -13,6 +13,7 @@ use crate::application::runtime_factory::{
     build_chat_service_from_deps, build_task_scheduler_from_deps,
     build_transition_service_from_deps, ChatRuntimeFactoryDeps, RuntimeFactoryDeps,
 };
+use crate::application::startup_git_auth_preflight::StartupGitAuthRecoveryState;
 use crate::application::AgentClientBundle;
 use crate::application::AgentTerminalService;
 use crate::application::PermissionState;
@@ -232,6 +233,9 @@ pub struct AppState {
     pub session_merge_locks: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// Sessions where user has enabled auto-accept for verification. Ephemeral.
     pub auto_accept_sessions: Arc<Mutex<HashSet<String>>>,
+    /// Startup Git/GitHub recovery gate. Set when startup defers Git-dependent
+    /// work and cleared after an explicit repair resumes that work.
+    pub(crate) startup_git_auth_recovery_state: Arc<StartupGitAuthRecoveryState>,
 }
 
 impl AppState {
@@ -564,6 +568,7 @@ impl AppState {
             webhook_publisher: None,
             session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
+            startup_git_auth_recovery_state: Arc::new(StartupGitAuthRecoveryState::default()),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
@@ -689,6 +694,7 @@ impl AppState {
             webhook_publisher: None,
             session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
+            startup_git_auth_recovery_state: Arc::new(StartupGitAuthRecoveryState::default()),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
@@ -797,6 +803,7 @@ impl AppState {
             webhook_publisher: None,
             session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
+            startup_git_auth_recovery_state: Arc::new(StartupGitAuthRecoveryState::default()),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
@@ -923,6 +930,7 @@ impl AppState {
             webhook_publisher: None,
             session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
+            startup_git_auth_recovery_state: Arc::new(StartupGitAuthRecoveryState::default()),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
@@ -1023,6 +1031,7 @@ impl AppState {
             webhook_publisher: None,
             session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
+            startup_git_auth_recovery_state: Arc::new(StartupGitAuthRecoveryState::default()),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(

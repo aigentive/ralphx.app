@@ -6,7 +6,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::error::{AppError, AppResult};
-use crate::infrastructure::tool_paths::resolve_git_cli_path;
+use crate::infrastructure::tool_paths::{resolve_gh_cli_path, resolve_git_cli_path};
 use crate::utils::path_safety::validate_absolute_non_root_path;
 use crate::utils::secret_redactor::redact;
 
@@ -135,6 +135,25 @@ pub(crate) fn classify_git_remote_url(url: &str) -> GitRemoteUrlKind {
 
 pub(crate) fn git_remote_url_kind_label(kind: Option<GitRemoteUrlKind>) -> &'static str {
     kind_label(kind)
+}
+
+pub(crate) async fn check_gh_auth_status() -> bool {
+    let mut child = match Command::new(resolve_gh_cli_path())
+        .args(["auth", "status"])
+        .envs(git_subprocess_env())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => return false,
+    };
+
+    match timeout(Duration::from_secs(5), child.wait()).await {
+        Ok(Ok(status)) => status.success(),
+        _ => false,
+    }
 }
 
 pub(crate) fn github_https_remote_to_ssh(url: &str) -> Option<String> {

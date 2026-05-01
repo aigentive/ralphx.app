@@ -10,6 +10,7 @@ vi.mock("@/hooks/useGithubSettings", () => ({
   useGhAuthStatus: vi.fn(),
   useSwitchGitOriginToSsh: vi.fn(),
   useSetupGhGitAuth: vi.fn(),
+  useResumeDeferredGitStartup: vi.fn(),
   useUpdateGithubPrEnabled: vi.fn(),
 }));
 
@@ -33,6 +34,7 @@ import {
   useGhAuthStatus,
   useSwitchGitOriginToSsh,
   useSetupGhGitAuth,
+  useResumeDeferredGitStartup,
   useUpdateGithubPrEnabled,
 } from "@/hooks/useGithubSettings";
 import { useProjectStore } from "@/stores/projectStore";
@@ -53,6 +55,7 @@ const mockProject = {
 const mockMutateAsync = vi.fn();
 const mockSwitchToSsh = vi.fn();
 const mockSetupGhGitAuth = vi.fn();
+const mockResumeDeferredGitStartup = vi.fn();
 const mockRefetchGitAuth = vi.fn();
 const mockRefetchGhAuth = vi.fn();
 
@@ -71,6 +74,12 @@ function createWrapper() {
 describe("RepositorySettingsSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMutateAsync.mockReset();
+    mockSwitchToSsh.mockReset();
+    mockSetupGhGitAuth.mockReset();
+    mockResumeDeferredGitStartup.mockReset();
+    mockRefetchGitAuth.mockReset();
+    mockRefetchGhAuth.mockReset();
 
     vi.mocked(useProjectStore).mockReturnValue(mockProject);
 
@@ -110,6 +119,11 @@ describe("RepositorySettingsSection", () => {
       mutateAsync: mockSetupGhGitAuth,
       isPending: false,
     } as unknown as ReturnType<typeof useSetupGhGitAuth>);
+
+    vi.mocked(useResumeDeferredGitStartup).mockReturnValue({
+      mutateAsync: mockResumeDeferredGitStartup,
+      isPending: false,
+    } as unknown as ReturnType<typeof useResumeDeferredGitStartup>);
 
     vi.mocked(useUpdateGithubPrEnabled).mockReturnValue({
       mutateAsync: mockMutateAsync,
@@ -221,6 +235,78 @@ describe("RepositorySettingsSection", () => {
     expect(screen.getByText(/Fetch and push use different auth modes/i)).toBeInTheDocument();
     expect(screen.getByTestId("git-auth-switch-ssh")).toBeInTheDocument();
     expect(screen.getByTestId("git-auth-setup-gh")).toBeInTheDocument();
+  });
+
+  it("shows an HTTPS setup path when GitHub CLI is not authenticated", () => {
+    vi.mocked(useGitAuthDiagnostics).mockReturnValue({
+      data: {
+        fetchUrl: "https://github.com/user/repo.git",
+        pushUrl: "https://github.com/user/repo.git",
+        fetchKind: "HTTPS",
+        pushKind: "HTTPS",
+        mixedAuthModes: false,
+        canSwitchToSsh: true,
+        suggestedSshUrl: "git@github.com:user/repo.git",
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchGitAuth,
+    } as unknown as ReturnType<typeof useGitAuthDiagnostics>);
+    vi.mocked(useGhAuthStatus).mockReturnValue({
+      data: false,
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchGhAuth,
+    } as ReturnType<typeof useGhAuthStatus>);
+
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    expect(screen.getByTestId("git-auth-switch-ssh")).toBeInTheDocument();
+    expect(screen.getByTestId("git-auth-copy-gh-login")).toBeInTheDocument();
+    expect(screen.queryByTestId("git-auth-setup-gh")).not.toBeInTheDocument();
+  });
+
+  it("rechecks and resumes deferred startup recovery once auth is healthy", async () => {
+    const user = userEvent.setup();
+    mockRefetchGitAuth.mockResolvedValue({
+      data: {
+        fetchUrl: "git@github.com:user/repo.git",
+        pushUrl: "git@github.com:user/repo.git",
+        fetchKind: "SSH",
+        pushKind: "SSH",
+        mixedAuthModes: false,
+        canSwitchToSsh: false,
+        suggestedSshUrl: null,
+      },
+      isError: false,
+    });
+    mockRefetchGhAuth.mockResolvedValue({
+      data: true,
+      isError: false,
+    });
+    mockResumeDeferredGitStartup.mockResolvedValue(true);
+    vi.mocked(useGitAuthDiagnostics).mockReturnValue({
+      data: {
+        fetchUrl: "https://github.com/user/repo.git",
+        pushUrl: "git@github.com:user/repo.git",
+        fetchKind: "HTTPS",
+        pushKind: "SSH",
+        mixedAuthModes: true,
+        canSwitchToSsh: true,
+        suggestedSshUrl: "git@github.com:user/repo.git",
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchGitAuth,
+    } as unknown as ReturnType<typeof useGitAuthDiagnostics>);
+
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    await user.click(screen.getByTestId("git-auth-recheck"));
+
+    await waitFor(() => {
+      expect(mockResumeDeferredGitStartup).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("disables PR mode toggle for URLs that only mention github.com in a query string", () => {

@@ -32,6 +32,7 @@ const {
   useGhAuthStatusMock,
   switchGitOriginToSshMock,
   setupGhGitAuthMock,
+  resumeDeferredGitStartupMock,
   openUrlMock,
 } = vi.hoisted(() => ({
   getWorkspaceChangesMock: vi.fn(),
@@ -53,6 +54,7 @@ const {
   useGhAuthStatusMock: vi.fn(),
   switchGitOriginToSshMock: vi.fn(),
   setupGhGitAuthMock: vi.fn(),
+  resumeDeferredGitStartupMock: vi.fn(),
   openUrlMock: vi.fn(),
 }));
 
@@ -178,6 +180,10 @@ vi.mock("@/hooks/useGithubSettings", () => ({
   }),
   useSetupGhGitAuth: () => ({
     mutateAsync: setupGhGitAuthMock,
+    isPending: false,
+  }),
+  useResumeDeferredGitStartup: () => ({
+    mutateAsync: resumeDeferredGitStartupMock,
     isPending: false,
   }),
 }));

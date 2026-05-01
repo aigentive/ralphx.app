@@ -7,6 +7,7 @@
  * - useGhAuthStatus: check if `gh` CLI is authenticated
  * - useSwitchGitOriginToSsh: explicitly switch GitHub origin remotes to SSH
  * - useSetupGhGitAuth: configure GitHub CLI HTTPS credentials for git
+ * - useResumeDeferredGitStartup: resume startup work paused by Git auth preflight
  * - useUpdateGithubPrEnabled: mutation to toggle PR mode on a project
  */
 
@@ -56,6 +57,9 @@ export function useGitAuthDiagnostics(projectId: string | null) {
     queryFn: () =>
       invoke<GitAuthDiagnostics>("get_git_auth_diagnostics", { projectId }),
     enabled: projectId !== null,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -71,6 +75,9 @@ export function useGhAuthStatus() {
   return useQuery<boolean>({
     queryKey: ["gh-auth-status"],
     queryFn: () => invoke<boolean>("check_gh_auth", {}),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -116,6 +123,19 @@ export function useSetupGhGitAuth() {
       void queryClient.invalidateQueries({ queryKey: ["gh-auth-status"] });
       void queryClient.invalidateQueries({ queryKey: ["git-auth-diagnostics"] });
     },
+  });
+}
+
+// ============================================================================
+// useResumeDeferredGitStartup
+// ============================================================================
+
+/**
+ * Resume Git/GitHub-dependent startup recovery after repository access is repaired.
+ */
+export function useResumeDeferredGitStartup() {
+  return useMutation({
+    mutationFn: () => invoke<boolean>("resume_deferred_git_startup", {}),
   });
 }
 

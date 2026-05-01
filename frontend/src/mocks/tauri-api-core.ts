@@ -286,6 +286,7 @@ const commandHandlers: Record<
   },
   check_gh_auth: async () => window.__mockGhAuthStatus ?? true,
   setup_gh_git_auth: async () => true,
+  resume_deferred_git_startup: async () => true,
   update_github_pr_enabled: async () => null,
 
   // Plan commands

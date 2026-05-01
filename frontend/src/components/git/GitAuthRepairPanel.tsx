@@ -1,4 +1,12 @@
-import { AlertTriangle, CheckCircle2, GitBranch, KeyRound, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  GitBranch,
+  KeyRound,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -7,9 +15,11 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import {
   useGhAuthStatus,
   useGitAuthDiagnostics,
+  useResumeDeferredGitStartup,
   useSetupGhGitAuth,
   useSwitchGitOriginToSsh,
 } from "@/hooks/useGithubSettings";
+import type { GitAuthDiagnostics } from "@/hooks/useGithubSettings";
 
 function authModeLabel(fetchKind: string | null | undefined, pushKind: string | null | undefined) {
   if (!fetchKind && !pushKind) {
@@ -26,6 +36,26 @@ function isGithubHttpsRemote(url: string | null | undefined) {
   return url?.trim().startsWith("https://github.com/") ?? false;
 }
 
+function hasDeferredStartupBlockingIssue(
+  diagnostics: GitAuthDiagnostics | undefined,
+  ghAuthenticated: boolean | undefined,
+  diagnosticsFailed = false,
+) {
+  if (diagnosticsFailed) {
+    return true;
+  }
+  if (!diagnostics) {
+    return false;
+  }
+  if (diagnostics.mixedAuthModes) {
+    return true;
+  }
+  if (ghAuthenticated === false) {
+    return true;
+  }
+  return false;
+}
+
 export function GitAuthRepairPanel({
   projectId,
   surface = "settings",
@@ -39,6 +69,7 @@ export function GitAuthRepairPanel({
   const ghAuthQuery = useGhAuthStatus();
   const switchToSshMutation = useSwitchGitOriginToSsh();
   const setupGhGitAuthMutation = useSetupGhGitAuth();
+  const resumeDeferredGitStartupMutation = useResumeDeferredGitStartup();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
 
   if (!projectId) {
@@ -47,21 +78,23 @@ export function GitAuthRepairPanel({
 
   const diagnostics = diagnosticsQuery.data;
   const isGhAuthed = ghAuthQuery.data === true;
+  const isGhMissing = ghAuthQuery.data === false;
   const isChecking = diagnosticsQuery.isLoading || ghAuthQuery.isLoading;
   const hasHttpsRemote =
     diagnostics?.fetchKind === "HTTPS" || diagnostics?.pushKind === "HTTPS";
-  const canSetupGithubHttps =
-    isGhAuthed &&
-    (isGithubHttpsRemote(diagnostics?.fetchUrl) ||
-      isGithubHttpsRemote(diagnostics?.pushUrl));
+  const hasGithubHttpsRemote =
+    isGithubHttpsRemote(diagnostics?.fetchUrl) ||
+    isGithubHttpsRemote(diagnostics?.pushUrl);
+  const canSetupGithubHttps = isGhAuthed && hasGithubHttpsRemote;
+  const canCopyGithubHttpsSetup = isGhMissing && hasGithubHttpsRemote;
   const hasRepairAction =
-    Boolean(diagnostics?.canSwitchToSsh) || canSetupGithubHttps;
+    Boolean(diagnostics?.canSwitchToSsh) || canSetupGithubHttps || canCopyGithubHttpsSetup;
   const hasVisibleIssue =
     diagnosticsQuery.isError ||
     ghAuthQuery.isError ||
     diagnostics?.mixedAuthModes ||
     hasHttpsRemote ||
-    ghAuthQuery.data === false;
+    isGhMissing;
 
   if (!showWhenHealthy && !isChecking && !hasVisibleIssue && !hasRepairAction) {
     return null;
@@ -74,7 +107,7 @@ export function GitAuthRepairPanel({
   if (diagnostics?.mixedAuthModes) {
     messages.push("Fetch and push use different auth modes. Installed app fetches can fail even when terminal pushes work.");
   }
-  if (ghAuthQuery.data === false) {
+  if (isGhMissing) {
     messages.push(
       <>
         GitHub CLI is not authenticated. Run{" "}
@@ -87,12 +120,50 @@ export function GitAuthRepairPanel({
   } else if (hasHttpsRemote) {
     messages.push("HTTPS remotes need a non-interactive credential before the installed app can fetch or push.");
   }
+  if (canCopyGithubHttpsSetup) {
+    messages.push("HTTPS is still available: authenticate GitHub CLI, then let RalphX configure Git credentials.");
+  }
   if (messages.length === 0 && !isChecking) {
     messages.push("Git remote auth and GitHub CLI status look ready.");
   }
 
   const handleRecheck = async () => {
-    await Promise.all([diagnosticsQuery.refetch(), ghAuthQuery.refetch()]);
+    const [diagnosticsResult, ghAuthResult] = await Promise.all([
+      diagnosticsQuery.refetch(),
+      ghAuthQuery.refetch(),
+    ]);
+    return {
+      diagnostics: diagnosticsResult.data,
+      ghAuthenticated: ghAuthResult.data,
+      diagnosticsFailed: diagnosticsResult.isError,
+    };
+  };
+
+  const resumeDeferredStartupIfHealthy = async () => {
+    const current = await handleRecheck();
+    if (
+      hasDeferredStartupBlockingIssue(
+        current.diagnostics,
+        current.ghAuthenticated,
+        current.diagnosticsFailed,
+      )
+    ) {
+      return;
+    }
+
+    const resumed = await resumeDeferredGitStartupMutation.mutateAsync();
+    if (resumed) {
+      toast.success("Deferred startup recovery resumed");
+    }
+  };
+
+  const handleCopyGithubHttpsSetup = async () => {
+    try {
+      await navigator.clipboard.writeText("gh auth login && gh auth setup-git");
+      toast.success("GitHub HTTPS setup command copied");
+    } catch {
+      toast.error("Failed to copy GitHub HTTPS setup command");
+    }
   };
 
   const handleSwitchToSsh = async () => {
@@ -109,7 +180,7 @@ export function GitAuthRepairPanel({
     try {
       await switchToSshMutation.mutateAsync({ projectId });
       toast.success("Git origin switched to SSH");
-      await handleRecheck();
+      await resumeDeferredStartupIfHealthy();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to switch git origin to SSH"));
     }
@@ -129,7 +200,7 @@ export function GitAuthRepairPanel({
     try {
       await setupGhGitAuthMutation.mutateAsync();
       toast.success("GitHub HTTPS credentials configured");
-      await handleRecheck();
+      await resumeDeferredStartupIfHealthy();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to configure GitHub HTTPS credentials"));
     }
@@ -174,8 +245,8 @@ export function GitAuthRepairPanel({
           variant="ghost"
           size="sm"
           className="h-7 gap-1 px-2 text-[11px]"
-          onClick={() => void handleRecheck()}
-          disabled={isChecking}
+          onClick={() => void resumeDeferredStartupIfHealthy()}
+          disabled={isChecking || resumeDeferredGitStartupMutation.isPending}
           data-testid="git-auth-recheck"
         >
           <RefreshCw className="h-3.5 w-3.5" />
@@ -194,7 +265,7 @@ export function GitAuthRepairPanel({
         )}
       </div>
 
-      {(diagnostics?.canSwitchToSsh || canSetupGithubHttps) && (
+      {(diagnostics?.canSwitchToSsh || canSetupGithubHttps || canCopyGithubHttpsSetup) && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {diagnostics?.canSwitchToSsh && (
             <Button
@@ -229,6 +300,19 @@ export function GitAuthRepairPanel({
                 <KeyRound className="h-3.5 w-3.5" />
               )}
               Setup HTTPS
+            </Button>
+          )}
+          {canCopyGithubHttpsSetup && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 gap-2 px-3 text-xs"
+              onClick={() => void handleCopyGithubHttpsSetup()}
+              data-testid="git-auth-copy-gh-login"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Copy HTTPS setup
             </Button>
           )}
         </div>

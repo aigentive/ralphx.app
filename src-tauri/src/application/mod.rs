@@ -55,6 +55,7 @@ pub mod startup_jobs;
 pub mod startup_background;
 pub mod startup_bootstrap;
 pub mod startup_cleanup;
+pub mod startup_git_auth_preflight;
 pub mod startup_pipeline;
 pub mod startup_pipeline_launch;
 pub mod startup_runtime_builders;

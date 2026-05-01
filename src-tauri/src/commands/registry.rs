@@ -57,6 +57,7 @@ macro_rules! register_tauri_commands {
             commands::project_commands::get_git_auth_diagnostics,
             commands::project_commands::switch_git_origin_to_ssh,
             commands::project_commands::setup_gh_git_auth,
+            commands::project_commands::resume_deferred_git_startup,
             commands::project_commands::check_gh_auth,
             commands::project_commands::update_github_pr_enabled,
             commands::agent_profile_commands::list_agent_profiles,

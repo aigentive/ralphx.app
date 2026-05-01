@@ -18,7 +18,7 @@ use crate::domain::entities::{
 };
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 use crate::infrastructure::git_auth::{
-    apply_git_subprocess_env, git_remote_url_kind_label, git_subprocess_env,
+    apply_git_subprocess_env, check_gh_auth_status, git_remote_url_kind_label, git_subprocess_env,
     inspect_origin_auth_config, suggested_github_ssh_origin,
 };
 use crate::infrastructure::tool_paths::resolve_git_cli_path;
@@ -779,27 +779,6 @@ async fn run_gh_command(args: &[&str]) -> Result<(), String> {
     })
 }
 
-async fn gh_auth_status() -> bool {
-    let mut child = match tokio::process::Command::new(
-        crate::infrastructure::tool_paths::resolve_gh_cli_path(),
-    )
-    .args(["auth", "status"])
-    .envs(git_subprocess_env())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .kill_on_drop(true)
-    .spawn()
-    {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-
-    match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
-        Ok(Ok(status)) => status.success(),
-        _ => false,
-    }
-}
-
 /// Get the git remote URL for a project and validate it is a GitHub URL.
 ///
 /// Runs `git remote get-url origin` in the project working directory.
@@ -882,11 +861,26 @@ pub async fn switch_git_origin_to_ssh(
 /// Configure Git to use the already-authenticated GitHub CLI for HTTPS credentials.
 #[tauri::command]
 pub async fn setup_gh_git_auth() -> Result<bool, String> {
-    if !gh_auth_status().await {
+    if !check_gh_auth_status().await {
         return Err("GitHub CLI is not authenticated. Run `gh auth login` first.".to_string());
     }
     run_gh_command(&["auth", "setup-git"]).await?;
     Ok(true)
+}
+
+/// Resume Git/GitHub-dependent startup work that was deferred by startup preflight.
+#[tauri::command]
+pub async fn resume_deferred_git_startup(
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
+) -> Result<bool, String> {
+    crate::application::startup_pipeline_launch::resume_deferred_git_startup_pipeline(
+        &state,
+        Arc::clone(&execution_state),
+        Arc::clone(&active_project_state),
+    )
+    .await
 }
 
 /// Check whether the `gh` CLI is authenticated.
@@ -898,7 +892,7 @@ pub async fn setup_gh_git_auth() -> Result<bool, String> {
 /// This command never returns `Err` — failures become `false`.
 #[tauri::command]
 pub async fn check_gh_auth() -> Result<bool, String> {
-    Ok(gh_auth_status().await)
+    Ok(check_gh_auth_status().await)
 }
 
 /// Update the `github_pr_enabled` setting for a project.
