@@ -45,20 +45,22 @@ For signed builds, verify there are no Gatekeeper warnings when opening the app.
 
 RalphX.app is just starting formal public release management after an internal-only phase. The repo has very high development velocity and high code churn, so release versions follow the shipped product surface, not raw repository activity.
 
-Current policy while RalphX.app remains on `0.x`:
+Current policy while RalphX.app remains on `0.x.y`:
 
 | Bump | Use It When | Do Not Use It Just Because |
 |---|---|---|
 | `patch` | Fixes, polish, dependency churn, release/build/CI work, and internal changes that do not materially expand the shipped product surface | There were many commits, many changed files, a large diff stat, or a lot of release automation churn |
 | `minor` | A release delivers a meaningful new user-visible capability or a meaningful expansion of an existing workflow | The product is still volatile or the team shipped a lot of internal work quickly |
-| `major` | An explicit `1.0.0` milestone or a deliberate compatibility reset that deserves a public stability-contract change | Early-stage churn, broad refactors, or high release pressure |
+| `major` | An explicit manually approved `1.0.0` milestone or a deliberate compatibility reset that deserves a public stability-contract change | Early-stage churn, broad refactors, large `0.x.y` numbers, or high release pressure |
 
 Practical rules:
 
 1. Public versioning tracks shipped behavior, install/update surface, and workflow shape.
 2. Raw commit count, file count, diff size, dependency bump volume, and CI churn are supporting context only.
 3. Frequent `minor` releases are acceptable in `0.x` if each release moves the visible product forward in a meaningful way.
-4. `1.0.0` is a deliberate product milestone, not an automatic consequence of high velocity.
+4. `0.x.y` minor and patch numbers are unbounded integers; `0.42.0`, `0.100.0`, and `0.100.42` are valid pre-1.0 releases.
+5. `1.0.0` is a deliberate product milestone, not an automatic consequence of high velocity, large minor numbers, or release pressure.
+6. Automated Codex proposals must not advance the major version; a major bump requires explicit manual `release_bump=major` or `release_version=<major>` approval in `Daily Release`, or an equally explicit local release-owner action.
 
 ---
 
@@ -90,6 +92,8 @@ Manual testing:
 1. Go to `aigentive/ralphx.app` -> Actions -> `Daily Release`.
 2. Click **Run workflow** from `main`.
 3. Use `dry_run=true` to verify Codex proposal, version bump, and note generation without committing, tagging, pushing, or dispatching the build.
+4. Optionally set `release_bump` to force `patch`, `minor`, or `major`; `major` is the required approval path for a normal `1.0.0` jump.
+5. Optionally set `release_version` to force an exact version such as `0.42.0`, `0.100.42`, or `v1.0.0`; do not combine it with `release_bump`.
 
 Skipping scheduled release for maintenance-only commits:
 
@@ -97,7 +101,8 @@ Skipping scheduled release for maintenance-only commits:
 - The scheduled workflow skips only when all commits after the latest reachable release tag carry one of those markers.
 - Pushing to `main` can still run CI/CodeQL; this marker only affects the `Daily Release` workflow.
 
-Scheduled runs use `draft=false`, `prerelease=false`, and the self-hosted ARM release runner by default. Manual dispatch can override those values.
+Scheduled runs use `gpt-5.5`, `draft=false`, `prerelease=false`, and the self-hosted ARM release runner by default. Manual dispatch can override those values.
+If Codex proposes a major version without a manual bump/version override, the workflow fails before version bump, tag creation, build dispatch, or publish.
 
 ---
 
@@ -126,6 +131,7 @@ Primary review artifacts:
 - Codex logs: `.artifacts/release-notes/logs/`
 
 Use `--from`, `--to`, `--current-version`, `--model`, or `--reasoning-effort` when you need to customize the compare range or Codex run.
+Use `--allow-major` only when the release owner has explicitly approved accepting a proposed major version.
 
 ### Manual Flow
 
@@ -139,7 +145,7 @@ Use this when you want finer control than the wrapper gives you.
 
 Then:
 
-1. Review the proposed bump (`patch` / `minor` / `major`) and the recommended version.
+1. Review the proposed bump (`patch` / `minor` / `major`) and the recommended version. Major proposals require explicit manual approval before they can be accepted.
 2. Accept the proposal at the prompt if you want RalphX.app to store that version in `.artifacts/release-notes/.version`.
 3. If you do not want the prompt, use:
    - `./scripts/propose-release.sh --accept`
@@ -160,6 +166,8 @@ Or pass an explicit version if you are overriding:
 ```bash
 ./scripts/bump-version.sh 0.2.0
 ```
+
+Explicit pre-1.0 versions can use multi-digit minor and patch numbers, for example `0.42.0` or `0.100.42`.
 
 This updates version in:
 - `frontend/package.json`
@@ -195,13 +203,14 @@ Then:
 
 1. Review and edit the draft from:
    - `release-notes/v0.2.0.md`
-2. If draft generation fails or you want to inspect the Codex run, check the logs in:
+2. Keep user-facing sections first and move developer, CI, docs, config, release automation, and scaffolding work into `Developer And Maintainer Changes` near the bottom.
+3. If draft generation fails or you want to inspect the Codex run, check the logs in:
    - `.artifacts/release-notes/logs/`
-3. Generated drafts include Markdown commit links for traceability; keep them clickable when editing notes.
-4. Commit that curated notes file before tagging if you want the workflow-created draft GitHub release to use it automatically:
+4. Generated drafts include Markdown commit links for traceability; keep them clickable when editing notes.
+5. Commit that curated notes file before tagging if you want the workflow-created draft GitHub release to use it automatically:
    - `git add release-notes/v0.2.0.md`
    - `git commit -m "docs: add release notes for v0.2.0"`
-5. If you decide not to keep the draft in git, leave it uncommitted or remove it locally:
+6. If you decide not to keep the draft in git, leave it uncommitted or remove it locally:
    - `rm -f release-notes/v0.2.0.md`
 
 ### Step 5: Create And Push The Release Tag
