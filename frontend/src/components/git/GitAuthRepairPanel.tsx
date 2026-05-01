@@ -1,13 +1,13 @@
+import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
   CheckCircle2,
-  Copy,
   GitBranch,
   KeyRound,
   Loader2,
   RefreshCw,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,14 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import {
   useGhAuthStatus,
   useGitAuthDiagnostics,
+  useLoginGhWithBrowser,
   useResumeDeferredGitStartup,
   useSetupGhGitAuth,
   useSwitchGitOriginToSsh,
 } from "@/hooks/useGithubSettings";
 import type { GitAuthDiagnostics } from "@/hooks/useGithubSettings";
+import { GhAuthLoginPrompt, type GhAuthLoginPromptPayload } from "./GhAuthLoginPrompt";
+import { GitAuthTerminalSetupButton } from "./GitAuthTerminalSetupButton";
 
 function authModeLabel(fetchKind: string | null | undefined, pushKind: string | null | undefined) {
   if (!fetchKind && !pushKind) {
@@ -39,6 +42,7 @@ function isGithubHttpsRemote(url: string | null | undefined) {
 function hasDeferredStartupBlockingIssue(
   diagnostics: GitAuthDiagnostics | undefined,
   ghAuthenticated: boolean | undefined,
+  requiresGhAuth: boolean,
   diagnosticsFailed = false,
 ) {
   if (diagnosticsFailed) {
@@ -50,27 +54,37 @@ function hasDeferredStartupBlockingIssue(
   if (diagnostics.mixedAuthModes) {
     return true;
   }
-  if (ghAuthenticated === false) {
-    return true;
-  }
-  return false;
+  return Boolean(
+    ghAuthenticated === false &&
+      (requiresGhAuth ||
+        isGithubHttpsRemote(diagnostics.fetchUrl) ||
+        isGithubHttpsRemote(diagnostics.pushUrl)),
+  );
 }
+
+const APP_LIKE_GH_LOGIN_COMMAND =
+  'APP_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" && env -i HOME="$HOME" PATH="$APP_PATH" gh auth login --hostname github.com --git-protocol ssh --web --skip-ssh-key';
+const GH_AUTH_LOGIN_PROMPT_EVENT = "gh-auth:login_prompt";
 
 export function GitAuthRepairPanel({
   projectId,
   surface = "settings",
   showWhenHealthy = false,
+  requiresGhAuth = false,
 }: {
   projectId: string | null;
   surface?: "settings" | "publish";
   showWhenHealthy?: boolean;
+  requiresGhAuth?: boolean;
 }) {
   const diagnosticsQuery = useGitAuthDiagnostics(projectId);
   const ghAuthQuery = useGhAuthStatus();
   const switchToSshMutation = useSwitchGitOriginToSsh();
+  const loginGhWithBrowserMutation = useLoginGhWithBrowser();
   const setupGhGitAuthMutation = useSetupGhGitAuth();
   const resumeDeferredGitStartupMutation = useResumeDeferredGitStartup();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+  const [loginPrompt, setLoginPrompt] = useState<GhAuthLoginPromptPayload | null>(null);
 
   if (!projectId) {
     return null;
@@ -86,19 +100,30 @@ export function GitAuthRepairPanel({
     isGithubHttpsRemote(diagnostics?.fetchUrl) ||
     isGithubHttpsRemote(diagnostics?.pushUrl);
   const canSetupGithubHttps = isGhAuthed && hasGithubHttpsRemote;
-  const canCopyGithubHttpsSetup = isGhMissing && hasGithubHttpsRemote;
+  const canLoginGithubCli = isGhMissing && (requiresGhAuth || hasGithubHttpsRemote);
+  const canCopyGithubLogin = canLoginGithubCli;
   const hasRepairAction =
-    Boolean(diagnostics?.canSwitchToSsh) || canSetupGithubHttps || canCopyGithubHttpsSetup;
-  const hasVisibleIssue =
+    Boolean(diagnostics?.canSwitchToSsh) ||
+    canSetupGithubHttps ||
+    canLoginGithubCli ||
+    canCopyGithubLogin;
+  const hasGitTransportIssue =
     diagnosticsQuery.isError ||
     ghAuthQuery.isError ||
     diagnostics?.mixedAuthModes ||
-    hasHttpsRemote ||
-    isGhMissing;
+    hasHttpsRemote;
+  const hasGhPrIssue = requiresGhAuth && isGhMissing;
+  const hasVisibleIssue = hasGitTransportIssue || hasGhPrIssue;
+  const showPrAccessMode = hasGhPrIssue && !hasGitTransportIssue;
 
   if (!showWhenHealthy && !isChecking && !hasVisibleIssue && !hasRepairAction) {
     return null;
   }
+
+  const title = showPrAccessMode ? "GitHub PR Access" : "Git & GitHub Access";
+  const subtitle = showPrAccessMode
+    ? "Draft PR operations"
+    : authModeLabel(diagnostics?.fetchKind, diagnostics?.pushKind);
 
   const messages: ReactNode[] = [];
   if (diagnosticsQuery.isError) {
@@ -107,21 +132,20 @@ export function GitAuthRepairPanel({
   if (diagnostics?.mixedAuthModes) {
     messages.push("Fetch and push use different auth modes. Background fetches can fail even when terminal pushes work.");
   }
-  if (isGhMissing) {
+  if (showPrAccessMode) {
     messages.push(
-      <>
-        GitHub CLI is not authenticated. Run{" "}
-        <span className="font-mono">gh auth login</span>, then recheck.
-      </>,
+      "Git SSH access is ready. Sign in to GitHub CLI from RalphX before creating or updating draft PRs.",
     );
+  } else if (isGhMissing && hasGithubHttpsRemote) {
+    messages.push("GitHub CLI is not signed in for this app. Sign in from RalphX, then configure HTTPS credentials or switch origin to SSH.");
   }
   if (canSetupGithubHttps) {
     messages.push("HTTPS remotes need a non-interactive credential. Configure GitHub CLI credentials or switch origin to SSH.");
   } else if (hasHttpsRemote) {
     messages.push("HTTPS remotes need a non-interactive credential before background fetch or push can run.");
   }
-  if (canCopyGithubHttpsSetup) {
-    messages.push("HTTPS is still available: authenticate GitHub CLI, then let RalphX configure Git credentials.");
+  if (canCopyGithubLogin && !showPrAccessMode) {
+    messages.push("HTTPS is still available: sign in to GitHub CLI, then let RalphX configure Git credentials.");
   }
   if (messages.length === 0 && !isChecking) {
     messages.push("Git remote auth and GitHub CLI status look ready.");
@@ -145,6 +169,7 @@ export function GitAuthRepairPanel({
       hasDeferredStartupBlockingIssue(
         current.diagnostics,
         current.ghAuthenticated,
+        requiresGhAuth,
         current.diagnosticsFailed,
       )
     ) {
@@ -159,10 +184,36 @@ export function GitAuthRepairPanel({
 
   const handleCopyGithubHttpsSetup = async () => {
     try {
-      await navigator.clipboard.writeText("gh auth login && gh auth setup-git");
-      toast.success("GitHub HTTPS setup command copied");
+      await navigator.clipboard.writeText(APP_LIKE_GH_LOGIN_COMMAND);
+      toast.success("Terminal sign-in command copied");
     } catch {
-      toast.error("Failed to copy GitHub HTTPS setup command");
+      toast.error("Failed to copy GitHub sign-in command");
+    }
+  };
+
+  const mergeLoginPrompt = (prompt: GhAuthLoginPromptPayload) => {
+    setLoginPrompt((current) => ({
+      code: prompt.code ?? current?.code ?? null,
+      url: prompt.url ?? current?.url ?? null,
+    }));
+  };
+
+  const handleLoginGhWithBrowser = async () => {
+    setLoginPrompt(null);
+    let unlisten: (() => void) | undefined;
+
+    try {
+      unlisten = await listen<GhAuthLoginPromptPayload>(
+        GH_AUTH_LOGIN_PROMPT_EVENT,
+        (event) => mergeLoginPrompt(event.payload),
+      );
+      await loginGhWithBrowserMutation.mutateAsync();
+      toast.success("GitHub CLI signed in");
+      await resumeDeferredStartupIfHealthy();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to sign in to GitHub CLI"));
+    } finally {
+      unlisten?.();
     }
   };
 
@@ -231,12 +282,12 @@ export function GitAuthRepairPanel({
           )}
           <div className="min-w-0">
             <div className="text-xs font-semibold text-[var(--text-primary)]">
-              Git & GitHub Access
+              {title}
             </div>
             <div className="truncate text-[11px] text-[var(--text-muted)]">
               {isChecking
                 ? "Checking repository credentials..."
-                : authModeLabel(diagnostics?.fetchKind, diagnostics?.pushKind)}
+                : subtitle}
             </div>
           </div>
         </div>
@@ -258,6 +309,7 @@ export function GitAuthRepairPanel({
         {messages.map((message, index) => (
           <div key={index}>{message}</div>
         ))}
+        {loginPrompt && <GhAuthLoginPrompt prompt={loginPrompt} />}
         {diagnosticsQuery.isError && (
           <div className="text-[var(--status-warning)]">
             {errorMessage(diagnosticsQuery.error, "Git diagnostics failed")}
@@ -265,7 +317,10 @@ export function GitAuthRepairPanel({
         )}
       </div>
 
-      {(diagnostics?.canSwitchToSsh || canSetupGithubHttps || canCopyGithubHttpsSetup) && (
+      {(diagnostics?.canSwitchToSsh ||
+        canLoginGithubCli ||
+        canSetupGithubHttps ||
+        canCopyGithubLogin) && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {diagnostics?.canSwitchToSsh && (
             <Button
@@ -282,6 +337,24 @@ export function GitAuthRepairPanel({
                 <GitBranch className="h-3.5 w-3.5" />
               )}
               Use SSH
+            </Button>
+          )}
+          {canLoginGithubCli && (
+            <Button
+              type="button"
+              variant={showPrAccessMode ? "default" : "secondary"}
+              size="sm"
+              className="h-8 gap-2 px-3 text-xs"
+              onClick={() => void handleLoginGhWithBrowser()}
+              disabled={loginGhWithBrowserMutation.isPending}
+              data-testid="git-auth-login-gh"
+            >
+              {loginGhWithBrowserMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <KeyRound className="h-3.5 w-3.5" />
+              )}
+              Sign in
             </Button>
           )}
           {canSetupGithubHttps && (
@@ -302,18 +375,10 @@ export function GitAuthRepairPanel({
               Setup HTTPS
             </Button>
           )}
-          {canCopyGithubHttpsSetup && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="h-8 gap-2 px-3 text-xs"
-              onClick={() => void handleCopyGithubHttpsSetup()}
-              data-testid="git-auth-copy-gh-login"
-            >
-              <Copy className="h-3.5 w-3.5" />
-              Copy HTTPS setup
-            </Button>
+          {canCopyGithubLogin && (
+            <GitAuthTerminalSetupButton
+              onCopy={() => void handleCopyGithubHttpsSetup()}
+            />
           )}
         </div>
       )}

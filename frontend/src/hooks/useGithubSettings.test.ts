@@ -15,6 +15,7 @@ import {
   useGitRemoteUrl,
   useGitAuthDiagnostics,
   useGhAuthStatus,
+  useLoginGhWithBrowser,
   useSwitchGitOriginToSsh,
   useSetupGhGitAuth,
   useResumeDeferredGitStartup,
@@ -232,6 +233,20 @@ describe("git auth repair mutations", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(invoke).toHaveBeenCalledWith("setup_gh_git_auth", {});
+  });
+
+  it("calls login_gh_with_browser without project args", async () => {
+    vi.mocked(invoke).mockResolvedValue(true);
+
+    const { result } = renderHook(() => useLoginGhWithBrowser(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate();
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(invoke).toHaveBeenCalledWith("login_gh_with_browser", {});
   });
 
   it("calls resume_deferred_git_startup without project args", async () => {

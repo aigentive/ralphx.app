@@ -7,6 +7,7 @@ use std::process::Command;
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::{Emitter, State};
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::time::Duration;
 
 use crate::application::{AppState, GitService, TaskTransitionService};
@@ -23,6 +24,15 @@ use crate::infrastructure::git_auth::{
 };
 use crate::infrastructure::tool_paths::resolve_git_cli_path;
 use crate::utils::path_safety::validate_absolute_non_root_path;
+
+pub(crate) const GH_AUTH_LOGIN_PROMPT_EVENT: &str = "gh-auth:login_prompt";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GhAuthLoginPrompt {
+    code: Option<String>,
+    url: Option<String>,
+}
 
 /// Deserializes a JSON field as `None` when absent, `Some(None)` when `null`, and `Some(Some(v))` when present.
 /// Used for nullable patch fields where absent means "don't change" and null means "clear".
@@ -752,17 +762,22 @@ async fn run_git_config_command(working_dir: &Path, args: &[&str]) -> Result<(),
 }
 
 async fn run_gh_command(args: &[&str]) -> Result<(), String> {
+    run_gh_command_with_timeout(args, Duration::from_secs(10)).await
+}
+
+async fn run_gh_command_with_timeout(args: &[&str], deadline: Duration) -> Result<(), String> {
     let child =
         tokio::process::Command::new(crate::infrastructure::tool_paths::resolve_gh_cli_path())
             .args(args)
             .envs(git_subprocess_env())
+            .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| format!("Failed to spawn gh: {}", e))?;
 
-    let output = tokio::time::timeout(Duration::from_secs(10), child.wait_with_output())
+    let output = tokio::time::timeout(deadline, child.wait_with_output())
         .await
         .map_err(|_| "gh command timed out".to_string())?
         .map_err(|e| format!("Failed to wait for gh: {}", e))?;
@@ -777,6 +792,104 @@ async fn run_gh_command(args: &[&str]) -> Result<(), String> {
     } else {
         stderr
     })
+}
+
+fn gh_web_login_args() -> [&'static str; 8] {
+    [
+        "auth",
+        "login",
+        "--hostname",
+        "github.com",
+        "--git-protocol",
+        "ssh",
+        "--web",
+        "--skip-ssh-key",
+    ]
+}
+
+async fn run_gh_web_login_command(
+    app_handle: tauri::AppHandle,
+    deadline: Duration,
+) -> Result<(), String> {
+    let mut child =
+        tokio::process::Command::new(crate::infrastructure::tool_paths::resolve_gh_cli_path())
+            .args(gh_web_login_args())
+            .envs(git_subprocess_env())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| format!("Failed to spawn gh: {}", e))?;
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout_task = tokio::spawn(collect_gh_auth_login_output(stdout, app_handle.clone()));
+    let stderr_task = tokio::spawn(collect_gh_auth_login_output(stderr, app_handle));
+
+    let status = match tokio::time::timeout(deadline, child.wait()).await {
+        Ok(Ok(status)) => status,
+        Ok(Err(error)) => return Err(format!("Failed to wait for gh: {}", error)),
+        Err(_) => {
+            let _ = child.kill().await;
+            let _ = stdout_task.await;
+            let _ = stderr_task.await;
+            return Err("gh auth login timed out".to_string());
+        }
+    };
+
+    let stdout_lines = stdout_task.await.unwrap_or_default();
+    let stderr_lines = stderr_task.await.unwrap_or_default();
+
+    if status.success() {
+        return Ok(());
+    }
+
+    let output = stderr_lines
+        .iter()
+        .chain(stdout_lines.iter())
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(if output.trim().is_empty() {
+        format!("gh auth login failed with status {}", status)
+    } else {
+        output
+    })
+}
+
+async fn collect_gh_auth_login_output<R>(
+    stream: Option<R>,
+    app_handle: tauri::AppHandle,
+) -> Vec<String>
+where
+    R: AsyncRead + Unpin,
+{
+    let Some(stream) = stream else {
+        return Vec::new();
+    };
+    let mut lines = Vec::new();
+    let mut reader = BufReader::new(stream).lines();
+    while let Ok(Some(line)) = reader.next_line().await {
+        if let Some(prompt) = parse_gh_auth_login_prompt(&line) {
+            let _ = app_handle.emit(GH_AUTH_LOGIN_PROMPT_EVENT, prompt);
+        }
+        lines.push(line);
+    }
+    lines
+}
+
+fn parse_gh_auth_login_prompt(line: &str) -> Option<GhAuthLoginPrompt> {
+    let code = line
+        .split_once("one-time code:")
+        .map(|(_, value)| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let url = line
+        .split_once("web browser:")
+        .map(|(_, value)| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    (code.is_some() || url.is_some()).then_some(GhAuthLoginPrompt { code, url })
 }
 
 /// Get the git remote URL for a project and validate it is a GitHub URL.
@@ -862,10 +975,32 @@ pub async fn switch_git_origin_to_ssh(
 #[tauri::command]
 pub async fn setup_gh_git_auth() -> Result<bool, String> {
     if !check_gh_auth_status().await {
-        return Err("GitHub CLI is not authenticated. Run `gh auth login` first.".to_string());
+        return Err(
+            "GitHub CLI is not signed in for RalphX. Use the GitHub sign-in action first."
+                .to_string(),
+        );
     }
     run_gh_command(&["auth", "setup-git"]).await?;
     Ok(true)
+}
+
+/// Start GitHub CLI's browser login flow from RalphX's app environment.
+#[tauri::command]
+pub async fn login_gh_with_browser(app: tauri::AppHandle) -> Result<bool, String> {
+    if check_gh_auth_status().await {
+        return Ok(true);
+    }
+
+    run_gh_web_login_command(app, Duration::from_secs(300)).await?;
+
+    if check_gh_auth_status().await {
+        Ok(true)
+    } else {
+        Err(
+            "GitHub CLI sign-in completed, but RalphX still cannot see authenticated gh credentials."
+                .to_string(),
+        )
+    }
 }
 
 /// Resume Git/GitHub-dependent startup work that was deferred by startup preflight.
@@ -1184,5 +1319,37 @@ mod git_auth_command_tests {
         assert!(!response.mixed_auth_modes);
         assert!(!response.can_switch_to_ssh);
         assert!(response.suggested_ssh_url.is_none());
+    }
+
+    #[test]
+    fn gh_web_login_args_use_browser_flow_and_ssh_protocol() {
+        assert_eq!(
+            gh_web_login_args(),
+            [
+                "auth",
+                "login",
+                "--hostname",
+                "github.com",
+                "--git-protocol",
+                "ssh",
+                "--web",
+                "--skip-ssh-key"
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_gh_web_login_code_and_url_lines() {
+        let code = parse_gh_auth_login_prompt("! First copy your one-time code: F308-C82B")
+            .expect("code line should parse");
+        assert_eq!(code.code.as_deref(), Some("F308-C82B"));
+        assert!(code.url.is_none());
+
+        let url = parse_gh_auth_login_prompt(
+            "Open this URL to continue in your web browser: https://github.com/login/device",
+        )
+        .expect("url line should parse");
+        assert!(url.code.is_none());
+        assert_eq!(url.url.as_deref(), Some("https://github.com/login/device"));
     }
 }

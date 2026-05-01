@@ -8,6 +8,7 @@ vi.mock("@/hooks/useGithubSettings", () => ({
   useGitRemoteUrl: vi.fn(),
   useGitAuthDiagnostics: vi.fn(),
   useGhAuthStatus: vi.fn(),
+  useLoginGhWithBrowser: vi.fn(),
   useSwitchGitOriginToSsh: vi.fn(),
   useSetupGhGitAuth: vi.fn(),
   useResumeDeferredGitStartup: vi.fn(),
@@ -32,6 +33,7 @@ import {
   useGitRemoteUrl,
   useGitAuthDiagnostics,
   useGhAuthStatus,
+  useLoginGhWithBrowser,
   useSwitchGitOriginToSsh,
   useSetupGhGitAuth,
   useResumeDeferredGitStartup,
@@ -55,6 +57,7 @@ const mockProject = {
 const mockMutateAsync = vi.fn();
 const mockSwitchToSsh = vi.fn();
 const mockSetupGhGitAuth = vi.fn();
+const mockLoginGhWithBrowser = vi.fn();
 const mockResumeDeferredGitStartup = vi.fn();
 const mockRefetchGitAuth = vi.fn();
 const mockRefetchGhAuth = vi.fn();
@@ -77,6 +80,7 @@ describe("RepositorySettingsSection", () => {
     mockMutateAsync.mockReset();
     mockSwitchToSsh.mockReset();
     mockSetupGhGitAuth.mockReset();
+    mockLoginGhWithBrowser.mockReset();
     mockResumeDeferredGitStartup.mockReset();
     mockRefetchGitAuth.mockReset();
     mockRefetchGhAuth.mockReset();
@@ -119,6 +123,11 @@ describe("RepositorySettingsSection", () => {
       mutateAsync: mockSetupGhGitAuth,
       isPending: false,
     } as unknown as ReturnType<typeof useSetupGhGitAuth>);
+
+    vi.mocked(useLoginGhWithBrowser).mockReturnValue({
+      mutateAsync: mockLoginGhWithBrowser,
+      isPending: false,
+    } as unknown as ReturnType<typeof useLoginGhWithBrowser>);
 
     vi.mocked(useResumeDeferredGitStartup).mockReturnValue({
       mutateAsync: mockResumeDeferredGitStartup,
@@ -180,6 +189,44 @@ describe("RepositorySettingsSection", () => {
     render(<RepositorySettingsSection />, { wrapper: createWrapper() });
 
     expect(screen.getByText("Not authenticated")).toBeInTheDocument();
+  });
+
+  it("does not show a generic git repair warning for all-SSH remotes when PR mode is disabled", () => {
+    vi.mocked(useGhAuthStatus).mockReturnValue({
+      data: false,
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchGhAuth,
+    } as ReturnType<typeof useGhAuthStatus>);
+
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    expect(screen.queryByTestId("git-auth-repair-panel")).not.toBeInTheDocument();
+    expect(screen.queryByText(/GitHub CLI is not authenticated/i)).not.toBeInTheDocument();
+  });
+
+  it("shows an app-owned GitHub sign-in action when PR mode needs gh auth", () => {
+    vi.mocked(useProjectStore).mockReturnValue({
+      ...mockProject,
+      githubPrEnabled: true,
+    });
+    vi.mocked(useGitRemoteUrl).mockReturnValue({
+      data: "git@github.com:user/repo.git",
+      isLoading: false,
+    } as ReturnType<typeof useGitRemoteUrl>);
+    vi.mocked(useGhAuthStatus).mockReturnValue({
+      data: false,
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchGhAuth,
+    } as ReturnType<typeof useGhAuthStatus>);
+
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    expect(screen.getByTestId("git-auth-repair-panel")).toBeInTheDocument();
+    expect(screen.getByText("GitHub PR Access")).toBeInTheDocument();
+    expect(screen.getByTestId("git-auth-login-gh")).toBeInTheDocument();
+    expect(screen.queryByText(/Run gh auth login/i)).not.toBeInTheDocument();
   });
 
   it("disables PR mode toggle when remote is not GitHub", () => {

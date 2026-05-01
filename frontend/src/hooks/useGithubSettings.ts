@@ -5,6 +5,7 @@
  * - useGitRemoteUrl: fetch remote URL for a project
  * - useGitAuthDiagnostics: inspect git fetch/push auth modes
  * - useGhAuthStatus: check if `gh` CLI is authenticated
+ * - useLoginGhWithBrowser: authenticate `gh` through the app's browser flow
  * - useSwitchGitOriginToSsh: explicitly switch GitHub origin remotes to SSH
  * - useSetupGhGitAuth: configure GitHub CLI HTTPS credentials for git
  * - useResumeDeferredGitStartup: resume startup work paused by Git auth preflight
@@ -119,6 +120,25 @@ export function useSetupGhGitAuth() {
 
   return useMutation({
     mutationFn: () => invoke<boolean>("setup_gh_git_auth", {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["gh-auth-status"] });
+      void queryClient.invalidateQueries({ queryKey: ["git-auth-diagnostics"] });
+    },
+  });
+}
+
+// ============================================================================
+// useLoginGhWithBrowser
+// ============================================================================
+
+/**
+ * Start GitHub CLI's browser login flow from RalphX's app environment.
+ */
+export function useLoginGhWithBrowser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => invoke<boolean>("login_gh_with_browser", {}),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["gh-auth-status"] });
       void queryClient.invalidateQueries({ queryKey: ["git-auth-diagnostics"] });
