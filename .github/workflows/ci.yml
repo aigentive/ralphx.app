@@ -119,6 +119,20 @@ jobs:
           bash -n scripts/build-prod-release.sh
           bash -n scripts/render-homebrew-cask.sh
 
+  tauri-package-alignment:
+    name: Tauri Package Alignment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Check JavaScript and Rust Tauri package alignment
+        run: node scripts/check-tauri-package-alignment.mjs .
+
   rust-ipc-contracts:
     name: Rust IPC Contracts
     needs: changes
