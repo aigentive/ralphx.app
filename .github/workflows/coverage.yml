@@ -8,6 +8,7 @@ on:
     branches: [main]
 
 permissions:
+  statuses: read
   contents: read
   pull-requests: read
 
@@ -385,3 +386,99 @@ jobs:
           flags: plugin-external-mcp
           name: plugin-external-mcp
           fail_ci_if_error: true
+
+  coverage-gate:
+    name: Coverage Gate
+    needs:
+      - changes
+      - rust-lib-coverage
+      - rust-ipc-coverage
+      - frontend-coverage
+      - plugin-coverage
+      - publish-codecov
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Enforce Codecov patch status
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "Coverage scope detection did not complete successfully."
+            exit 1
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" != "pull_request" ]]; then
+            echo "Coverage gate only enforces patch coverage on pull requests."
+            exit 0
+          fi
+
+          coverage_required=false
+          if [[ "${{ needs.changes.outputs.run_rust }}" == "true" || "${{ needs.changes.outputs.run_frontend }}" == "true" || "${{ needs.changes.outputs.run_plugins }}" == "true" ]]; then
+            coverage_required=true
+          fi
+
+          if [[ "${coverage_required}" != "true" ]]; then
+            echo "No coverage-relevant files changed; skipping Codecov patch gate."
+            exit 0
+          fi
+
+          failures=()
+          if [[ "${{ needs.changes.outputs.run_rust }}" == "true" ]]; then
+            [[ "${{ needs.rust-lib-coverage.result }}" == "success" ]] || failures+=("Rust Lib Coverage: ${{ needs.rust-lib-coverage.result }}")
+            [[ "${{ needs.rust-ipc-coverage.result }}" == "success" ]] || failures+=("Rust IPC Coverage: ${{ needs.rust-ipc-coverage.result }}")
+          fi
+          if [[ "${{ needs.changes.outputs.run_frontend }}" == "true" ]]; then
+            [[ "${{ needs.frontend-coverage.result }}" == "success" ]] || failures+=("Frontend Coverage: ${{ needs.frontend-coverage.result }}")
+          fi
+          if [[ "${{ needs.changes.outputs.run_plugins }}" == "true" ]]; then
+            [[ "${{ needs.plugin-coverage.result }}" == "success" ]] || failures+=("Plugin Coverage: ${{ needs.plugin-coverage.result }}")
+          fi
+          [[ "${{ needs.publish-codecov.result }}" == "success" ]] || failures+=("Publish Codecov Coverage: ${{ needs.publish-codecov.result }}")
+
+          if (( ${#failures[@]} > 0 )); then
+            printf 'Coverage prerequisite failed: %s\n' "${failures[@]}"
+            exit 1
+          fi
+
+          echo "Waiting for Codecov patch status on ${COMMIT_SHA}."
+          deadline=$((SECONDS + 600))
+          while (( SECONDS < deadline )); do
+            state="$(
+              gh api "repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/statuses" \
+                --jq 'map(select(.context == "codecov/patch"))[0].state // ""'
+            )"
+
+            case "${state}" in
+              success)
+                echo "Codecov patch status passed."
+                exit 0
+                ;;
+              failure|error)
+                gh api "repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/statuses" \
+                  --jq 'map(select(.context == "codecov/patch"))[0]'
+                echo "Codecov patch status failed."
+                exit 1
+                ;;
+              pending)
+                echo "Codecov patch status is pending; waiting."
+                ;;
+              "")
+                echo "Codecov patch status has not been posted yet; waiting."
+                ;;
+              *)
+                echo "Unexpected Codecov patch status: ${state}"
+                exit 1
+                ;;
+            esac
+
+            sleep 10
+          done
+
+          echo "Timed out waiting for Codecov patch status."
+          exit 1
