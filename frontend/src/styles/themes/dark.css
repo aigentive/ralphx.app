@@ -4,6 +4,7 @@
   --bg-elevated: var(--gray-925);
   --bg-hover: var(--gray-850);
   --bg-surface-hover: var(--gray-850);
+  --nav-rail-bg: hsl(220 10% 6%);
   --text-primary: hsl(220 10% 90%);
   --text-secondary: var(--gray-500);
   --text-muted: var(--gray-600);

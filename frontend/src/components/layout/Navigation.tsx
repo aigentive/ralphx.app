@@ -8,84 +8,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  LayoutGrid,
-  Network,
-  Lightbulb,
-  Bot,
-  Puzzle,
-  Activity,
-  SlidersHorizontal,
-  TrendingUp,
-  Users,
-} from "lucide-react";
+import { SlidersHorizontal, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamStore, selectHasAnyActiveTeam, selectTotalTeammateCount } from "@/stores/teamStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { useProjectStats } from "@/hooks/useProjectStats";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
-import type { FeatureFlags } from "@/types/feature-flags";
+import { ALL_NAV_ITEMS } from "./nav-items";
 import type { ViewType } from "@/types/chat";
-
-interface NavItemConfig {
-  view: ViewType;
-  label: string;
-  icon: React.ElementType;
-  shortcut?: string;
-  visible: (flags: FeatureFlags, taskCount: number) => boolean;
-}
-
-// Unified nav items with visibility predicates.
-// Order matches the main navigation shortcut map: ⌘1 through ⌘5.
-const ALL_NAV_ITEMS: NavItemConfig[] = [
-  {
-    view: "agents",
-    label: "Agents",
-    icon: Bot,
-    shortcut: "⌘1",
-    visible: () => true,
-  },
-  {
-    view: "ideation",
-    label: "Ideation",
-    icon: Lightbulb,
-    shortcut: "⌘2",
-    visible: () => true,
-  },
-  {
-    view: "graph",
-    label: "Graph",
-    icon: Network,
-    shortcut: "⌘3",
-    visible: () => true,
-  },
-  {
-    view: "kanban",
-    label: "Kanban",
-    icon: LayoutGrid,
-    shortcut: "⌘4",
-    visible: () => true,
-  },
-  {
-    view: "insights",
-    label: "Insights",
-    icon: TrendingUp,
-    shortcut: "⌘5",
-    visible: (_flags, taskCount) => taskCount >= 10,
-  },
-  {
-    view: "extensibility",
-    label: "Extensibility",
-    icon: Puzzle,
-    visible: (flags) => flags.extensibilityPage,
-  },
-  {
-    view: "activity",
-    label: "Activity",
-    icon: Activity,
-    visible: (flags) => flags.activityPage,
-  },
-];
 
 interface NavigationProps {
   currentView: ViewType;

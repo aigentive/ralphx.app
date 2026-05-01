@@ -1,11 +1,11 @@
-import { useRef, type ComponentProps, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react";
-import { Menu } from "lucide-react";
+import { useMemo, useRef, type ComponentProps, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react";
 
 import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { withAlpha } from "@/lib/theme-colors";
 
 import { AgentsSidebar } from "./AgentsSidebar";
+import { AgentsSidebarVisibilityProvider } from "./AgentsSidebarVisibilityProvider";
 import { useAgentsSidebarResize } from "./useAgentsSidebarResize";
 
 type AgentsSidebarShellProps = Omit<ComponentProps<typeof AgentsSidebar>, "onCollapse">;
@@ -56,8 +56,13 @@ export function AgentsShellLayout({
   const onSidebarResizeReset = (event: ReactMouseEvent) => {
     handleSidebarResizeReset(event);
   };
+  const visibilityValue = useMemo(
+    () => ({ isCollapsed: isSidebarCollapsed, onToggle: onToggleSidebarCollapse }),
+    [isSidebarCollapsed, onToggleSidebarCollapse],
+  );
   return (
     <TooltipProvider delayDuration={300}>
+      <AgentsSidebarVisibilityProvider value={visibilityValue}>
       <section
         className="h-full min-h-0 w-full flex overflow-hidden"
         data-testid="agents-view"
@@ -75,24 +80,19 @@ export function AgentsShellLayout({
                 onToggleSidebarCollapse();
               }
             }}
-            className="flex items-center justify-center shrink-0 cursor-pointer transition-colors duration-150"
+            className="shrink-0 cursor-pointer transition-colors duration-150"
             style={{
-              width: 36,
-              background: withAlpha("var(--bg-surface)", 50),
+              width: 16,
+              background: withAlpha("var(--bg-surface)", 30),
               borderRight: "1px solid var(--overlay-faint)",
-              color: "var(--text-muted)",
             }}
             onMouseEnter={(event) => {
               event.currentTarget.style.background = "var(--overlay-weak)";
-              event.currentTarget.style.color = "var(--text-primary)";
             }}
             onMouseLeave={(event) => {
-              event.currentTarget.style.background = withAlpha("var(--bg-surface)", 50);
-              event.currentTarget.style.color = "var(--text-muted)";
+              event.currentTarget.style.background = withAlpha("var(--bg-surface)", 30);
             }}
-          >
-            <Menu className="w-4 h-4" />
-          </div>
+          />
         )}
 
         {isSidebarOverlayOpen && (
@@ -103,7 +103,7 @@ export function AgentsShellLayout({
             style={{
               position: "fixed",
               inset: 0,
-              top: 56,
+              top: 48,
               background: "var(--overlay-scrim)",
               zIndex: 34,
             }}
@@ -142,9 +142,9 @@ export function AgentsShellLayout({
             className="plan-browser-slide-in"
             style={{
               position: "fixed",
-              top: 56,
+              top: 48,
               left: 0,
-              height: "calc(100vh - 56px)",
+              height: "calc(100vh - 48px)",
               width: sidebarWidth || 340,
               zIndex: 35,
             }}
@@ -161,6 +161,7 @@ export function AgentsShellLayout({
           {children}
         </div>
       </section>
+      </AgentsSidebarVisibilityProvider>
     </TooltipProvider>
   );
 }

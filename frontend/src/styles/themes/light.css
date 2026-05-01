@@ -17,6 +17,7 @@
   --bg-elevated:      var(--color-white);  /* cards / modal body — cleanest white */
   --bg-hover:         hsl(220 10% 90%);    /* hover pills, segmented bg */
   --bg-surface-hover: hsl(220 10% 90%);
+  --nav-rail-bg:      hsl(35 8% 90%);      /* primary nav rail — sits darker than sidebar */
 
   /* Text — dark enough to meet WCAG AA on the above. Muted nudges
      darker than the gray-600 primitive (a value between gray-600 and

@@ -33,6 +33,7 @@ html[data-theme="high-contrast"] main {
   --bg-elevated:      #000000;
   --bg-hover:         hsl(0 0% 15%);
   --bg-surface-hover: hsl(0 0% 15%);
+  --nav-rail-bg:      #000000;
 
   /* Text — pure white + graduated grays. Literals, not var(--color-*).
      WKWebView drops chained var() on these too. See

@@ -185,7 +185,7 @@ export function AgentsSidebar({
       >
         <Bot className="w-4 h-4 shrink-0" style={{ color: "var(--accent-primary)" }} />
         <span className="text-[14px] font-semibold tracking-[-0.01em] truncate" style={{ color: "var(--text-primary)" }}>
-          Projects
+          Agents
         </span>
         <div className="ml-auto flex items-center gap-1">
           <Tooltip>
