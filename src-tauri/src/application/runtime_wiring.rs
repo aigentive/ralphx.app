@@ -5,6 +5,12 @@ use tauri::Manager;
 use crate::AppState;
 use crate::infrastructure::ExternalMcpHandle;
 
+/// Visual height of the app's top navbar in points. Must match the frontend
+/// header (`h-12` → 48 in `frontend/src/App.tsx`). Traffic-light centering
+/// targets this value.
+#[cfg(target_os = "macos")]
+const NAVBAR_HEIGHT_PT: f64 = 48.0;
+
 pub fn create_main_window<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> tauri::Result<()> {
     use tauri::{WebviewUrl, WebviewWindowBuilder};
 
@@ -21,14 +27,75 @@ pub fn create_main_window<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> t
         builder
             .hidden_title(true)
             .title_bar_style(TitleBarStyle::Overlay)
-            // tao places buttons inside a title bar of height (button_height + y) and
-            // centers them. macOS standard buttons are 14pt → y = navbar(48) − 14 = 34.
-            .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 34.0 }))
+            // x: leave room for OS chrome. y is overridden vertically by
+            // `center_traffic_lights_macos` below — tao only uses y to size
+            // the draggable title bar; AppKit's auto-layout does not place
+            // the buttons at the geometric center of an arbitrary navbar.
+            .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 20.0 }))
     };
 
     let webview_window = builder.build()?;
+
+    #[cfg(target_os = "macos")]
+    center_traffic_lights_macos(&webview_window);
+
     let _ = webview_window.show();
     Ok(())
+}
+
+/// Manually center the macOS standard window buttons (close / minimize / zoom)
+/// on the visual midline of our 48pt navbar.
+///
+/// `traffic_light_position` only sizes the draggable title-bar container;
+/// AppKit's auto-resize then leaves the buttons anchored near the top, so we
+/// override each button's `frame.origin.y` directly. Coords are bottom-left
+/// because the buttons live inside the title-bar container view.
+#[cfg(target_os = "macos")]
+fn center_traffic_lights_macos<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    use objc2_app_kit::{NSWindow, NSWindowButton};
+    use objc2_foundation::NSPoint;
+
+    let Ok(ns_window_ptr) = window.ns_window() else {
+        return;
+    };
+    if ns_window_ptr.is_null() {
+        return;
+    }
+
+    // SAFETY: Tauri returns a non-null `NSWindow *` for the Cocoa window
+    // backing this WebviewWindow on macOS. Tauri's setup hook runs this on
+    // the main thread, where AppKit reads/setters are safe.
+    unsafe {
+        let ns_window: &NSWindow = &*(ns_window_ptr.cast::<NSWindow>());
+
+        for kind in [
+            NSWindowButton::CloseButton,
+            NSWindowButton::MiniaturizeButton,
+            NSWindowButton::ZoomButton,
+        ] {
+            let Some(button) = ns_window.standardWindowButton(kind) else {
+                continue;
+            };
+            let frame = button.frame();
+            let Some(parent) = button.superview() else {
+                continue;
+            };
+
+            // Title-bar container's top edge equals the window top. In its
+            // bottom-left local coords, a y of `title_bar_h - NAVBAR/2` is
+            // the navbar's vertical center; subtract half the button height
+            // so the button *center* lands there.
+            let title_bar_height = parent.frame().size.height;
+            let button_height = frame.size.height;
+            let desired_origin_y =
+                title_bar_height - NAVBAR_HEIGHT_PT / 2.0 - button_height / 2.0;
+
+            button.setFrameOrigin(NSPoint {
+                x: frame.origin.x,
+                y: desired_origin_y,
+            });
+        }
+    }
 }
 
 pub fn build_http_app_state(
