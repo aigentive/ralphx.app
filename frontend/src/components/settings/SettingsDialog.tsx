@@ -1,4 +1,9 @@
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { X } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,25 +17,22 @@ import { useUiStore } from "@/stores/uiStore";
 import type { ProjectSettings } from "@/types/settings";
 
 import {
+  DEFAULT_SETTINGS_SECTION,
   SETTINGS_GROUPS,
   SETTINGS_SECTIONS,
+  isSettingsSectionId,
   type SettingsSectionId,
 } from "./settings-registry";
 import { loadActiveSection, saveActiveSection } from "./settings-ui-state";
-import { AccessibilitySection } from "./AccessibilitySection";
-import { ApiKeysSection } from "./ApiKeysSection";
-import { ExternalMcpSettingsPanel } from "./ExternalMcpSettingsPanel";
-import { RepositorySettingsSection } from "./RepositorySettingsSection";
-
 import {
-  ExecutionHarnessSection,
-  IdeationHarnessSection,
-} from "./IdeationHarnessSection";
-import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
-import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
-import ExecutionSection from "./sections/ExecutionSection";
-import GlobalExecutionSection from "./sections/GlobalExecutionSection";
-import ReviewPolicySection from "./sections/ReviewPolicySection";
+  cancelScheduledJob,
+  scheduleAfterPaint,
+  sectionModuleLoaders,
+  useDeferredDialogFrame,
+  useDeferredHydratedSection,
+  type ScheduledJob,
+} from "./SettingsDialog.performance";
+import { SettingsSectionContent } from "./SettingsSectionContent";
 
 export interface SettingsDialogProps {
   executionSettings: ProjectSettings | null;
@@ -54,57 +56,90 @@ export default function SettingsDialog({
   const isOpen = activeModal === "settings";
 
   const [activeSection, setActiveSectionState] = useState<SettingsSectionId>(
-    () => loadActiveSection() ?? "execution",
+    () => loadActiveSection() ?? DEFAULT_SETTINGS_SECTION,
+  );
+  const shouldRenderFrame = useDeferredDialogFrame(isOpen);
+  const isSectionHydrated = useDeferredHydratedSection(isOpen, activeSection);
+  const persistJobRef = useRef<ScheduledJob | null>(null);
+  const closeJobRef = useRef<ScheduledJob | null>(null);
+  const warmedSectionsRef = useRef<Partial<Record<SettingsSectionId, true>>>({});
+  const [isClosing, setIsClosing] = useState(false);
+
+  const persistActiveSection = useCallback((section: SettingsSectionId) => {
+    cancelScheduledJob(persistJobRef.current);
+    persistJobRef.current = scheduleAfterPaint(() => {
+      persistJobRef.current = null;
+      saveActiveSection(section);
+    });
+  }, []);
+
+  const setActiveSection = useCallback(
+    (section: SettingsSectionId) => {
+      setActiveSectionState(section);
+      persistActiveSection(section);
+    },
+    [persistActiveSection],
   );
 
-  const setActiveSection = (section: SettingsSectionId) => {
-    setActiveSectionState(section);
-    saveActiveSection(section);
-  };
+  const warmSection = useCallback((section: SettingsSectionId) => {
+    if (warmedSectionsRef.current[section]) {
+      return;
+    }
+    warmedSectionsRef.current[section] = true;
+    void sectionModuleLoaders[section]();
+  }, []);
+
+  const requestClose = useCallback(() => {
+    if (closeJobRef.current) {
+      return;
+    }
+    setIsClosing(true);
+    closeJobRef.current = scheduleAfterPaint(() => {
+      closeJobRef.current = null;
+      closeModal();
+    });
+  }, [closeModal]);
+
+  useEffect(
+    () => () => {
+      cancelScheduledJob(persistJobRef.current);
+      cancelScheduledJob(closeJobRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!isOpen) {
+      cancelScheduledJob(closeJobRef.current);
+      closeJobRef.current = null;
+    }
+    setIsClosing(false);
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
-      const section = modalContext?.["section"] as SettingsSectionId | undefined;
-      if (section) {
+      const section = modalContext?.["section"];
+      if (isSettingsSectionId(section)) {
         setActiveSection(section);
       }
     }
-  }, [isOpen, modalContext]);
+  }, [isOpen, modalContext, setActiveSection]);
 
   const activeSectionMeta = SETTINGS_SECTIONS.find((s) => s.id === activeSection);
 
   const disabled = isLoadingSettings || isSavingSettings;
 
-  const sectionRenderers = {
-    execution: () =>
-      executionSettings ? (
-        <ExecutionSection
-          settings={executionSettings.execution}
-          onChange={(changes) =>
-            onSettingsChange({ ...executionSettings, execution: { ...executionSettings.execution, ...changes } })
-          }
-          disabled={disabled}
-        />
-      ) : null,
-    "execution-harnesses": () => <ExecutionHarnessSection />,
-    "global-execution": () => <GlobalExecutionSection />,
-    review: () => <ReviewPolicySection />,
-    repository: () => <RepositorySettingsSection />,
-    "project-analysis": () => <ProjectAnalysisSection />,
-    "ideation-workflow": () => <IdeationSettingsPanel />,
-    "ideation-harnesses": () => <IdeationHarnessSection />,
-    "api-keys": () => <ApiKeysSection />,
-    "external-mcp": () => <ExternalMcpSettingsPanel />,
-    accessibility: () => <AccessibilitySection />,
-  };
-
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
-      <DialogContent
-        data-testid="settings-dialog"
-        className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh] bg-[var(--dialog-bg)] border border-[var(--dialog-border-color)]"
-        hideCloseButton={true}
-      >
+    <Dialog open={isOpen} onOpenChange={(open) => !open && requestClose()}>
+      {shouldRenderFrame && (
+        <DialogContent
+          forceMount
+          data-testid="settings-dialog"
+          className={`p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh] bg-[var(--dialog-bg)] border border-[var(--dialog-border-color)] duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none ${
+            isClosing ? "pointer-events-none opacity-0 scale-[0.98]" : ""
+          }`}
+          hideCloseButton={true}
+        >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Configure execution, ideation, workspace, and access settings.
@@ -126,7 +161,7 @@ export default function SettingsDialog({
           </div>
           <button
             type="button"
-            onClick={closeModal}
+            onClick={requestClose}
             className="rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:outline-none focus-visible:ring-0"
             aria-label="Close settings"
           >
@@ -157,6 +192,8 @@ export default function SettingsDialog({
                         data-section={section.id}
                         data-testid={`settings-section-${section.id}`}
                         aria-label={section.label}
+                        onPointerEnter={() => warmSection(section.id)}
+                        onFocus={() => warmSection(section.id)}
                         onClick={() => setActiveSection(section.id)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
@@ -208,11 +245,13 @@ export default function SettingsDialog({
           <div className="flex-1 overflow-hidden flex flex-col">
             <ScrollArea className="flex-1">
               <div className="p-6">
-                {sectionRenderers[activeSection]?.() ?? (
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    Section not found.
-                  </p>
-                )}
+                <SettingsSectionContent
+                  section={activeSection}
+                  executionSettings={executionSettings}
+                  disabled={disabled}
+                  isHydrated={isSectionHydrated}
+                  onSettingsChange={onSettingsChange}
+                />
               </div>
             </ScrollArea>
           </div>
@@ -223,7 +262,8 @@ export default function SettingsDialog({
             {settingsError}
           </div>
         )}
-      </DialogContent>
+        </DialogContent>
+      )}
     </Dialog>
   );
 }
