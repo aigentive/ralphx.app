@@ -167,11 +167,7 @@ To run RalphX:
   - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code)
   - [Codex CLI](https://developers.openai.com/codex/cli)
 
-To build from source:
-
-- Node.js 18+ and npm
-- Rust via [rustup.rs](https://rustup.rs); this repo pins its toolchain in `rust-toolchain.toml`
-- Git
+To build from source, see the [build from source guide](docs/development/build-from-source.md).
 
 Harness controls are exposed in the desktop app:
 
@@ -191,28 +187,7 @@ brew tap aigentive/ralphx
 brew install --cask ralphx
 ```
 
-Upgrade an existing Homebrew install:
-
-```bash
-brew update
-brew upgrade --cask ralphx
-```
-
-If a new RalphX release exists but Homebrew still reports that `ralphx` is already up to date, refresh the tap metadata and retry:
-
-```bash
-brew update-reset aigentive/ralphx
-brew upgrade --cask ralphx
-```
-
-If `/Applications/RalphX.app` was deleted manually and `brew upgrade --cask ralphx` fails with `App source '/Applications/RalphX.app' is not there`, repair the Homebrew cask receipt and reinstall:
-
-```bash
-brew uninstall --cask --force ralphx
-brew install --cask ralphx
-```
-
-Do not use `--zap` unless you intentionally want to remove local RalphX app data.
+For upgrades, repairs, and uninstall notes, see the [Homebrew installation guide](docs/install/homebrew.md).
 
 #### GitHub Releases
 
@@ -220,22 +195,7 @@ Download signed builds from the [GitHub Releases page](https://github.com/aigent
 
 #### Build From Source
 
-```bash
-git clone https://github.com/aigentive/ralphx.app.git ralphx.app
-cd ralphx.app
-cd frontend
-npm install
-npm run tauri dev
-```
-
-First build compiles the Rust backend. Subsequent starts are faster.
-Source dev uses backend port `3857`, so it can run while the installed app keeps production port `3847`.
-
-For a fresh native dev start from the repo root:
-
-```bash
-./dev-fresh
-```
+For local development setup, see the [build from source guide](docs/development/build-from-source.md).
 
 ## Who It's For
 
@@ -278,20 +238,6 @@ The tool was built by the thing it builds.
 Apache 2.0. See [LICENSE](LICENSE).
 
 Use it however you want. Build commercial products with it. Modify it. Distribute it. The patent grant means your legal team can approve it.
-
-## Code Coverage
-
-The top README badge shows aggregate coverage for `main`. The suite badges below use Codecov flags so each coverage report can be tracked independently while still contributing to the overall project report.
-
-| Suite | Coverage | Covered Areas | Notes |
-|---|---|---|---|
-| Rust library | [![Rust lib coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-lib&label=rust-lib&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-lib) | [src-tauri/](src-tauri/) | Backend library coverage from `cargo llvm-cov nextest --lib`. |
-| Rust IPC contracts | [![Rust IPC coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-ipc&label=rust-ipc&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-ipc) | [src-tauri/tests/](src-tauri/tests/) and IPC command paths in [src-tauri/](src-tauri/) | Focused integration coverage for Tauri command contracts. |
-| Frontend | [![Frontend coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=frontend&label=frontend&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=frontend) | [frontend/src/](frontend/src/) and [frontend/tests/](frontend/tests/) | React and TypeScript coverage from Vitest's V8 coverage provider. |
-| Internal MCP | [![Internal MCP coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=plugin-internal-mcp&label=internal-mcp&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=plugin-internal-mcp) | [plugins/app/ralphx-mcp-server/](plugins/app/ralphx-mcp-server/) | Internal agent MCP server coverage from its Vitest suite. |
-| External MCP | [![External MCP coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=plugin-external-mcp&label=external-mcp&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=plugin-external-mcp) | [plugins/app/ralphx-external-mcp/](plugins/app/ralphx-external-mcp/) | External HTTP MCP bridge coverage from its Vitest suite. |
-
-PRs run only the affected coverage suites when possible. Pushes to `main` run every suite and refresh the default-branch Codecov badges.
 
 ---
 
