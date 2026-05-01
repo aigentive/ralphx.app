@@ -7,6 +7,7 @@
 //! - Configurable retry attempts with backoff for known transient errors.
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::git_runtime_config;
+use crate::infrastructure::git_auth::apply_git_subprocess_env;
 use crate::infrastructure::tool_paths::resolve_git_cli_path;
 use std::path::Path;
 use std::process::{Output, Stdio};
@@ -57,7 +58,9 @@ fn is_transient_error(stderr: &str) -> bool {
 
 /// Execute a single git command asynchronously with `kill_on_drop(true)`.
 async fn exec_git_async(args: &[String], cwd: &Path) -> AppResult<Output> {
-    Command::new(resolve_git_cli_path())
+    let mut command = Command::new(resolve_git_cli_path());
+    apply_git_subprocess_env(&mut command);
+    command
         .args(args)
         .current_dir(cwd)
         .kill_on_drop(true)
@@ -83,6 +86,7 @@ async fn exec_git_with_env_async(
     env: &[(String, String)],
 ) -> AppResult<Output> {
     let mut cmd = Command::new(resolve_git_cli_path());
+    apply_git_subprocess_env(&mut cmd);
     cmd.args(args).current_dir(cwd).kill_on_drop(true);
     for (key, val) in env {
         cmd.env(key, val);
@@ -205,7 +209,9 @@ pub(crate) async fn run_status(args: &[&str], cwd: &Path) -> AppResult<bool> {
     let timeout_secs = git_runtime_config().cmd_timeout_secs;
 
     let result = timeout(Duration::from_secs(timeout_secs), async {
-        Command::new(resolve_git_cli_path())
+        let mut command = Command::new(resolve_git_cli_path());
+        apply_git_subprocess_env(&mut command);
+        command
             .args(&args)
             .current_dir(&cwd)
             .kill_on_drop(true)

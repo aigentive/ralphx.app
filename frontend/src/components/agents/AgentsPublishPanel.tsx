@@ -25,6 +25,7 @@ import type {
 } from "@/components/diff";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { GitAuthRepairPanel } from "@/components/git/GitAuthRepairPanel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -401,6 +402,8 @@ export function AgentPublishPanel({
             />
           )}
         </section>
+
+        <GitAuthRepairPanel projectId={workspace.projectId} surface="publish" />
 
         <section
           className="rounded-lg border p-4"

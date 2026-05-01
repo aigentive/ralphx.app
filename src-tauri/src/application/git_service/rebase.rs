@@ -5,6 +5,7 @@
 
 use super::git_cmd;
 use super::*;
+use crate::infrastructure::git_auth::{git_auth_error_from_failure, GitNetworkOperation};
 use std::sync::LazyLock;
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration};
@@ -72,6 +73,11 @@ impl GitService {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            if let Some(error) =
+                git_auth_error_from_failure(GitNetworkOperation::Fetch, repo, &stderr).await
+            {
+                return Err(error);
+            }
             warn!("Git fetch failed (non-fatal): {}", stderr);
         }
 

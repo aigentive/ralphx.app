@@ -6,7 +6,10 @@ import { RepositorySettingsSection } from "./RepositorySettingsSection";
 
 vi.mock("@/hooks/useGithubSettings", () => ({
   useGitRemoteUrl: vi.fn(),
+  useGitAuthDiagnostics: vi.fn(),
   useGhAuthStatus: vi.fn(),
+  useSwitchGitOriginToSsh: vi.fn(),
+  useSetupGhGitAuth: vi.fn(),
   useUpdateGithubPrEnabled: vi.fn(),
 }));
 
@@ -26,7 +29,10 @@ vi.mock("@/lib/tauri", () => ({
 
 import {
   useGitRemoteUrl,
+  useGitAuthDiagnostics,
   useGhAuthStatus,
+  useSwitchGitOriginToSsh,
+  useSetupGhGitAuth,
   useUpdateGithubPrEnabled,
 } from "@/hooks/useGithubSettings";
 import { useProjectStore } from "@/stores/projectStore";
@@ -45,6 +51,10 @@ const mockProject = {
 };
 
 const mockMutateAsync = vi.fn();
+const mockSwitchToSsh = vi.fn();
+const mockSetupGhGitAuth = vi.fn();
+const mockRefetchGitAuth = vi.fn();
+const mockRefetchGhAuth = vi.fn();
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -69,10 +79,37 @@ describe("RepositorySettingsSection", () => {
       isLoading: false,
     } as ReturnType<typeof useGitRemoteUrl>);
 
+    vi.mocked(useGitAuthDiagnostics).mockReturnValue({
+      data: {
+        fetchUrl: "git@github.com:user/repo.git",
+        pushUrl: "git@github.com:user/repo.git",
+        fetchKind: "SSH",
+        pushKind: "SSH",
+        mixedAuthModes: false,
+        canSwitchToSsh: false,
+        suggestedSshUrl: null,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchGitAuth,
+    } as unknown as ReturnType<typeof useGitAuthDiagnostics>);
+
     vi.mocked(useGhAuthStatus).mockReturnValue({
       data: true,
       isLoading: false,
+      isError: false,
+      refetch: mockRefetchGhAuth,
     } as ReturnType<typeof useGhAuthStatus>);
+
+    vi.mocked(useSwitchGitOriginToSsh).mockReturnValue({
+      mutateAsync: mockSwitchToSsh,
+      isPending: false,
+    } as unknown as ReturnType<typeof useSwitchGitOriginToSsh>);
+
+    vi.mocked(useSetupGhGitAuth).mockReturnValue({
+      mutateAsync: mockSetupGhGitAuth,
+      isPending: false,
+    } as unknown as ReturnType<typeof useSetupGhGitAuth>);
 
     vi.mocked(useUpdateGithubPrEnabled).mockReturnValue({
       mutateAsync: mockMutateAsync,
@@ -122,6 +159,8 @@ describe("RepositorySettingsSection", () => {
     vi.mocked(useGhAuthStatus).mockReturnValue({
       data: false,
       isLoading: false,
+      isError: false,
+      refetch: mockRefetchGhAuth,
     } as ReturnType<typeof useGhAuthStatus>);
 
     render(<RepositorySettingsSection />, { wrapper: createWrapper() });
@@ -158,6 +197,30 @@ describe("RepositorySettingsSection", () => {
 
     const toggle = screen.getByTestId("github-pr-enabled");
     expect(toggle).not.toBeDisabled();
+  });
+
+  it("surfaces git auth repair actions in diagnostics", () => {
+    vi.mocked(useGitAuthDiagnostics).mockReturnValue({
+      data: {
+        fetchUrl: "https://github.com/user/repo.git",
+        pushUrl: "git@github.com:user/repo.git",
+        fetchKind: "HTTPS",
+        pushKind: "SSH",
+        mixedAuthModes: true,
+        canSwitchToSsh: true,
+        suggestedSshUrl: "git@github.com:user/repo.git",
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchGitAuth,
+    } as unknown as ReturnType<typeof useGitAuthDiagnostics>);
+
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    expect(screen.getByTestId("git-auth-repair-panel")).toBeInTheDocument();
+    expect(screen.getByText(/Fetch and push use different auth modes/i)).toBeInTheDocument();
+    expect(screen.getByTestId("git-auth-switch-ssh")).toBeInTheDocument();
+    expect(screen.getByTestId("git-auth-setup-gh")).toBeInTheDocument();
   });
 
   it("disables PR mode toggle for URLs that only mention github.com in a query string", () => {

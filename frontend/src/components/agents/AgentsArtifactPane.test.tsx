@@ -28,6 +28,10 @@ const {
   useConversationMock,
   useDependencyGraphMock,
   useVerificationStatusMock,
+  useGitAuthDiagnosticsMock,
+  useGhAuthStatusMock,
+  switchGitOriginToSshMock,
+  setupGhGitAuthMock,
   openUrlMock,
 } = vi.hoisted(() => ({
   getWorkspaceChangesMock: vi.fn(),
@@ -45,6 +49,10 @@ const {
   useConversationMock: vi.fn(),
   useDependencyGraphMock: vi.fn(),
   useVerificationStatusMock: vi.fn(),
+  useGitAuthDiagnosticsMock: vi.fn(),
+  useGhAuthStatusMock: vi.fn(),
+  switchGitOriginToSshMock: vi.fn(),
+  setupGhGitAuthMock: vi.fn(),
   openUrlMock: vi.fn(),
 }));
 
@@ -159,6 +167,19 @@ vi.mock("@/hooks/useDependencyGraph", () => ({
 
 vi.mock("@/hooks/useVerificationStatus", () => ({
   useVerificationStatus: (...args: unknown[]) => useVerificationStatusMock(...args),
+}));
+
+vi.mock("@/hooks/useGithubSettings", () => ({
+  useGitAuthDiagnostics: (...args: unknown[]) => useGitAuthDiagnosticsMock(...args),
+  useGhAuthStatus: (...args: unknown[]) => useGhAuthStatusMock(...args),
+  useSwitchGitOriginToSsh: () => ({
+    mutateAsync: switchGitOriginToSshMock,
+    isPending: false,
+  }),
+  useSetupGhGitAuth: () => ({
+    mutateAsync: setupGhGitAuthMock,
+    isPending: false,
+  }),
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -301,6 +322,26 @@ describe("AgentsArtifactPane", () => {
       data: null,
       isLoading: false,
     });
+    useGitAuthDiagnosticsMock.mockReturnValue({
+      data: {
+        fetchUrl: "git@github.com:mock/project.git",
+        pushUrl: "git@github.com:mock/project.git",
+        fetchKind: "SSH",
+        pushKind: "SSH",
+        mixedAuthModes: false,
+        canSwitchToSsh: false,
+        suggestedSshUrl: null,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    useGhAuthStatusMock.mockReturnValue({
+      data: true,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
     openUrlMock.mockResolvedValue(undefined);
   });
 
@@ -414,6 +455,29 @@ describe("AgentsArtifactPane", () => {
     expect(screen.queryByTestId("agents-artifact-tab-verification")).not.toBeInTheDocument();
     expect(screen.queryByTestId("agents-artifact-tab-proposal")).not.toBeInTheDocument();
     expect(screen.queryByTestId("agents-artifact-tab-tasks")).not.toBeInTheDocument();
+  });
+
+  it("surfaces git auth repair actions in the publish pane", () => {
+    useGitAuthDiagnosticsMock.mockReturnValue({
+      data: {
+        fetchUrl: "https://github.com/mock/project.git",
+        pushUrl: "git@github.com:mock/project.git",
+        fetchKind: "HTTPS",
+        pushKind: "SSH",
+        mixedAuthModes: true,
+        canSwitchToSsh: true,
+        suggestedSshUrl: "git@github.com:mock/project.git",
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderPane("publish", workspace({ mode: "edit" }));
+
+    expect(screen.getByTestId("git-auth-repair-panel")).toBeInTheDocument();
+    expect(screen.getByText(/Fetch and push use different auth modes/i)).toBeInTheDocument();
+    expect(screen.getByTestId("git-auth-switch-ssh")).toBeInTheDocument();
   });
 
   it("renders the publish tab for ideation workspaces linked to execution branches", () => {

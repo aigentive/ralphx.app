@@ -3,13 +3,26 @@
  *
  * Hooks:
  * - useGitRemoteUrl: fetch remote URL for a project
+ * - useGitAuthDiagnostics: inspect git fetch/push auth modes
  * - useGhAuthStatus: check if `gh` CLI is authenticated
+ * - useSwitchGitOriginToSsh: explicitly switch GitHub origin remotes to SSH
+ * - useSetupGhGitAuth: configure GitHub CLI HTTPS credentials for git
  * - useUpdateGithubPrEnabled: mutation to toggle PR mode on a project
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useProjectStore } from "@/stores/projectStore";
+
+export interface GitAuthDiagnostics {
+  fetchUrl: string | null;
+  pushUrl: string | null;
+  fetchKind: string | null;
+  pushKind: string | null;
+  mixedAuthModes: boolean;
+  canSwitchToSsh: boolean;
+  suggestedSshUrl: string | null;
+}
 
 // ============================================================================
 // useGitRemoteUrl
@@ -31,6 +44,22 @@ export function useGitRemoteUrl(projectId: string | null) {
 }
 
 // ============================================================================
+// useGitAuthDiagnostics
+// ============================================================================
+
+/**
+ * Inspect origin fetch/push auth modes and available explicit repair actions.
+ */
+export function useGitAuthDiagnostics(projectId: string | null) {
+  return useQuery<GitAuthDiagnostics>({
+    queryKey: ["git-auth-diagnostics", projectId],
+    queryFn: () =>
+      invoke<GitAuthDiagnostics>("get_git_auth_diagnostics", { projectId }),
+    enabled: projectId !== null,
+  });
+}
+
+// ============================================================================
 // useGhAuthStatus
 // ============================================================================
 
@@ -42,6 +71,51 @@ export function useGhAuthStatus() {
   return useQuery<boolean>({
     queryKey: ["gh-auth-status"],
     queryFn: () => invoke<boolean>("check_gh_auth", {}),
+  });
+}
+
+// ============================================================================
+// useSwitchGitOriginToSsh
+// ============================================================================
+
+interface ProjectGitAuthMutationArgs {
+  projectId: string;
+}
+
+/**
+ * Explicitly switch a convertible GitHub HTTPS origin remote to SSH.
+ */
+export function useSwitchGitOriginToSsh() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ projectId }: ProjectGitAuthMutationArgs) =>
+      invoke<GitAuthDiagnostics>("switch_git_origin_to_ssh", { projectId }),
+    onSuccess: (_data, { projectId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["git-auth-diagnostics", projectId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["git-remote-url", projectId] });
+    },
+  });
+}
+
+// ============================================================================
+// useSetupGhGitAuth
+// ============================================================================
+
+/**
+ * Configure git credential helpers through an already-authenticated GitHub CLI.
+ */
+export function useSetupGhGitAuth() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => invoke<boolean>("setup_gh_git_auth", {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["gh-auth-status"] });
+      void queryClient.invalidateQueries({ queryKey: ["git-auth-diagnostics"] });
+    },
   });
 }
 
