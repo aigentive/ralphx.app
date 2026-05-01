@@ -53,6 +53,8 @@ const agentsViewTestMocks = vi.hoisted(() => ({
   terminalDrawerUnmountMock: vi.fn(),
 }));
 
+const eventSubscriptions = new Map<string, ((payload: unknown) => void)[]>();
+
 const {
   useProjectsMock,
   useProjectAgentConversationsMock,
@@ -93,8 +95,43 @@ export function getAgentsViewTestMocks() {
   return agentsViewTestMocks;
 }
 
+export function fireAgentViewEvent<T>(event: string, payload: T) {
+  const handlers = eventSubscriptions.get(event);
+  if (!handlers) {
+    return;
+  }
+  for (const handler of handlers) {
+    handler(payload);
+  }
+}
+
 vi.mock("@/hooks/useProjects", () => ({
   useProjects: () => useProjectsMock(),
+}));
+
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: (event: string, handler: (payload: unknown) => void) => {
+      const handlers = eventSubscriptions.get(event) ?? [];
+      handlers.push(handler);
+      eventSubscriptions.set(event, handlers);
+      return () => {
+        const currentHandlers = eventSubscriptions.get(event);
+        if (!currentHandlers) {
+          return;
+        }
+        const nextHandlers = currentHandlers.filter(
+          (currentHandler) => currentHandler !== handler,
+        );
+        if (nextHandlers.length === 0) {
+          eventSubscriptions.delete(event);
+          return;
+        }
+        eventSubscriptions.set(event, nextHandlers);
+      };
+    },
+    emit: vi.fn(),
+  }),
 }));
 
 vi.mock("./useProjectAgentConversations", () => ({
@@ -519,6 +556,7 @@ export function selectSidebarConversationRow() {
 }
 
 export function setupAgentsViewTest() {
+  eventSubscriptions.clear();
   mockSidebarBreakpoint({ isLarge: true, isMedium: true });
   window.localStorage.clear();
   useProjectAgentConversationsMock.mockReset();

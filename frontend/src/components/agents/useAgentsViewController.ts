@@ -27,6 +27,7 @@ import { useAgentsSidebarProps } from "./useAgentsSidebarProps";
 import { normalizeRuntimeSelection } from "./agentOptions";
 import {
   getFocusedArtifactIdeationSessionId,
+  latestVerificationChildSessionIdQueryKey,
   type AgentsChatFocus,
   type AgentsChatFocusSwitchOption,
   type AgentsChatFocusType,
@@ -184,13 +185,9 @@ export function useAgentsViewController({
   const knownFocusIdeationSessionId =
     focusedArtifactIdeationSessionId ?? attachedIdeationSessionId ?? null;
   const latestVerificationChildQuery = useQuery({
-    queryKey: [
-      "agents",
-      "chat-focus",
-      "latest-child-session-id",
+    queryKey: latestVerificationChildSessionIdQueryKey(
       knownFocusIdeationSessionId,
-      "verification",
-    ],
+    ),
     queryFn: () =>
       ideationApi.sessions.getLatestChildSessionId(
         knownFocusIdeationSessionId!,
