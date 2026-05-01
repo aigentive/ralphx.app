@@ -6,6 +6,7 @@ The README shows aggregate coverage for `main`. Suite-level coverage uses Codeco
 
 | Suite | Coverage | Covered Areas | CI Command | Notes |
 |---|---|---|---|---|
+| Total | [![Total coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&label=total&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app) | All uploaded coverage suites | Final `Publish Codecov Coverage` job | Aggregate project coverage shown in the README badge. |
 | Rust library | [![Rust lib coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-lib&label=rust-lib&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-lib) | [src-tauri/](../../src-tauri/) | `cargo llvm-cov nextest --profile ci --lib` | Backend library coverage. |
 | Rust IPC contracts | [![Rust IPC coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=rust-ipc&label=rust-ipc&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=rust-ipc) | [src-tauri/tests/](../../src-tauri/tests/) and IPC command paths in [src-tauri/](../../src-tauri/) | `cargo llvm-cov nextest --profile ci --test ... ipc_contract` | Focused integration coverage for Tauri command contracts. |
 | Frontend | [![Frontend coverage](https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&flag=frontend&label=frontend&logo=codecov&logoColor=white)](https://app.codecov.io/gh/aigentive/ralphx.app/tree/main?flags%5B0%5D=frontend) | [frontend/src/](../../frontend/src/) and [frontend/tests/](../../frontend/tests/) | `npm run test:coverage` in [frontend/](../../frontend/) | React and TypeScript coverage from Vitest's V8 coverage provider. |
@@ -18,9 +19,11 @@ The `Coverage Reports` workflow runs on pull requests to `main`, pushes to `main
 
 PRs run only affected coverage suites when possible. Pushes to `main` run every suite and refresh the default-branch Codecov badges.
 
-Each suite uploads:
+Coverage jobs publish raw artifacts first. The final `Publish Codecov Coverage` job downloads those artifacts and uploads the selected reports to Codecov together at the end of the workflow. That keeps the public badges from reflecting long-running partial uploads while Rust and frontend reports are still being generated.
 
-- an LCOV report to Codecov with a suite-specific flag
+Each suite produces:
+
+- an LCOV report for the final Codecov publish job
 - a Markdown summary in the GitHub job summary
 - raw coverage artifacts for short-term inspection
 
