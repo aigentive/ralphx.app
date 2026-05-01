@@ -480,7 +480,7 @@ function AppContent() {
   };
 
   const handleOpenSettings = () => {
-    openModal("settings", { section: "execution" });
+    openModal("settings");
   };
 
   const handleBattleModeToggle = useCallback(() => {

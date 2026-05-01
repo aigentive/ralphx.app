@@ -500,6 +500,7 @@ describe("App", () => {
 
       // Settings is now a modal — activeModal is set, current view stays visible underneath
       expect(useUiStore.getState().activeModal).toBe("settings");
+      expect(useUiStore.getState().modalContext).toBeUndefined();
       expect(screen.getByTestId("agents-view-mock")).toBeInTheDocument();
     });
 
@@ -607,6 +608,7 @@ describe("App", () => {
       fireEvent.keyDown(window, { key: "6", metaKey: true });
 
       expect(useUiStore.getState().activeModal).toBe("settings");
+      expect(useUiStore.getState().modalContext).toBeUndefined();
     });
 
     it("should work with Ctrl key (for non-Mac)", () => {
