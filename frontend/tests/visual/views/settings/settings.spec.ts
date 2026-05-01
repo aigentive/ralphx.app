@@ -29,34 +29,34 @@ test.describe("Settings Dialog", () => {
 
   test("execution section contains all controls", async () => {
     await expect(settingsPage.maxConcurrentTasksInput).toBeVisible();
-    await expect(settingsPage.autoCommitToggle).toBeVisible();
-    await expect(settingsPage.pauseOnFailureToggle).toBeVisible();
-    await expect(settingsPage.reviewBeforeDestructiveToggle).toBeVisible();
+    await expect(settingsPage.projectIdeationMaxInput).toBeVisible();
   });
 
-  test("model section contains all controls", async ({ page }) => {
+  test("global capacity section contains all controls", async ({ page }) => {
     settingsPage = new SettingsPage(page);
-    await settingsPage.openViaStore("model");
-    await expect(settingsPage.modelSelect).toBeVisible();
-    await expect(settingsPage.allowOpusUpgradeToggle).toBeVisible();
+    await settingsPage.openViaStore("global-execution");
+    await expect(settingsPage.globalMaxConcurrentInput).toBeVisible();
+    await expect(settingsPage.globalIdeationMaxInput).toBeVisible();
+    await expect(settingsPage.allowIdeationBorrowIdleExecutionToggle).toBeVisible();
   });
 
   test("review section contains all controls", async ({ page }) => {
     settingsPage = new SettingsPage(page);
     await settingsPage.openViaStore("review");
-    await expect(settingsPage.aiReviewEnabledToggle).toBeVisible();
-    await expect(settingsPage.aiReviewAutoFixToggle).toBeVisible();
-    await expect(settingsPage.requireFixApprovalToggle).toBeVisible();
     await expect(settingsPage.requireHumanReviewToggle).toBeVisible();
     await expect(settingsPage.maxFixAttemptsInput).toBeVisible();
+    await expect(settingsPage.maxRevisionCyclesInput).toBeVisible();
   });
 
-  test("supervisor section contains all controls", async ({ page }) => {
+  test("external MCP section contains all controls", async ({ page }) => {
     settingsPage = new SettingsPage(page);
-    await settingsPage.openViaStore("supervisor");
-    await expect(settingsPage.supervisorEnabledToggle).toBeVisible();
-    await expect(settingsPage.loopThresholdInput).toBeVisible();
-    await expect(settingsPage.stuckTimeoutInput).toBeVisible();
+    await settingsPage.openViaStore("external-mcp");
+    await expect(settingsPage.externalMcpEnabledToggle).toBeVisible();
+    await expect(settingsPage.externalMcpHostInput).toBeVisible();
+    await expect(settingsPage.externalMcpPortInput).toBeVisible();
+    await expect(settingsPage.externalMcpAuthTokenInput).toBeVisible();
+    await expect(settingsPage.externalMcpNodePathInput).toBeVisible();
+    await expect(settingsPage.externalMcpSaveButton).toBeVisible();
   });
 
   test("matches snapshot - default state (execution section)", async ({ page }) => {
@@ -68,8 +68,7 @@ test.describe("Settings Dialog", () => {
 
   test("matches snapshot - review section disabled", async ({ page }) => {
     await settingsPage.openViaStore("review");
-    // Disable AI review to see sub-settings disabled state
-    await settingsPage.aiReviewEnabledToggle.click();
+    await settingsPage.requireHumanReviewToggle.click();
     await settingsPage.waitForAnimations();
 
     await expect(page).toHaveScreenshot("settings-dialog-review-disabled.png", {
@@ -77,13 +76,12 @@ test.describe("Settings Dialog", () => {
     });
   });
 
-  test("matches snapshot - supervisor section disabled", async ({ page }) => {
-    await settingsPage.openViaStore("supervisor");
-    // Disable supervisor to see sub-settings disabled state
-    await settingsPage.supervisorEnabledToggle.click();
+  test("matches snapshot - external MCP section disabled", async ({ page }) => {
+    await settingsPage.openViaStore("external-mcp");
+    await settingsPage.externalMcpEnabledToggle.click();
     await settingsPage.waitForAnimations();
 
-    await expect(page).toHaveScreenshot("settings-dialog-supervisor-disabled.png", {
+    await expect(page).toHaveScreenshot("settings-dialog-external-mcp-disabled.png", {
       fullPage: true,
     });
   });

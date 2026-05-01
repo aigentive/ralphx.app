@@ -354,9 +354,10 @@ describe("App", () => {
     expect(document.body).toBeDefined();
   });
 
-  it("should display RalphX title", () => {
+  it("should display the primary navigation shell", () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: /Ralph/i })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
+    expect(screen.getByTestId("nav-agents")).toHaveAttribute("aria-current", "page");
   });
 
   it("should display project selector", () => {

@@ -150,10 +150,12 @@ async function seedConversationWithWorkspace(
         mockGetAgentConversationWorkspace,
         mockGetConversation,
         seedMockConversation,
+        seedMockAgentConversationWorkspace,
         mockStartAgentConversation,
       } = await import(
         "/src/api-mock/chat"
       );
+      const { mockIdeationApi } = await import("/src/api-mock/ideation");
 
       seedMockConversation(seededConversation, seededConversationMessages);
 
@@ -169,6 +171,85 @@ async function seedConversationWithWorkspace(
         });
       }
 
+      const linkedIdeationSessionId =
+        seededMode === "ideation"
+          ? `${seededConversation.id}-ideation-session`
+          : null;
+      const linkedPlanArtifactId =
+        seededMode === "ideation"
+          ? `${seededConversation.id}-plan-artifact`
+          : null;
+      if (linkedIdeationSessionId && linkedPlanArtifactId) {
+        const now = "2026-04-25T17:30:00.000Z";
+        mockIdeationApi.sessions.seedWithData({
+          session: {
+            id: linkedIdeationSessionId,
+            projectId: seededProjectId,
+            title: "Plan Agents workspace flow",
+            titleSource: null,
+            status: "active",
+            planArtifactId: linkedPlanArtifactId,
+            seedTaskId: null,
+            parentSessionId: null,
+            teamMode: null,
+            teamConfig: null,
+            createdAt: now,
+            updatedAt: now,
+            archivedAt: null,
+            convertedAt: "2026-04-25T18:10:00.000Z",
+            verificationStatus: "verified",
+            verificationInProgress: false,
+            gapScore: null,
+            sessionPurpose: "general",
+            acceptanceStatus: "accepted",
+          },
+          proposals: [
+            {
+              id: `${seededConversation.id}-proposal`,
+              sessionId: linkedIdeationSessionId,
+              title: "Refine Agents workspace flow",
+              description: "Keep planning artifacts visible without exposing publish controls.",
+              category: "feature",
+              steps: ["Review artifact tabs", "Confirm task handoff"],
+              acceptanceCriteria: ["Ideation tabs are available"],
+              suggestedPriority: "medium",
+              priorityScore: 50,
+              priorityReason: "Visual test fixture",
+              estimatedComplexity: "medium",
+              userPriority: null,
+              userModified: false,
+              status: "accepted",
+              createdTaskId: null,
+              planArtifactId: linkedPlanArtifactId,
+              planVersionAtCreation: 1,
+              sortOrder: 0,
+              createdAt: now,
+              updatedAt: now,
+            },
+          ],
+          messages: [],
+        });
+        queryClient.setQueryData(
+          ["agents", "artifact", linkedPlanArtifactId],
+          {
+            id: linkedPlanArtifactId,
+            type: "design_doc",
+            name: "Agent Plan",
+            content: {
+              type: "inline",
+              text: "# Agent Plan\n\nTighten the Agents workspace and keep artifact routing clear.",
+            },
+            metadata: {
+              createdAt: now,
+              createdBy: "visual-fixture",
+              version: 1,
+            },
+            derivedFrom: [],
+            bucketId: undefined,
+          },
+        );
+      }
+
       const hydratedConversation = await mockGetConversation(seededConversation.id);
       queryClient.setQueryData(
         ["chat", "conversations", seededConversation.id],
@@ -176,10 +257,21 @@ async function seedConversationWithWorkspace(
       );
 
       const workspace = await mockGetAgentConversationWorkspace(seededConversation.id);
+      const hydratedWorkspace =
+        workspace && linkedIdeationSessionId
+          ? {
+              ...workspace,
+              linkedIdeationSessionId,
+              linkedPlanBranchId: null,
+            }
+          : workspace;
       queryClient.setQueryData(
         ["agents", "conversation-workspace", seededConversation.id],
-        workspace,
+        hydratedWorkspace,
       );
+      if (hydratedWorkspace) {
+        seedMockAgentConversationWorkspace(hydratedWorkspace);
+      }
     },
     {
       seededConversation: conversation,
@@ -217,25 +309,49 @@ async function selectAgentConversation(
 }
 
 async function seedPublishHistory(page: Page, conversationId: string) {
-  await page.evaluate((targetConversationId) => {
+  await page.evaluate(async (targetConversationId) => {
+    const queryClient = window.__queryClient;
+    if (!queryClient) {
+      throw new Error("Expected query client to be available");
+    }
+    const {
+      mockGetAgentConversationWorkspace,
+      mockListAgentConversationWorkspacePublicationEvents,
+      mockPublishAgentConversationWorkspace,
+    } = await import("/src/api-mock/chat");
+
+    const result = await mockPublishAgentConversationWorkspace(targetConversationId);
+    const workspace =
+      result.workspace ?? await mockGetAgentConversationWorkspace(targetConversationId);
+    const events = await mockListAgentConversationWorkspacePublicationEvents(
+      targetConversationId,
+    );
+
+    queryClient.setQueryData(
+      ["agents", "conversation-workspace-publication-events", targetConversationId],
+      events,
+    );
+    queryClient.setQueryData(
+      ["agents", "conversation-workspace", targetConversationId],
+      workspace,
+    );
+  }, conversationId);
+}
+
+async function hydrateIdeationArtifactCache(page: Page, conversationId: string) {
+  await page.evaluate(async (targetConversationId) => {
     const queryClient = window.__queryClient;
     if (!queryClient) {
       throw new Error("Expected query client to be available");
     }
 
+    const { mockIdeationApi } = await import("/src/api-mock/ideation");
+    const sessionId = `${targetConversationId}-ideation-session`;
+    const sessionData = await mockIdeationApi.sessions.getWithData(sessionId);
+
     queryClient.setQueryData(
-      ["agents", "conversation-workspace-publication-events", targetConversationId],
-      [
-        {
-          id: "event-published-visual",
-          conversationId: targetConversationId,
-          step: "published",
-          status: "succeeded",
-          summary: "Draft pull request is ready",
-          classification: null,
-          createdAt: "2026-04-25T18:06:00.000Z",
-        },
-      ],
+      ["ideation", "sessions", "detail", sessionId, "with-data"],
+      sessionData,
     );
   }, conversationId);
 }
@@ -399,6 +515,8 @@ test.describe("Agents View", () => {
     await expect(page.getByTestId("agents-review-changes")).toBeEnabled();
 
     await seedPublishHistory(page, editConversationId);
+    await expect(page.getByTestId("agents-publish-events")).toBeVisible();
+    await page.getByTestId("agents-publish-history-toggle").click();
     await expect(page.getByTestId("agents-publish-event-published")).toBeVisible();
 
     await expect(page).toHaveScreenshot("agents-edit-publish-pane.png", {
@@ -416,9 +534,10 @@ test.describe("Agents View", () => {
     await expect(page.getByTestId("integrated-chat-messages")).toBeVisible();
     await page
       .getByTestId("integrated-chat-header")
-      .getByRole("button", { name: "Plan" })
+      .getByRole("button", { name: "Open artifacts" })
       .click();
     await expect(page.getByTestId("agents-artifact-pane")).toBeVisible();
+    await hydrateIdeationArtifactCache(page, ideationConversationId);
     await expect(page.getByTestId("agents-artifact-tab-plan")).toBeVisible();
     await expect(page.getByTestId("agents-artifact-tab-verification")).toBeVisible();
     await expect(page.getByTestId("agents-artifact-tab-proposal")).toBeVisible();

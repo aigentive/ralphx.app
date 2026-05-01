@@ -31,9 +31,27 @@ import { mockIdeationApi } from "@/api-mock/ideation";
 import { mockExecutionApi } from "@/api-mock/execution";
 import { mockPlanBranchApi, toSnakeCasePlanBranch } from "@/api-mock/plan-branch";
 import { mockPlanApi } from "@/api-mock/plan";
+import type { IdeationSessionResponse } from "@/api/ideation.types";
 import type { ContextType } from "@/types/chat-conversation";
 import type { ChatConversation } from "@/types/chat-conversation";
 import type { ChatMessageResponse } from "@/api/chat";
+
+const mockReviewSettings = {
+  require_human_review: false,
+  max_fix_attempts: 3,
+  max_revision_cycles: 2,
+  ai_review_enabled: true,
+  ai_review_auto_fix: true,
+  require_fix_approval: false,
+};
+
+const mockExternalMcpConfig = {
+  enabled: true,
+  port: 3848,
+  host: "127.0.0.1",
+  authToken: null as string | null,
+  nodePath: null as string | null,
+};
 
 function toSnakeConversation(conversation: ChatConversation) {
   return {
@@ -82,8 +100,59 @@ function toSnakeMessage(message: ChatMessageResponse) {
   };
 }
 
+function toSnakeIdeationSession(session: IdeationSessionResponse) {
+  return {
+    id: session.id,
+    project_id: session.projectId,
+    title: session.title,
+    title_source: session.titleSource,
+    status: session.status,
+    plan_artifact_id: session.planArtifactId,
+    seed_task_id: session.seedTaskId,
+    parent_session_id: session.parentSessionId,
+    team_mode: session.teamMode,
+    team_config: session.teamConfig
+      ? {
+          max_teammates: session.teamConfig.maxTeammates,
+          model_ceiling: session.teamConfig.modelCeiling,
+          budget_limit: session.teamConfig.budgetLimit ?? null,
+          composition_mode: session.teamConfig.compositionMode ?? null,
+        }
+      : null,
+    created_at: session.createdAt,
+    updated_at: session.updatedAt,
+    archived_at: session.archivedAt,
+    converted_at: session.convertedAt,
+    verification_status: session.verificationStatus,
+    verification_in_progress: session.verificationInProgress,
+    gap_score: session.gapScore,
+    source_project_id: session.sourceProjectId ?? null,
+    source_session_id: session.sourceSessionId ?? null,
+    source_task_id: session.sourceTaskId ?? null,
+    source_context_type: session.sourceContextType ?? null,
+    source_context_id: session.sourceContextId ?? null,
+    spawn_reason: session.spawnReason ?? null,
+    blocker_fingerprint: session.blockerFingerprint ?? null,
+    inherited_plan_artifact_id: session.inheritedPlanArtifactId ?? null,
+    session_purpose: session.sessionPurpose,
+    acceptance_status: session.acceptanceStatus,
+    analysis_base_ref_kind: session.analysisBaseRefKind ?? null,
+    analysis_base_ref: session.analysisBaseRef ?? null,
+    analysis_base_display_name: session.analysisBaseDisplayName ?? null,
+    analysis_workspace_kind: session.analysisWorkspaceKind ?? "project_root",
+    analysis_workspace_path: session.analysisWorkspacePath ?? null,
+    analysis_base_commit: session.analysisBaseCommit ?? null,
+    analysis_base_locked_at: session.analysisBaseLockedAt ?? null,
+    last_effective_model: session.lastEffectiveModel ?? null,
+  };
+}
+
 async function getMockConversationPayload(conversationId: string) {
-  const { conversation, messages } = await mockGetConversation(conversationId);
+  const controller =
+    typeof window !== "undefined" ? window.__mockChatApi : undefined;
+  const { conversation, messages } = controller
+    ? await controller.getConversation(conversationId)
+    : await mockGetConversation(conversationId);
   return {
     conversation: toSnakeConversation(conversation),
     messages: messages.map(toSnakeMessage),
@@ -269,21 +338,59 @@ const commandHandlers: Record<
   },
 
   // Chat commands
-  list_agent_conversations: async (args) =>
-    mockListConversations(
-      args.contextType as ContextType,
-      args.contextId as string
-    ),
+  list_agent_conversations: async (args) => {
+    const controller =
+      typeof window !== "undefined" ? window.__mockChatApi : undefined;
+    const conversations = controller
+      ? await controller.listConversations(
+        args.contextType as ContextType,
+        args.contextId as string
+      )
+      : await mockListConversations(
+        args.contextType as ContextType,
+        args.contextId as string
+      );
+
+    return conversations.map((conversation) => ({
+      id: conversation.id,
+      context_type: conversation.contextType,
+      context_id: conversation.contextId,
+      claude_session_id: conversation.claudeSessionId,
+      provider_session_id: conversation.providerSessionId,
+      provider_harness: conversation.providerHarness,
+      upstream_provider: conversation.upstreamProvider,
+      provider_profile: conversation.providerProfile,
+      agent_mode: conversation.agentMode,
+      title: conversation.title,
+      message_count: conversation.messageCount,
+      last_message_at: conversation.lastMessageAt,
+      created_at: conversation.createdAt,
+      updated_at: conversation.updatedAt,
+      archived_at: conversation.archivedAt,
+    }));
+  },
   list_agent_conversations_page: async (args) => {
-    const response = await mockListConversationsPage(
-      args.contextType as ContextType,
-      args.contextId as string,
-      args.limit as number,
-      (args.offset as number | undefined) ?? 0,
-      (args.includeArchived as boolean | undefined) ?? false,
-      args.search as string | undefined,
-      (args.archivedOnly as boolean | undefined) ?? false
-    );
+    const controller =
+      typeof window !== "undefined" ? window.__mockChatApi : undefined;
+    const response = controller
+      ? await controller.listConversationsPage(
+        args.contextType as ContextType,
+        args.contextId as string,
+        args.limit as number,
+        (args.offset as number | undefined) ?? 0,
+        (args.includeArchived as boolean | undefined) ?? false,
+        args.search as string | undefined,
+        (args.archivedOnly as boolean | undefined) ?? false
+      )
+      : await mockListConversationsPage(
+        args.contextType as ContextType,
+        args.contextId as string,
+        args.limit as number,
+        (args.offset as number | undefined) ?? 0,
+        (args.includeArchived as boolean | undefined) ?? false,
+        args.search as string | undefined,
+        (args.archivedOnly as boolean | undefined) ?? false
+      );
 
     return {
       conversations: response.conversations.map((conversation) => ({
@@ -309,8 +416,13 @@ const commandHandlers: Record<
       has_more: response.hasMore,
     };
   },
-  get_conversation: async (args) =>
-    mockGetConversation(args.conversationId as string),
+  get_conversation: async (args) => {
+    const controller =
+      typeof window !== "undefined" ? window.__mockChatApi : undefined;
+    return controller
+      ? controller.getConversation(args.conversationId as string)
+      : mockGetConversation(args.conversationId as string);
+  },
   get_agent_conversation: async (args) =>
     getMockConversationPayload(args.conversationId as string),
   get_agent_conversation_messages_page: async (args) => {
@@ -645,54 +757,18 @@ const commandHandlers: Record<
   // Ideation commands
   list_ideation_sessions: async (args) => {
     const sessions = await mockIdeationApi.sessions.list(args.projectId as string);
-    // Transform to snake_case as backend would return
-    return sessions.map((s) => ({
-      id: s.id,
-      project_id: s.projectId,
-      title: s.title,
-      status: s.status,
-      plan_artifact_id: s.planArtifactId,
-      seed_task_id: s.seedTaskId,
-      created_at: s.createdAt,
-      updated_at: s.updatedAt,
-      archived_at: s.archivedAt,
-      converted_at: s.convertedAt,
-    }));
+    return sessions.map(toSnakeIdeationSession);
   },
   get_ideation_session: async (args) => {
-    const session = await mockIdeationApi.sessions.get(args.sessionId as string);
+    const session = await mockIdeationApi.sessions.get(args.id as string);
     if (!session) return null;
-    // Transform to snake_case as backend would return
-    return {
-      id: session.id,
-      project_id: session.projectId,
-      title: session.title,
-      status: session.status,
-      plan_artifact_id: session.planArtifactId,
-      seed_task_id: session.seedTaskId,
-      created_at: session.createdAt,
-      updated_at: session.updatedAt,
-      archived_at: session.archivedAt,
-      converted_at: session.convertedAt,
-    };
+    return toSnakeIdeationSession(session);
   },
   get_ideation_session_with_data: async (args) => {
     const data = await mockIdeationApi.sessions.getWithData(args.id as string);
     if (!data) return null;
-    // Transform to snake_case as backend would return
     return {
-      session: {
-        id: data.session.id,
-        project_id: data.session.projectId,
-        title: data.session.title,
-        status: data.session.status,
-        plan_artifact_id: data.session.planArtifactId,
-        seed_task_id: data.session.seedTaskId,
-        created_at: data.session.createdAt,
-        updated_at: data.session.updatedAt,
-        archived_at: data.session.archivedAt,
-        converted_at: data.session.convertedAt,
-      },
+      session: toSnakeIdeationSession(data.session),
       proposals: data.proposals.map((p) => ({
         id: p.id,
         session_id: p.sessionId,
@@ -882,6 +958,49 @@ const commandHandlers: Record<
       global_ideation_max: settings.globalIdeationMax,
       allow_ideation_borrow_idle_execution: settings.allowIdeationBorrowIdleExecution,
     };
+  },
+  get_review_settings: async () => ({ ...mockReviewSettings }),
+  update_review_settings: async (args) => {
+    const input = args.input as {
+      requireHumanReview?: boolean;
+      maxFixAttempts?: number;
+      maxRevisionCycles?: number;
+    };
+    if (input.requireHumanReview !== undefined) {
+      mockReviewSettings.require_human_review = input.requireHumanReview;
+    }
+    if (input.maxFixAttempts !== undefined) {
+      mockReviewSettings.max_fix_attempts = input.maxFixAttempts;
+    }
+    if (input.maxRevisionCycles !== undefined) {
+      mockReviewSettings.max_revision_cycles = input.maxRevisionCycles;
+    }
+    return { ...mockReviewSettings };
+  },
+  get_external_mcp_config: async () => ({ ...mockExternalMcpConfig }),
+  update_external_mcp_config: async (args) => {
+    const input = args.input as {
+      enabled?: boolean;
+      port?: number;
+      host?: string;
+      authToken?: string;
+      nodePath?: string;
+    };
+    if (input.enabled !== undefined) {
+      mockExternalMcpConfig.enabled = input.enabled;
+    }
+    if (input.port !== undefined) {
+      mockExternalMcpConfig.port = input.port;
+    }
+    if (input.host !== undefined) {
+      mockExternalMcpConfig.host = input.host;
+    }
+    if (input.authToken !== undefined) {
+      mockExternalMcpConfig.authToken = input.authToken === "" ? null : input.authToken;
+    }
+    if (input.nodePath !== undefined) {
+      mockExternalMcpConfig.nodePath = input.nodePath === "" ? null : input.nodePath;
+    }
   },
 
   // Plan branch commands

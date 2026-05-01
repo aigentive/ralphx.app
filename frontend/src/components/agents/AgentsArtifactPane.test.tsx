@@ -10,6 +10,8 @@ import type { AgentArtifactTab } from "@/stores/agentSessionStore";
 import { createTestQueryClient } from "@/test/store-utils";
 import { AgentsArtifactPane } from "./AgentsArtifactPane";
 
+const deferredHydrationTimeout = { timeout: 3_000 };
+
 const {
   getWorkspaceChangesMock,
   getWorkspaceDiffMock,
@@ -1184,11 +1186,13 @@ describe("AgentsArtifactPane", () => {
     await waitFor(() =>
       expect(getWorkspaceCommitsMock).toHaveBeenCalledWith("conversation-1")
     );
-    await user.click(await screen.findByTestId("tab-history"));
-
-    expect(await screen.findByTestId("commit-abc123d")).toHaveTextContent(
-      "Update Codex model catalog"
+    await user.click(
+      await screen.findByTestId("tab-history", undefined, deferredHydrationTimeout)
     );
+
+    expect(
+      await screen.findByTestId("commit-abc123d", undefined, deferredHydrationTimeout)
+    ).toHaveTextContent("Update Codex model catalog");
   });
 
   it("shows workspace publish pipeline status only during active publishing", () => {
@@ -1238,7 +1242,13 @@ describe("AgentsArtifactPane", () => {
 
     renderPane("publish", workspace({ mode: "edit", publicationPushStatus: "needs_agent" }));
 
-    expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId(
+        "agents-publish-events",
+        undefined,
+        deferredHydrationTimeout,
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText("Pre-commit hook failed")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("agents-publish-history-toggle"));
     expect(screen.getByText("Pre-commit hook failed")).toBeInTheDocument();
@@ -1285,7 +1295,13 @@ describe("AgentsArtifactPane", () => {
       }),
     );
 
-    expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId(
+        "agents-publish-events",
+        undefined,
+        deferredHydrationTimeout,
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText("Checking workspace changes")).not.toBeInTheDocument();
     expect(screen.queryByText("Pushing agent branch")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("agents-publish-history-toggle"));
@@ -1328,7 +1344,13 @@ describe("AgentsArtifactPane", () => {
       true,
     );
 
-    expect(await screen.findByTestId("agents-publish-events")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId(
+        "agents-publish-events",
+        undefined,
+        deferredHydrationTimeout,
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText("Checking workspace changes")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("agents-publish-history-toggle"));
     expect(screen.queryByText("Checking workspace changes")).not.toBeInTheDocument();
