@@ -78,7 +78,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       CARGO_TERM_COLOR: never
       RALPHX_TEST_MODE: "1"
     steps:
@@ -128,19 +127,9 @@ jobs:
             --input coverage/rust-lib/coverage.json \
             --output coverage/rust-lib/coverage-summary.md
 
-      - name: Upload Rust lib coverage to Codecov
-        if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/rust-lib/lcov.info
-          flags: rust-lib
-          name: rust-lib
-          fail_ci_if_error: true
-
       - name: Upload Rust lib coverage artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-rust-lib
           path: coverage/rust-lib/
@@ -154,7 +143,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       CARGO_TERM_COLOR: never
       RALPHX_TEST_MODE: "1"
     steps:
@@ -209,19 +197,9 @@ jobs:
             --input coverage/rust-ipc/coverage.json \
             --output coverage/rust-ipc/coverage-summary.md
 
-      - name: Upload Rust IPC coverage to Codecov
-        if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/rust-ipc/lcov.info
-          flags: rust-ipc
-          name: rust-ipc
-          fail_ci_if_error: true
-
       - name: Upload Rust IPC coverage artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-rust-ipc
           path: coverage/rust-ipc/
@@ -234,8 +212,6 @@ jobs:
     if: needs.changes.outputs.run_frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v6
 
@@ -262,19 +238,9 @@ jobs:
             --input frontend/coverage/coverage-summary.json \
             --output frontend/coverage/coverage-summary.md
 
-      - name: Upload frontend coverage to Codecov
-        if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: frontend/coverage/lcov.info
-          flags: frontend
-          name: frontend
-          fail_ci_if_error: true
-
       - name: Upload frontend coverage artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-frontend
           path: frontend/coverage/
@@ -287,8 +253,6 @@ jobs:
     if: needs.changes.outputs.run_plugins == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -329,21 +293,98 @@ jobs:
             --input "${{ matrix.package_dir }}/coverage/coverage-summary.json" \
             --output "${{ matrix.package_dir }}/coverage/coverage-summary.md"
 
-      - name: Upload plugin coverage to Codecov
-        if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ${{ matrix.package_dir }}/coverage/lcov.info
-          flags: ${{ matrix.codecov_flag }}
-          name: ${{ matrix.codecov_flag }}
-          fail_ci_if_error: true
-
       - name: Upload plugin coverage artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.package_dir }}/coverage/
           if-no-files-found: warn
           retention-days: 14
+
+  publish-codecov:
+    name: Publish Codecov Coverage
+    needs:
+      - changes
+      - rust-lib-coverage
+      - rust-ipc-coverage
+      - frontend-coverage
+      - plugin-coverage
+    if: >
+      always() &&
+      needs.changes.result == 'success' &&
+      needs.rust-lib-coverage.result != 'failure' &&
+      needs.rust-lib-coverage.result != 'cancelled' &&
+      needs.rust-ipc-coverage.result != 'failure' &&
+      needs.rust-ipc-coverage.result != 'cancelled' &&
+      needs.frontend-coverage.result != 'failure' &&
+      needs.frontend-coverage.result != 'cancelled' &&
+      needs.plugin-coverage.result != 'failure' &&
+      needs.plugin-coverage.result != 'cancelled' &&
+      (
+        needs.rust-lib-coverage.result == 'success' ||
+        needs.rust-ipc-coverage.result == 'success' ||
+        needs.frontend-coverage.result == 'success' ||
+        needs.plugin-coverage.result == 'success'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: coverage-artifacts
+
+      - name: Upload Rust lib coverage to Codecov
+        if: needs.rust-lib-coverage.result == 'success' && env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-artifacts/coverage-rust-lib/lcov.info
+          flags: rust-lib
+          name: rust-lib
+          fail_ci_if_error: true
+
+      - name: Upload Rust IPC coverage to Codecov
+        if: needs.rust-ipc-coverage.result == 'success' && env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-artifacts/coverage-rust-ipc/lcov.info
+          flags: rust-ipc
+          name: rust-ipc
+          fail_ci_if_error: true
+
+      - name: Upload frontend coverage to Codecov
+        if: needs.frontend-coverage.result == 'success' && env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-artifacts/coverage-frontend/lcov.info
+          flags: frontend
+          name: frontend
+          fail_ci_if_error: true
+
+      - name: Upload internal MCP coverage to Codecov
+        if: needs.plugin-coverage.result == 'success' && env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-artifacts/coverage-plugin-internal-mcp/lcov.info
+          flags: plugin-internal-mcp
+          name: plugin-internal-mcp
+          fail_ci_if_error: true
+
+      - name: Upload external MCP coverage to Codecov
+        if: needs.plugin-coverage.result == 'success' && env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-artifacts/coverage-plugin-external-mcp/lcov.info
+          flags: plugin-external-mcp
+          name: plugin-external-mcp
+          fail_ci_if_error: true

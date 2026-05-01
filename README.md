@@ -21,26 +21,8 @@
   <a href="https://github.com/aigentive/ralphx.app/releases">
     <img alt="Homebrew version" src="https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2Faigentive%2Fhomebrew-ralphx%2Fmain%2FCasks%2Fralphx.rb&search=version%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=brew&logo=homebrew&logoColor=white">
   </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ">
-  </a>
-</p>
-
-<p align="center">
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Rust lib coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=rust-lib">
-  </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Rust IPC coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=rust-ipc">
-  </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Frontend coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=frontend">
-  </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="Internal MCP coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=plugin-internal-mcp">
-  </a>
-  <a href="https://codecov.io/github/aigentive/ralphx.app">
-    <img alt="External MCP coverage" src="https://codecov.io/github/aigentive/ralphx.app/graph/badge.svg?token=DXF9O681JQ&flag=plugin-external-mcp">
+  <a href="https://app.codecov.io/gh/aigentive/ralphx.app">
+    <img alt="Coverage" src="https://img.shields.io/codecov/c/github/aigentive/ralphx.app/main?token=DXF9O681JQ&label=coverage&logo=codecov&logoColor=white">
   </a>
 </p>
 
@@ -185,11 +167,7 @@ To run RalphX:
   - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code)
   - [Codex CLI](https://developers.openai.com/codex/cli)
 
-To build from source:
-
-- Node.js 18+ and npm
-- Rust via [rustup.rs](https://rustup.rs); this repo pins its toolchain in `rust-toolchain.toml`
-- Git
+To build from source, see the [build from source guide](docs/development/build-from-source.md).
 
 Harness controls are exposed in the desktop app:
 
@@ -209,28 +187,7 @@ brew tap aigentive/ralphx
 brew install --cask ralphx
 ```
 
-Upgrade an existing Homebrew install:
-
-```bash
-brew update
-brew upgrade --cask ralphx
-```
-
-If a new RalphX release exists but Homebrew still reports that `ralphx` is already up to date, refresh the tap metadata and retry:
-
-```bash
-brew update-reset aigentive/ralphx
-brew upgrade --cask ralphx
-```
-
-If `/Applications/RalphX.app` was deleted manually and `brew upgrade --cask ralphx` fails with `App source '/Applications/RalphX.app' is not there`, repair the Homebrew cask receipt and reinstall:
-
-```bash
-brew uninstall --cask --force ralphx
-brew install --cask ralphx
-```
-
-Do not use `--zap` unless you intentionally want to remove local RalphX app data.
+For upgrades, repairs, and uninstall notes, see the [Homebrew installation guide](docs/install/homebrew.md).
 
 #### GitHub Releases
 
@@ -238,22 +195,7 @@ Download signed builds from the [GitHub Releases page](https://github.com/aigent
 
 #### Build From Source
 
-```bash
-git clone https://github.com/aigentive/ralphx.app.git ralphx.app
-cd ralphx.app
-cd frontend
-npm install
-npm run tauri dev
-```
-
-First build compiles the Rust backend. Subsequent starts are faster.
-Source dev uses backend port `3857`, so it can run while the installed app keeps production port `3847`.
-
-For a fresh native dev start from the repo root:
-
-```bash
-./dev-fresh
-```
+For local development setup, see the [build from source guide](docs/development/build-from-source.md).
 
 ## Who It's For
 
