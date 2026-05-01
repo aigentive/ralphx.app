@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { hasStartupGitAuthIssue } from "./useGitAuthStartupNotification";
+import {
+  GIT_AUTH_STARTUP_TOAST_DURATION,
+  createStartupGitAuthToastOptions,
+  hasStartupGitAuthIssue,
+} from "./useGitAuthStartupNotification";
 import type { GitAuthDiagnostics } from "./useGithubSettings";
 import type { Project } from "@/types/project";
 
@@ -66,5 +70,20 @@ describe("hasStartupGitAuthIssue", () => {
         false,
       ),
     ).toBe(false);
+  });
+});
+
+describe("createStartupGitAuthToastOptions", () => {
+  it("keeps git auth startup warnings visible until the user acts", () => {
+    const openModal = vi.fn();
+    const options = createStartupGitAuthToastOptions("project-1", openModal);
+
+    expect(options.duration).toBe(GIT_AUTH_STARTUP_TOAST_DURATION);
+    expect(options.duration).toBe(Infinity);
+    expect(options.id).toBe("git-auth-startup:project-1");
+
+    options.action.onClick();
+
+    expect(openModal).toHaveBeenCalledWith("settings", { section: "repository" });
   });
 });

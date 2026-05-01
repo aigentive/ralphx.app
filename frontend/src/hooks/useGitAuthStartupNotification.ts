@@ -11,8 +11,24 @@ import { useUiStore } from "@/stores/uiStore";
 import type { GitAuthDiagnostics } from "@/hooks/useGithubSettings";
 import type { Project } from "@/types/project";
 
+export const GIT_AUTH_STARTUP_TOAST_DURATION = Infinity;
+
 function isGithubHttpsRemote(url: string | null | undefined) {
   return url?.trim().startsWith("https://github.com/") ?? false;
+}
+
+export function createStartupGitAuthToastOptions(
+  projectId: string,
+  openModal: (modal: "settings", options: { section: "repository" }) => void,
+) {
+  return {
+    duration: GIT_AUTH_STARTUP_TOAST_DURATION,
+    id: `git-auth-startup:${projectId}`,
+    action: {
+      label: "Open Settings",
+      onClick: () => openModal("settings", { section: "repository" }),
+    },
+  };
 }
 
 export function hasStartupGitAuthIssue(
@@ -105,13 +121,7 @@ export function useGitAuthStartupNotification() {
           `Startup Git/GitHub recovery was paused for ${project.name}. Repair repository access before starting agents or publishing work.`,
         ),
       ),
-      {
-        duration: 20_000,
-        action: {
-          label: "Open Settings",
-          onClick: () => openModal("settings", { section: "repository" }),
-        },
-      },
+      createStartupGitAuthToastOptions(project.id, openModal),
     );
   }, [
     diagnosticsQuery.isLoading,

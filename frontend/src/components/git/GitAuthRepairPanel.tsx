@@ -105,7 +105,7 @@ export function GitAuthRepairPanel({
     messages.push("Could not inspect the git origin for this project.");
   }
   if (diagnostics?.mixedAuthModes) {
-    messages.push("Fetch and push use different auth modes. Installed app fetches can fail even when terminal pushes work.");
+    messages.push("Fetch and push use different auth modes. Background fetches can fail even when terminal pushes work.");
   }
   if (isGhMissing) {
     messages.push(
@@ -118,7 +118,7 @@ export function GitAuthRepairPanel({
   if (canSetupGithubHttps) {
     messages.push("HTTPS remotes need a non-interactive credential. Configure GitHub CLI credentials or switch origin to SSH.");
   } else if (hasHttpsRemote) {
-    messages.push("HTTPS remotes need a non-interactive credential before the installed app can fetch or push.");
+    messages.push("HTTPS remotes need a non-interactive credential before background fetch or push can run.");
   }
   if (canCopyGithubHttpsSetup) {
     messages.push("HTTPS is still available: authenticate GitHub CLI, then let RalphX configure Git credentials.");

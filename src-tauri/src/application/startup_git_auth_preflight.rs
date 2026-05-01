@@ -188,7 +188,7 @@ pub(crate) fn evaluate_project_git_auth_issue(
 
             if has_github_https_remote(&config) && !gh_authenticated {
                 reasons.push(
-                    "GitHub HTTPS origin needs non-interactive credentials for installed app use"
+                    "GitHub HTTPS origin needs non-interactive credentials for background git access"
                         .to_string(),
                 );
             }
