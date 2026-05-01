@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/public/ralphx-agents-start-2026-04-30.png" alt="RalphX Agents view showing project-scoped conversations and the start agent composer" width="100%">
+  <img src="assets/public/framed-agents-overview-2026-05-01.png" alt="RalphX Agents view showing the project sidebar, agent conversation, commit & publish panel, and embedded terminal" width="100%">
 </p>
 
 <p align="center">
@@ -116,10 +116,6 @@ Worker agents implement, reviewer agents inspect the diff, and you can approve o
 RalphX can create task branches, run validation commands, apply your merge strategy, clean up worktrees, and optionally create or monitor GitHub PRs for plan-level delivery.
 
 You still own your repo. RalphX manages the repetitive git and PR workflow around agent-produced code.
-
-<p align="center">
-  <img src="assets/public/ralphx-agent-workspace-publish-2026-04-30.png" alt="RalphX agent workspace showing review changes, branch state, pull request status, and merged work" width="100%">
-</p>
 
 ## First Workflow
 
