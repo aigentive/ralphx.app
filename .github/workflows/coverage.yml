@@ -33,6 +33,7 @@ jobs:
         id: filter
         uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         with:
+          list-files: shell
           filters: |
             plugins:
               - 'scripts/summarize-coverage.mjs'
@@ -63,10 +64,53 @@ jobs:
             exit 0
           fi
 
+          is_dependency_manifest() {
+            case "$1" in
+              frontend/package.json|\
+              frontend/package-lock.json|\
+              plugins/app/ralphx-external-mcp/package.json|\
+              plugins/app/ralphx-external-mcp/package-lock.json|\
+              plugins/app/ralphx-mcp-server/package.json|\
+              plugins/app/ralphx-mcp-server/package-lock.json|\
+              src-tauri/Cargo.lock|\
+              src-tauri/Cargo.toml|\
+              src-tauri/crates/*/Cargo.toml)
+                return 0
+                ;;
+              *)
+                return 1
+                ;;
+            esac
+          }
+
+          has_coverage_relevant_file() {
+            local files="$1"
+            local file
+
+            for file in ${files}; do
+              if ! is_dependency_manifest "${file}"; then
+                return 0
+              fi
+            done
+
+            return 1
+          }
+
+          decide_coverage_scope() {
+            local matched="$1"
+            local files="$2"
+
+            if [[ "${matched}" == "true" ]] && has_coverage_relevant_file "${files}"; then
+              echo "true"
+            else
+              echo "false"
+            fi
+          }
+
           {
-            echo "run_plugins=${{ steps.filter.outputs.plugins }}"
-            echo "run_rust=${{ steps.filter.outputs.rust }}"
-            echo "run_frontend=${{ steps.filter.outputs.frontend }}"
+            echo "run_plugins=$(decide_coverage_scope '${{ steps.filter.outputs.plugins }}' '${{ steps.filter.outputs.plugins_files }}')"
+            echo "run_rust=$(decide_coverage_scope '${{ steps.filter.outputs.rust }}' '${{ steps.filter.outputs.rust_files }}')"
+            echo "run_frontend=$(decide_coverage_scope '${{ steps.filter.outputs.frontend }}' '${{ steps.filter.outputs.frontend_files }}')"
           } >> "${GITHUB_OUTPUT}"
 
   rust-lib-coverage:
