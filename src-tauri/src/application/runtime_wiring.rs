@@ -21,7 +21,9 @@ pub fn create_main_window<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> t
         builder
             .hidden_title(true)
             .title_bar_style(TitleBarStyle::Overlay)
-            .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 18.0 }))
+            // tao places buttons inside a title bar of height (button_height + y) and
+            // centers them. macOS standard buttons are 14pt → y = navbar(48) − 14 = 34.
+            .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 34.0 }))
     };
 
     let webview_window = builder.build()?;
