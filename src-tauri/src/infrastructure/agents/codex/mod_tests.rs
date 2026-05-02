@@ -1,10 +1,48 @@
-use super::{build_codex_mcp_overrides, compose_codex_prompt, CodexMcpRuntimeContext};
+use super::{
+    build_codex_mcp_overrides, build_spawnable_codex_exec_command, compose_codex_prompt,
+    CodexCliCapabilities, CodexExecCliConfig, CodexMcpRuntimeContext,
+};
 use std::path::PathBuf;
+
+fn full_codex_capabilities() -> CodexCliCapabilities {
+    CodexCliCapabilities {
+        version: Some("codex-cli 1.0.0".to_string()),
+        supports_exec_subcommand: true,
+        supports_json_output: true,
+        supports_model_flag: true,
+        supports_config_override: true,
+        supports_sandbox_flag: true,
+        supports_add_dir: true,
+        supports_search_flag: true,
+        supports_resume_subcommand: true,
+        supports_mcp_subcommand: true,
+    }
+}
 
 fn create_plugin_dir(root: &std::path::Path) -> PathBuf {
     let plugin_dir = root.join("plugins/app");
     std::fs::create_dir_all(plugin_dir.join("agents")).expect("create plugin agents dir");
     plugin_dir
+}
+
+#[test]
+fn build_codex_exec_command_sets_agent_tool_path() {
+    let spawnable = build_spawnable_codex_exec_command(
+        std::path::Path::new("/fake/codex"),
+        "Prompt",
+        &full_codex_capabilities(),
+        &CodexExecCliConfig::default(),
+    )
+    .expect("build codex exec command");
+
+    let path = spawnable
+        .get_envs_for_test()
+        .into_iter()
+        .find_map(|(key, value)| (key == "PATH").then(|| value.to_string_lossy().into_owned()))
+        .expect("PATH should be explicitly set for Codex agent subprocesses");
+
+    assert!(path.contains("/opt/homebrew/bin"));
+    assert!(path.contains("/usr/local/bin"));
 }
 
 #[test]
