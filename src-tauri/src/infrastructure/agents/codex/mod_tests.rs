@@ -1,7 +1,9 @@
 use super::{
-    build_codex_mcp_overrides, build_spawnable_codex_exec_command, compose_codex_prompt,
-    configure_spawn, CodexCliCapabilities, CodexExecCliConfig, CodexMcpRuntimeContext,
+    build_codex_exec_args, build_codex_mcp_overrides, build_spawnable_codex_exec_command,
+    compose_codex_prompt, configure_spawn, CodexCliCapabilities, CodexExecCliConfig,
+    CodexMcpRuntimeContext,
 };
+use crate::domain::agents::LogicalEffort;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 
@@ -44,6 +46,51 @@ fn build_codex_exec_command_sets_agent_tool_path() {
 
     assert!(path.contains("/opt/homebrew/bin"));
     assert!(path.contains("/usr/local/bin"));
+}
+
+#[test]
+fn build_codex_exec_args_preserves_gpt55_xhigh_selection() {
+    let args = build_codex_exec_args(
+        &full_codex_capabilities(),
+        &CodexExecCliConfig {
+            model: Some("gpt-5.5".to_string()),
+            reasoning_effort: Some(LogicalEffort::XHigh),
+            ..CodexExecCliConfig::default()
+        },
+    )
+    .expect("build codex exec args");
+
+    assert!(args
+        .windows(2)
+        .any(|pair| pair[0] == "-m" && pair[1] == "gpt-5.5"));
+    assert!(args
+        .windows(2)
+        .any(|pair| pair[0] == "-c" && pair[1] == "model_reasoning_effort=\"xhigh\""));
+}
+
+#[test]
+fn build_codex_exec_args_passes_each_supported_reasoning_effort() {
+    for (effort, expected) in [
+        (LogicalEffort::Low, "low"),
+        (LogicalEffort::Medium, "medium"),
+        (LogicalEffort::High, "high"),
+        (LogicalEffort::XHigh, "xhigh"),
+    ] {
+        let args = build_codex_exec_args(
+            &full_codex_capabilities(),
+            &CodexExecCliConfig {
+                model: Some("gpt-5.5".to_string()),
+                reasoning_effort: Some(effort),
+                ..CodexExecCliConfig::default()
+            },
+        )
+        .expect("build codex exec args");
+
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "-c"
+                && pair[1] == format!("model_reasoning_effort=\"{expected}\"")));
+    }
 }
 
 #[test]
