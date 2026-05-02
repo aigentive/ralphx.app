@@ -653,6 +653,10 @@ fn configure_spawn(cmd: &mut tokio::process::Command, cwd: Option<&Path>) {
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
+    cmd.env(
+        "PATH",
+        crate::infrastructure::tool_paths::agent_subprocess_env_path(),
+    );
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
     cmd.stdin(std::process::Stdio::piped());

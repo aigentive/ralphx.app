@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -794,65 +793,16 @@ fn build_terminal_command(cwd: &Path) -> CommandBuilder {
     command
 }
 
-fn terminal_env_path() -> OsString {
-    terminal_env_path_from_parts(
-        std::env::var_os("PATH").as_deref(),
-        dirs::home_dir().as_deref(),
-    )
+fn terminal_env_path() -> std::ffi::OsString {
+    crate::infrastructure::tool_paths::agent_subprocess_env_path()
 }
 
+#[cfg(test)]
 fn terminal_env_path_from_parts(
-    existing_path: Option<&OsStr>,
+    existing_path: Option<&std::ffi::OsStr>,
     home_dir: Option<&Path>,
-) -> OsString {
-    let mut entries = Vec::new();
-    if let Some(existing_path) = existing_path {
-        entries.extend(std::env::split_paths(existing_path));
-    }
-
-    entries.extend(
-        [
-            "/opt/homebrew/bin",
-            "/opt/homebrew/sbin",
-            "/usr/local/bin",
-            "/usr/local/sbin",
-            "/usr/bin",
-            "/bin",
-            "/usr/sbin",
-            "/sbin",
-        ]
-        .into_iter()
-        .map(PathBuf::from),
-    );
-
-    if let Some(home_dir) = home_dir {
-        entries.extend(
-            [
-                ".local/bin",
-                "bin",
-                ".cargo/bin",
-                ".rbenv/bin",
-                ".rbenv/shims",
-                ".asdf/bin",
-                ".asdf/shims",
-                ".pyenv/bin",
-                ".pyenv/shims",
-                ".nodenv/bin",
-                ".nodenv/shims",
-                ".volta/bin",
-            ]
-            .into_iter()
-            .map(|relative| home_dir.join(relative)),
-        );
-    }
-
-    let mut seen = std::collections::HashSet::new();
-    entries.retain(|entry| seen.insert(entry.as_os_str().to_os_string()));
-    std::env::join_paths(entries).unwrap_or_else(|_| {
-        existing_path
-            .map(OsStr::to_os_string)
-            .unwrap_or_else(|| OsString::from("/usr/bin:/bin:/usr/sbin:/sbin"))
-    })
+) -> std::ffi::OsString {
+    crate::infrastructure::tool_paths::agent_subprocess_env_path_from_parts(existing_path, home_dir)
 }
 
 #[cfg(test)]
@@ -862,9 +812,9 @@ pub(crate) fn build_terminal_command_for_test(cwd: &Path) -> CommandBuilder {
 
 #[cfg(test)]
 pub(crate) fn terminal_env_path_from_parts_for_test(
-    existing_path: Option<&OsStr>,
+    existing_path: Option<&std::ffi::OsStr>,
     home_dir: Option<&Path>,
-) -> OsString {
+) -> std::ffi::OsString {
     terminal_env_path_from_parts(existing_path, home_dir)
 }
 
