@@ -1,7 +1,8 @@
 use super::{
     build_codex_mcp_overrides, build_spawnable_codex_exec_command, compose_codex_prompt,
-    CodexCliCapabilities, CodexExecCliConfig, CodexMcpRuntimeContext,
+    configure_spawn, CodexCliCapabilities, CodexExecCliConfig, CodexMcpRuntimeContext,
 };
+use std::ffi::OsStr;
 use std::path::PathBuf;
 
 fn full_codex_capabilities() -> CodexCliCapabilities {
@@ -355,6 +356,28 @@ fn build_codex_mcp_overrides_passes_runtime_context_over_cli_args() {
         args_override.contains("--lead-session-id"),
         "expected lead-session-id CLI arg in overrides: {args_override}"
     );
+}
+
+#[test]
+fn configure_spawn_prepends_resolved_node_bin_to_path() {
+    let expected_node_bin = crate::infrastructure::tool_paths::resolve_node_cli_path()
+        .parent()
+        .map(PathBuf::from)
+        .expect("resolved node bin");
+
+    let mut cmd = tokio::process::Command::new("/usr/bin/env");
+    cmd.env("PATH", "/usr/bin:/bin");
+    configure_spawn(&mut cmd, None);
+
+    let path_value = cmd
+        .as_std()
+        .get_envs()
+        .find_map(|(key, value)| {
+            (key == OsStr::new("PATH")).then(|| value.map(|v| v.to_os_string()))?
+        })
+        .expect("PATH env");
+    let path_entries = std::env::split_paths(&path_value).collect::<Vec<_>>();
+    assert_eq!(path_entries.first(), Some(&expected_node_bin));
 }
 
 #[test]

@@ -63,6 +63,43 @@ fn test_empty_stderr_not_transient() {
     assert!(!is_transient_error(""));
 }
 
+#[test]
+fn test_build_git_command_prepends_resolved_node_bin_to_existing_path() {
+    let original_node_override = std::env::var_os("RALPHX_NODE_PATH");
+    std::env::set_var("RALPHX_NODE_PATH", "/tmp/git-node-bin/node");
+
+    let args: Vec<String> = vec!["--version".to_string()];
+    let cmd = build_git_command(
+        &args,
+        std::path::Path::new("/tmp"),
+        &[("PATH".to_string(), "/usr/bin:/bin".to_string())],
+    );
+
+    let path_value = cmd
+        .as_std()
+        .get_envs()
+        .find_map(|(key, value)| {
+            (key == std::ffi::OsStr::new("PATH")).then(|| value.map(|v| v.to_os_string()))?
+        })
+        .expect("PATH env");
+    let path_entries = std::env::split_paths(&path_value).collect::<Vec<_>>();
+
+    assert_eq!(path_entries.first(), Some(&std::path::PathBuf::from("/tmp/git-node-bin")));
+    assert_eq!(
+        path_entries,
+        vec![
+            std::path::PathBuf::from("/tmp/git-node-bin"),
+            std::path::PathBuf::from("/usr/bin"),
+            std::path::PathBuf::from("/bin"),
+        ]
+    );
+
+    match original_node_override {
+        Some(value) => std::env::set_var("RALPHX_NODE_PATH", value),
+        None => std::env::remove_var("RALPHX_NODE_PATH"),
+    }
+}
+
 // ── exec_git_async tests ─────────────────────────────────────────────────
 
 #[tokio::test]
