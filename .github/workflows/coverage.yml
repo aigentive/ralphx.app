@@ -9,6 +9,7 @@ on:
 
 permissions:
   statuses: read
+  checks: read
   contents: read
   pull-requests: read
 
@@ -493,19 +494,44 @@ jobs:
           echo "Waiting for Codecov patch status on ${COMMIT_SHA}."
           deadline=$((SECONDS + 600))
           while (( SECONDS < deadline )); do
-            state="$(
+            status_state="$(
               gh api "repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/statuses" \
                 --jq 'map(select(.context == "codecov/patch"))[0].state // ""'
             )"
+            check_state="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/check-runs" \
+                -f check_name="codecov/patch" \
+                --jq '.check_runs | sort_by(.completed_at // .started_at // .created_at) | .[-1] | if . == null then "" elif .status != "completed" then "pending" else .conclusion end'
+            )"
+
+            state=""
+            for candidate in "${status_state}" "${check_state}"; do
+              case "${candidate}" in
+                failure|error|timed_out|cancelled|action_required)
+                  state="${candidate}"
+                  break
+                  ;;
+              esac
+            done
+            if [[ -z "${state}" ]]; then
+              if [[ "${status_state}" == "success" || "${check_state}" == "success" ]]; then
+                state="success"
+              elif [[ "${status_state}" == "pending" || "${check_state}" == "pending" ]]; then
+                state="pending"
+              fi
+            fi
 
             case "${state}" in
               success)
                 echo "Codecov patch status passed."
                 exit 0
                 ;;
-              failure|error)
+              failure|error|timed_out|cancelled|action_required)
                 gh api "repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/statuses" \
                   --jq 'map(select(.context == "codecov/patch"))[0]'
+                gh api --method GET "repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/check-runs" \
+                  -f check_name="codecov/patch" \
+                  --jq '.check_runs | sort_by(.completed_at // .started_at // .created_at) | .[-1]'
                 echo "Codecov patch status failed."
                 exit 1
                 ;;
