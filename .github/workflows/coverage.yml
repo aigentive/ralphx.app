@@ -374,6 +374,7 @@ jobs:
     timeout-minutes: 10
     env:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - uses: actions/checkout@v6
 
@@ -381,6 +382,18 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: coverage-artifacts
+
+      - name: Report unavailable Codecov upload
+        if: env.CODECOV_TOKEN == ''
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${IS_FORK_PR}" == "true" ]]; then
+            echo "::notice::Codecov upload skipped because fork pull_request runs do not receive repository secrets."
+          else
+            echo "::warning::Codecov upload skipped because CODECOV_TOKEN is unavailable."
+          fi
 
       - name: Upload Rust lib coverage to Codecov
         if: needs.rust-lib-coverage.result == 'success' && env.CODECOV_TOKEN != ''
@@ -447,6 +460,8 @@ jobs:
     env:
       COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       GH_TOKEN: ${{ github.token }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - name: Enforce Codecov patch status
         shell: bash
@@ -488,6 +503,19 @@ jobs:
 
           if (( ${#failures[@]} > 0 )); then
             printf 'Coverage prerequisite failed: %s\n' "${failures[@]}"
+            exit 1
+          fi
+
+          if [[ "${IS_FORK_PR}" == "true" ]]; then
+            echo "Pull request comes from a fork."
+            echo "GitHub does not pass repository secrets to pull_request workflows from forks, so Codecov upload cannot publish codecov/patch."
+            echo "Coverage jobs completed successfully; skipping Codecov patch gate for this fork PR."
+            exit 0
+          fi
+
+          if [[ -z "${CODECOV_TOKEN}" ]]; then
+            echo "CODECOV_TOKEN is unavailable for a coverage-required PR; cannot upload coverage or receive codecov/patch."
+            echo "Configure CODECOV_TOKEN or adjust the coverage policy before requiring Codecov patch coverage."
             exit 1
           fi
 
