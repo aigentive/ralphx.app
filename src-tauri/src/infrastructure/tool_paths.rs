@@ -458,4 +458,29 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn prepend_resolved_node_bin_to_path_uses_inherited_path_when_command_path_is_unset() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let _node_override = EnvGuard::set_os("RALPHX_NODE_PATH", "/tmp/fake-node-bin/node");
+        let _path = EnvGuard::set_os("PATH", "/usr/bin:/bin");
+        let mut cmd = std::process::Command::new("/usr/bin/env");
+
+        prepend_resolved_node_bin_to_path(&mut cmd);
+
+        let path_value = cmd
+            .get_envs()
+            .find_map(|(key, value)| {
+                (key == OsStr::new("PATH")).then(|| value.map(|v| v.to_os_string()))?
+            })
+            .expect("PATH env");
+        assert_eq!(
+            std::env::split_paths(&path_value).collect::<Vec<_>>(),
+            vec![
+                PathBuf::from("/tmp/fake-node-bin"),
+                PathBuf::from("/usr/bin"),
+                PathBuf::from("/bin"),
+            ]
+        );
+    }
 }

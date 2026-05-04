@@ -809,7 +809,7 @@ fn has_commits(path: &std::path::Path) -> bool {
 }
 
 #[test]
-fn test_ensure_git_initialized_sync_no_git_dir() {
+fn test_ipc_contract_ensure_git_initialized_sync_no_git_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let path_str = tmp.path().to_str().unwrap();
 
@@ -832,7 +832,7 @@ fn test_ensure_git_initialized_sync_no_git_dir() {
 }
 
 #[test]
-fn test_ensure_git_initialized_sync_no_commits() {
+fn test_ipc_contract_ensure_git_initialized_sync_no_commits() {
     let tmp = tempfile::tempdir().unwrap();
     let path_str = tmp.path().to_str().unwrap();
 
@@ -858,7 +858,7 @@ fn test_ensure_git_initialized_sync_no_commits() {
 }
 
 #[test]
-fn test_ensure_git_initialized_sync_already_has_commits() {
+fn test_ipc_contract_ensure_git_initialized_sync_already_has_commits() {
     let tmp = tempfile::tempdir().unwrap();
     let path_str = tmp.path().to_str().unwrap();
 
@@ -905,7 +905,7 @@ fn test_ensure_git_initialized_sync_already_has_commits() {
 }
 
 #[test]
-fn test_ensure_git_initialized_sync_idempotent() {
+fn test_ipc_contract_ensure_git_initialized_sync_idempotent() {
     let tmp = tempfile::tempdir().unwrap();
     let path_str = tmp.path().to_str().unwrap();
 
