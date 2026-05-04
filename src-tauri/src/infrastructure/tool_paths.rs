@@ -305,6 +305,9 @@ mod tests {
     };
     use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     struct EnvGuard {
         key: &'static str,
@@ -370,6 +373,7 @@ mod tests {
 
     #[test]
     fn resolve_node_cli_path_uses_nvm_bin_when_path_is_stripped() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let nvm_bin = temp_dir.path().join("nvm-bin");
         std::fs::create_dir_all(&nvm_bin).expect("create nvm bin");
@@ -377,13 +381,32 @@ mod tests {
 
         let _path = EnvGuard::set_os("PATH", "");
         let _nvm_bin = EnvGuard::set_os("NVM_BIN", &nvm_bin);
+        let _volta_home = EnvGuard::unset("VOLTA_HOME");
         let _node_override = EnvGuard::unset("RALPHX_NODE_PATH");
 
         assert_eq!(resolve_node_cli_path(), nvm_bin.join("node"));
     }
 
     #[test]
+    fn resolve_node_cli_path_uses_volta_home_when_path_is_stripped() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let volta_home = temp_dir.path().join("volta-home");
+        let volta_bin = volta_home.join("bin");
+        std::fs::create_dir_all(&volta_bin).expect("create volta bin");
+        std::fs::write(volta_bin.join("node"), "").expect("write fake node");
+
+        let _path = EnvGuard::set_os("PATH", "");
+        let _volta_home = EnvGuard::set_os("VOLTA_HOME", &volta_home);
+        let _nvm_bin = EnvGuard::unset("NVM_BIN");
+        let _node_override = EnvGuard::unset("RALPHX_NODE_PATH");
+
+        assert_eq!(resolve_node_cli_path(), volta_bin.join("node"));
+    }
+
+    #[test]
     fn prepend_resolved_node_bin_to_path_preserves_existing_path() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
         let _node_override = EnvGuard::set_os("RALPHX_NODE_PATH", "/tmp/fake-node-bin/node");
         let mut cmd = std::process::Command::new("/usr/bin/env");
         cmd.env("PATH", "/usr/bin:/bin");
@@ -402,6 +425,30 @@ mod tests {
                 .next()
                 .expect("first PATH entry")
         );
+        assert_eq!(
+            std::env::split_paths(&path_value).collect::<Vec<_>>(),
+            vec![
+                PathBuf::from("/tmp/fake-node-bin"),
+                PathBuf::from("/usr/bin"),
+                PathBuf::from("/bin"),
+            ]
+        );
+    }
+    #[test]
+    fn prepend_resolved_node_bin_to_path_is_noop_when_node_bin_is_already_first() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let _node_override = EnvGuard::set_os("RALPHX_NODE_PATH", "/tmp/fake-node-bin/node");
+        let mut cmd = std::process::Command::new("/usr/bin/env");
+        cmd.env("PATH", "/tmp/fake-node-bin:/usr/bin:/bin");
+
+        prepend_resolved_node_bin_to_path(&mut cmd);
+
+        let path_value = cmd
+            .get_envs()
+            .find_map(|(key, value)| {
+                (key == OsStr::new("PATH")).then(|| value.map(|v| v.to_os_string()))?
+            })
+            .expect("PATH env");
         assert_eq!(
             std::env::split_paths(&path_value).collect::<Vec<_>>(),
             vec![

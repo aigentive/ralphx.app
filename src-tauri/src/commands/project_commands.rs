@@ -189,6 +189,11 @@ fn ensure_git_initialized(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[doc(hidden)]
+pub fn ensure_git_initialized_for_test(path: &str) -> Result<(), String> {
+    ensure_git_initialized(path)
+}
+
 /// Async, idempotent version of ensure_git_initialized for use in HTTP handlers.
 /// Uses TokioCommand to avoid blocking the async runtime.
 ///
