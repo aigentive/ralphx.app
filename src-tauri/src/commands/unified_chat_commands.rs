@@ -2143,12 +2143,10 @@ pub async fn update_agent_conversation_workspace_from_base(
             } else {
                 "Workspace branch updated from base"
             }
+        } else if publish_target.plan_branch.is_some() && push_status == "pushed" {
+            "Plan branch is current with base and pushed"
         } else {
-            if publish_target.plan_branch.is_some() && push_status == "pushed" {
-                "Plan branch is current with base and pushed"
-            } else {
-                "Workspace branch is current with base"
-            }
+            "Workspace branch is current with base"
         },
         None,
     )
