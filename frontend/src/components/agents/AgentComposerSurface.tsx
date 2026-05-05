@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Cpu,
   FolderOpen,
+  Gauge,
   Loader2,
   Paperclip,
   Plus,
@@ -95,6 +96,15 @@ interface ModelFieldConfig {
   className?: string;
 }
 
+interface EffortFieldConfig {
+  value: string;
+  onValueChange: (value: string) => void;
+  options: ComposerOption[];
+  disabled?: boolean;
+  testId?: string;
+  className?: string;
+}
+
 interface ModeFieldConfig {
   value: string;
   onValueChange: (value: string) => void;
@@ -131,6 +141,7 @@ export interface AgentComposerSurfaceProps {
   project: ProjectFieldConfig;
   provider: ProviderFieldConfig;
   model: ModelFieldConfig;
+  effort: EffortFieldConfig;
   onSend: (message: string) => Promise<void> | void;
   onStop?: (() => Promise<unknown> | void) | undefined;
   placeholder?: string;
@@ -163,6 +174,7 @@ export function AgentComposerSurface({
   project,
   provider,
   model,
+  effort,
   onSend,
   onStop,
   placeholder = "Ask the agent to plan, build, debug, or review something",
@@ -491,6 +503,7 @@ export function AgentComposerSurface({
               <ComposerRuntimePill
                 provider={provider}
                 model={model}
+                effort={effort}
                 className="flex-none"
               />
             </div>
@@ -829,10 +842,12 @@ function ComposerModeMenuSection({
 function ComposerRuntimePill({
   provider,
   model,
+  effort,
   className,
 }: {
   provider: ProviderFieldConfig;
   model: ModelFieldConfig;
+  effort: EffortFieldConfig;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -840,11 +855,20 @@ function ComposerRuntimePill({
     provider.options.find((o) => o.id === provider.value)?.label ?? provider.value;
   const modelLabel =
     model.options.find((o) => o.id === model.value)?.label ?? model.value;
+  const effortLabel =
+    effort.options.find((o) => o.id === effort.value)?.label ?? effort.value;
+  const runtimeSummary = [
+    providerLabel,
+    modelLabel,
+    effortLabel ? `${effortLabel} effort` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   // Skip the pill entirely when we have nothing to show (e.g., child chat
   // session whose effective runtime hasn't loaded yet). Avoids an empty
   // "·" placeholder.
-  if (!providerLabel && !modelLabel) {
+  if (!providerLabel && !modelLabel && !effortLabel) {
     return null;
   }
 
@@ -854,7 +878,7 @@ function ComposerRuntimePill({
         <button
           type="button"
           data-testid="agent-composer-runtime-pill"
-          aria-label={`Runtime: ${providerLabel} · ${modelLabel}. Click to change.`}
+          aria-label={`Runtime: ${runtimeSummary}. Click to change.`}
           className={cn(
             "flex h-10 shrink-0 items-center gap-2 rounded-[12px] border px-3 transition-colors",
             className
@@ -869,6 +893,12 @@ function ComposerRuntimePill({
             <span className="text-[var(--text-secondary)]">{providerLabel}</span>
             <span className="px-1 text-[var(--text-muted)]">·</span>
             <span>{modelLabel}</span>
+            {effortLabel && (
+              <>
+                <span className="px-1 text-[var(--text-muted)]">·</span>
+                <span>{effortLabel}</span>
+              </>
+            )}
           </span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--text-secondary)]" />
         </button>
@@ -907,6 +937,23 @@ function ComposerRuntimePill({
             setOpen(false);
           }}
         />
+        {effort.options.length > 0 && (
+          <>
+            <div className="my-1 h-px" style={{ background: "var(--overlay-weak)" }} />
+            <ComposerOptionList
+              label="Effort"
+              value={effort.value}
+              options={effort.options}
+              disabled={effort.disabled ?? false}
+              testId={effort.testId ?? "agent-composer-runtime-effort"}
+              icon={Gauge}
+              onValueChange={(value) => {
+                effort.onValueChange(value);
+                setOpen(false);
+              }}
+            />
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );

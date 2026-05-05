@@ -131,6 +131,7 @@ export function useStartAgentConversation({
         conversationId: resultConversationSeed.id,
         providerHarness: normalizedRuntime.provider,
         modelId: normalizedRuntime.modelId,
+        logicalEffort: normalizedRuntime.effort,
         mode,
         ...(base ? { base } : {}),
       });

@@ -37,4 +37,41 @@ describe("agentSessionStore", () => {
       showAllProjects: false,
     });
   });
+
+  it("migrates remembered runtimes to include model-specific effort", () => {
+    expect(
+      migrateAgentSessionStore(
+        {
+          runtimeByConversationId: {
+            "conversation-1": {
+              provider: "codex",
+              modelId: "gpt-5.4-mini",
+            },
+          },
+          lastRuntimeByProjectId: {
+            "project-1": {
+              provider: "claude",
+              modelId: "opus",
+            },
+          },
+        },
+        1,
+      ),
+    ).toMatchObject({
+      runtimeByConversationId: {
+        "conversation-1": {
+          provider: "codex",
+          modelId: "gpt-5.4-mini",
+          effort: "medium",
+        },
+      },
+      lastRuntimeByProjectId: {
+        "project-1": {
+          provider: "claude",
+          modelId: "opus",
+          effort: "high",
+        },
+      },
+    });
+  });
 });

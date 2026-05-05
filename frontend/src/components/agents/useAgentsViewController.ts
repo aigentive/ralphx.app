@@ -391,6 +391,7 @@ export function useAgentsViewController({
     activeProjectOptions,
     defaultRuntime,
     handleActiveConversationModeChange,
+    handleActiveEffortChange,
     handleActiveModelChange,
     switchingConversationModeId,
   } = useAgentsActiveComposerControls({
@@ -445,6 +446,7 @@ export function useAgentsViewController({
       isLoadingProjects,
       normalizedActiveRuntime,
       onActiveConversationModeChange: handleActiveConversationModeChange,
+      onActiveEffortChange: handleActiveEffortChange,
       onActiveModelChange: handleActiveModelChange,
       onAgentUserMessageSent: handleAgentUserMessageSent,
       onCreateProject,

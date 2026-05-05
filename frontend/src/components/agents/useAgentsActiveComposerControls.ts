@@ -8,12 +8,16 @@ import type {
   AgentConversationWorkspaceMode,
 } from "@/api/chat";
 import { invalidateConversationDataQueries } from "@/hooks/useChat";
-import type { AgentRuntimeSelection } from "@/stores/agentSessionStore";
+import type { AgentEffort, AgentRuntimeSelection } from "@/stores/agentSessionStore";
 import type { Project } from "@/types/project";
 
 import type { AgentConversation } from "./agentConversations";
 import { resolveConversationAgentMode } from "./agentConversationMode";
-import { DEFAULT_AGENT_RUNTIME } from "./agentOptions";
+import {
+  DEFAULT_AGENT_RUNTIME,
+  defaultEffortForModel,
+  normalizeRuntimeSelection,
+} from "./agentOptions";
 
 interface UseAgentsActiveComposerControlsArgs {
   activeConversation: AgentConversation | null;
@@ -78,10 +82,35 @@ export function useAgentsActiveComposerControls({
       setRuntimeForConversation(selectedConversationId, activeProjectId, {
         provider: normalizedActiveRuntime.provider,
         modelId,
+        effort: defaultEffortForModel(normalizedActiveRuntime.provider, modelId),
       });
     },
     [
       activeProjectId,
+      normalizedActiveRuntime.provider,
+      selectedConversationId,
+      setRuntimeForConversation,
+    ]
+  );
+
+  const handleActiveEffortChange = useCallback(
+    (effort: string) => {
+      if (!selectedConversationId || !activeProjectId) {
+        return;
+      }
+      setRuntimeForConversation(
+        selectedConversationId,
+        activeProjectId,
+        normalizeRuntimeSelection({
+          provider: normalizedActiveRuntime.provider,
+          modelId: normalizedActiveRuntime.modelId,
+          effort: effort as AgentEffort,
+        })
+      );
+    },
+    [
+      activeProjectId,
+      normalizedActiveRuntime.modelId,
       normalizedActiveRuntime.provider,
       selectedConversationId,
       setRuntimeForConversation,
@@ -139,6 +168,7 @@ export function useAgentsActiveComposerControls({
     activeProjectOptions,
     defaultRuntime,
     handleActiveConversationModeChange,
+    handleActiveEffortChange,
     handleActiveModelChange,
     switchingConversationModeId,
   };

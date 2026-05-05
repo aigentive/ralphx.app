@@ -11,6 +11,7 @@ describe("agentOptions", () => {
       normalizeRuntimeSelection({
         provider: "removed-provider",
         modelId: "retired-model",
+        effort: "high",
       } as never),
     ).toEqual(DEFAULT_AGENT_RUNTIME);
   });
@@ -20,10 +21,26 @@ describe("agentOptions", () => {
       normalizeRuntimeSelection({
         provider: "claude",
         modelId: "retired-model",
+        effort: "high",
       }),
     ).toEqual({
       provider: "claude",
       modelId: "sonnet",
+      effort: "medium",
+    });
+  });
+
+  it("keeps a valid provider/model and falls back to that model's default effort", () => {
+    expect(
+      normalizeRuntimeSelection({
+        provider: "codex",
+        modelId: "gpt-5.4-mini",
+        effort: "retired-effort",
+      }),
+    ).toEqual({
+      provider: "codex",
+      modelId: "gpt-5.4-mini",
+      effort: "medium",
     });
   });
 });

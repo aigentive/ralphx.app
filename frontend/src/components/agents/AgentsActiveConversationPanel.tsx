@@ -34,6 +34,7 @@ import {
   AGENT_CONVERSATION_MODE_OPTIONS,
 } from "./agentConversationMode";
 import {
+  AGENT_EFFORT_OPTIONS,
   AGENT_MODEL_OPTIONS,
   AGENT_PROVIDER_OPTIONS,
 } from "./agentOptions";
@@ -68,6 +69,7 @@ interface AgentsActiveConversationPanelProps {
   hasAutoOpenArtifacts: boolean;
   normalizedActiveRuntime: AgentRuntimeSelection;
   onActiveConversationModeChange: (mode: AgentConversationWorkspaceMode) => void;
+  onActiveEffortChange: (effort: string) => void;
   onActiveModelChange: (modelId: string) => void;
   onAgentUserMessageSent: (event: {
     content: string;
@@ -103,6 +105,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
   hasAutoOpenArtifacts,
   normalizedActiveRuntime,
   onActiveConversationModeChange,
+  onActiveEffortChange,
   onActiveModelChange,
   onAgentUserMessageSent,
   onFocusIdeationSession,
@@ -210,6 +213,7 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                   conversationId: selectedConversationId,
                   providerHarness: normalizedActiveRuntime.provider,
                   modelId: normalizedActiveRuntime.modelId,
+                  logicalEffort: normalizedActiveRuntime.effort,
                 },
               }
             : {})}
@@ -298,6 +302,12 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                           options:
                             AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
                         },
+                        effort: {
+                          value: normalizedActiveRuntime.effort,
+                          onValueChange: onActiveEffortChange,
+                          options: AGENT_EFFORT_OPTIONS,
+                          testId: "agents-conversation-effort",
+                        },
                       };
                     }
                     // Child chat: use the focused session's actual runtime
@@ -327,6 +337,12 @@ export const AgentsActiveConversationPanel = memo(function AgentsActiveConversat
                         options: childProvider
                           ? AGENT_MODEL_OPTIONS[childProvider]
                           : [],
+                        disabled: true,
+                      },
+                      effort: {
+                        value: "",
+                        onValueChange: () => undefined,
+                        options: [],
                         disabled: true,
                       },
                     };

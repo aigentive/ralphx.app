@@ -308,16 +308,19 @@ mod ipc_contract {
         StartAgentConversationInput, SwitchAgentConversationModeInput,
         UpdateAgentConversationTitleInput,
     };
+    use ralphx_lib::domain::agents::LogicalEffort;
 
     // ── SendAgentMessageInput ───────────────────────────────────────────────
 
     #[test]
     fn send_agent_message_input_deserializes_camel_case() {
-        let json = r#"{"contextType":"task_execution","contextId":"task-123","content":"Hello agent","target":null}"#;
+        let json = r#"{"contextType":"task_execution","contextId":"task-123","content":"Hello agent","modelOverride":"gpt-5.5","logicalEffort":"xhigh","target":null}"#;
         let input: SendAgentMessageInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.context_type, "task_execution");
         assert_eq!(input.context_id, "task-123");
         assert_eq!(input.content, "Hello agent");
+        assert_eq!(input.model_override.as_deref(), Some("gpt-5.5"));
+        assert_eq!(input.logical_effort, Some(LogicalEffort::XHigh));
         assert!(input.target.is_none());
     }
 
@@ -393,10 +396,12 @@ mod ipc_contract {
 
     #[test]
     fn start_agent_conversation_input_accepts_chat_mode_without_base() {
-        let json = r#"{"projectId":"project-1","content":"What changed?","mode":"chat","providerHarness":"codex","modelOverride":"gpt-5.4"}"#;
+        let json = r#"{"projectId":"project-1","content":"What changed?","mode":"chat","providerHarness":"codex","modelOverride":"gpt-5.5","logicalEffort":"xhigh"}"#;
         let input: StartAgentConversationInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.project_id, "project-1");
         assert_eq!(input.mode.as_deref(), Some("chat"));
+        assert_eq!(input.model_override.as_deref(), Some("gpt-5.5"));
+        assert_eq!(input.logical_effort, Some(LogicalEffort::XHigh));
         assert!(input.base_ref_kind.is_none());
         assert!(input.base_ref.is_none());
     }

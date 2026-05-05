@@ -61,6 +61,8 @@ pub struct SendAgentMessageInput {
     pub provider_harness: Option<String>,
     /// Optional explicit model override for the spawned agent.
     pub model_override: Option<String>,
+    /// Optional provider-neutral reasoning effort override for the spawned agent.
+    pub logical_effort: Option<LogicalEffort>,
     /// Optional target for team message routing.
     /// When set to a teammate name, the message is routed to that teammate's stdin
     /// instead of the lead's. "lead" or None routes to the lead (default behavior).
@@ -106,6 +108,8 @@ pub struct StartAgentConversationInput {
     pub provider_harness: Option<String>,
     /// Optional explicit model override for the spawned agent.
     pub model_override: Option<String>,
+    /// Optional provider-neutral reasoning effort override for the spawned agent.
+    pub logical_effort: Option<LogicalEffort>,
     /// Agent mode: "chat" routes to read-only explorer; all modes create a selected-base workspace for the runtime CWD.
     pub mode: Option<String>,
     /// Optional base ref kind using ideation naming: project_default, current_branch, local_branch.
@@ -1273,6 +1277,7 @@ pub async fn start_agent_conversation(
                 harness_override,
                 agent_name_override: Some(agent_name_for_workspace_mode(mode).to_string()),
                 model_override,
+                logical_effort_override: input.logical_effort,
                 conversation_id_override: Some(conversation.id),
                 ..Default::default()
             },
@@ -1571,6 +1576,7 @@ pub async fn send_agent_message(
             SendMessageOptions {
                 harness_override,
                 model_override,
+                logical_effort_override: input.logical_effort,
                 conversation_id_override,
                 ..Default::default()
             },

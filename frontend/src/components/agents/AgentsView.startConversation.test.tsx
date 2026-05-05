@@ -117,7 +117,8 @@ describe("AgentsView start conversation", () => {
           projectId: "project-1",
           content: "fix agent landing flow",
           providerHarness: "codex",
-          modelId: "gpt-5.4",
+          modelId: "gpt-5.5",
+          logicalEffort: "xhigh",
           mode: "edit",
           base: expect.objectContaining({
             kind: "project_default",
@@ -162,6 +163,7 @@ describe("AgentsView start conversation", () => {
         "project-1": {
           provider: "claude",
           modelId: "opus",
+          effort: "high",
         },
       },
     });
@@ -178,6 +180,7 @@ describe("AgentsView start conversation", () => {
         expect.objectContaining({
           providerHarness: "claude",
           modelId: "opus",
+          logicalEffort: "high",
         })
       )
     );
@@ -190,6 +193,7 @@ describe("AgentsView start conversation", () => {
         "project-1": {
           provider: "removed-provider" as never,
           modelId: "retired-model",
+          effort: "high",
         },
       },
     });
@@ -205,7 +209,8 @@ describe("AgentsView start conversation", () => {
       expect(startAgentConversationMock).toHaveBeenCalledWith(
         expect.objectContaining({
           providerHarness: "codex",
-          modelId: "gpt-5.4",
+          modelId: "gpt-5.5",
+          logicalEffort: "xhigh",
         })
       )
     );
@@ -219,11 +224,14 @@ describe("AgentsView start conversation", () => {
     await userEvent.click(screen.getByTestId("agent-composer-runtime-pill"));
     await userEvent.click(screen.getByTestId("agents-start-provider-claude"));
     await userEvent.click(screen.getByTestId("agents-start-model-opus"));
+    await userEvent.click(screen.getByTestId("agent-composer-runtime-pill"));
+    await userEvent.click(screen.getByTestId("agents-start-effort-high"));
 
     await waitFor(() =>
       expect(useAgentSessionStore.getState().lastRuntimeByProjectId["project-1"]).toEqual({
         provider: "claude",
         modelId: "opus",
+        effort: "high",
       })
     );
 
@@ -237,6 +245,7 @@ describe("AgentsView start conversation", () => {
         expect.objectContaining({
           providerHarness: "claude",
           modelId: "opus",
+          logicalEffort: "high",
         })
       )
     );
@@ -502,7 +511,8 @@ describe("AgentsView start conversation", () => {
           content: "review this note",
           conversationId: "conversation-seeded",
           providerHarness: "codex",
-          modelId: "gpt-5.4",
+          modelId: "gpt-5.5",
+          logicalEffort: "xhigh",
           mode: "edit",
         })
       )
