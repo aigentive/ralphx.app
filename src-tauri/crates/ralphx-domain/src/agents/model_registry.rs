@@ -115,6 +115,7 @@ pub struct AgentModelRegistrySnapshot {
 impl AgentModelRegistrySnapshot {
     pub fn merged(custom_models: Vec<AgentModelDefinition>) -> Self {
         let mut models = built_in_agent_models();
+        let mut custom_additions = Vec::new();
         for custom in custom_models {
             let custom = custom.normalized();
             if let Some(existing) = models.iter_mut().find(|model| {
@@ -122,16 +123,16 @@ impl AgentModelRegistrySnapshot {
             }) {
                 *existing = custom;
             } else {
-                models.push(custom);
+                custom_additions.push(custom);
             }
         }
-        models.sort_by_key(|model| {
+        custom_additions.sort_by_key(|model| {
             (
                 provider_order(model.provider),
-                model.source != AgentModelSource::BuiltIn,
                 model.menu_label.to_ascii_lowercase(),
             )
         });
+        models.extend(custom_additions);
         Self { models }
     }
 

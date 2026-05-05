@@ -106,6 +106,49 @@ describe("AgentModelsSection", () => {
     );
   });
 
+  it("validates model id and effort selection before saving", async () => {
+    render(<AgentModelsSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: /save model/i }));
+    expect(screen.getByText("Model ID is required")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Model ID"), {
+      target: { value: "gpt-5.8" },
+    });
+    for (const label of ["Low", "Medium", "High", "Extra High"]) {
+      fireEvent.click(screen.getByRole("checkbox", { name: label }));
+    }
+    fireEvent.click(screen.getByRole("button", { name: /save model/i }));
+
+    expect(screen.getByText("Select at least one effort")).toBeInTheDocument();
+    expect(upsertModelAsync).not.toHaveBeenCalled();
+  });
+
+  it("saves fallback labels, nullable description, and disabled state", async () => {
+    render(<AgentModelsSection />);
+
+    fireEvent.change(screen.getByLabelText("Model ID"), {
+      target: { value: "  gpt-5.8  " },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "   " },
+    });
+    fireEvent.click(screen.getByLabelText("Enabled"));
+    fireEvent.click(screen.getByRole("button", { name: /save model/i }));
+
+    await waitFor(() =>
+      expect(upsertModelAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          modelId: "gpt-5.8",
+          label: "gpt-5.8",
+          menuLabel: "gpt-5.8",
+          description: null,
+          enabled: false,
+        }),
+      ),
+    );
+  });
+
   it("can edit and delete custom models", async () => {
     render(<AgentModelsSection />);
 

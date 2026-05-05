@@ -251,6 +251,34 @@ describe("AgentsView start conversation", () => {
     );
   });
 
+  it("uses a typed custom model from the existing runtime selector popover", async () => {
+    mockAgentViewData();
+
+    renderAgentsView();
+
+    await userEvent.click(screen.getByTestId("agent-composer-runtime-pill"));
+    const customModelInput = screen.getByTestId("agents-start-model-custom-input");
+    await userEvent.clear(customModelInput);
+    await userEvent.type(customModelInput, "gpt-5.6{Enter}");
+    await userEvent.click(screen.getByTestId("agent-composer-runtime-pill"));
+    await userEvent.click(screen.getByTestId("agents-start-effort-high"));
+
+    fireEvent.change(screen.getByTestId("agents-start-textarea"), {
+      target: { value: "use a future model" },
+    });
+    fireEvent.click(screen.getByTestId("agents-start-submit"));
+
+    await waitFor(() =>
+      expect(startAgentConversationMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerHarness: "codex",
+          modelId: "gpt-5.6",
+          logicalEffort: "high",
+        })
+      )
+    );
+  });
+
   it("paints the conversation shell after seeding before the heavy agent start resolves", async () => {
     mockAgentViewData();
     const seededConversation = conversation({
