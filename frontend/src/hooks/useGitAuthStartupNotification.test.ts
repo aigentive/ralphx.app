@@ -81,6 +81,8 @@ describe("createStartupGitAuthToastOptions", () => {
     expect(options.duration).toBe(GIT_AUTH_STARTUP_TOAST_DURATION);
     expect(options.duration).toBe(Infinity);
     expect(options.id).toBe("git-auth-startup:project-1");
+    expect(options.className).toBe("git-auth-startup-toast");
+    expect(options.classNames?.actionButton).toBe("git-auth-startup-toast-action");
 
     options.action.onClick();
 

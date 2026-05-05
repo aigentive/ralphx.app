@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   CheckCircle2,
   ChevronDown,
@@ -69,41 +69,65 @@ interface InlineNoticeProps {
 
 const NOTICE_STYLES: Record<
   NoticeTone,
-  { wrapper: string; icon: React.ReactNode }
+  { style: CSSProperties; icon: React.ReactNode }
 > = {
   ok: {
-    wrapper:
-      "bg-[var(--notice-ok-bg)] border-[var(--notice-ok-border)] text-[var(--notice-ok-text)]",
+    style: {
+      backgroundColor: "var(--notice-ok-bg)",
+      borderColor: "var(--notice-ok-border)",
+      color: "var(--notice-ok-text)",
+    },
     icon: (
-      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--notice-ok-icon)]" />
+      <CheckCircle2
+        className="w-3.5 h-3.5 shrink-0 mt-0.5"
+        style={{ color: "var(--notice-ok-icon)" }}
+      />
     ),
   },
   warn: {
-    wrapper:
-      "bg-[var(--notice-warn-bg)] border-[var(--notice-warn-border)] text-[var(--notice-warn-text)]",
+    style: {
+      backgroundColor: "var(--notice-warn-bg)",
+      borderColor: "var(--notice-warn-border)",
+      color: "var(--notice-warn-text)",
+    },
     icon: (
-      <TriangleAlert className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--notice-warn-icon)]" />
+      <TriangleAlert
+        className="w-3.5 h-3.5 shrink-0 mt-0.5"
+        style={{ color: "var(--notice-warn-icon)" }}
+      />
     ),
   },
   info: {
-    wrapper:
-      "bg-[var(--notice-info-bg)] border-[var(--notice-info-border)] text-[var(--notice-info-text)]",
+    style: {
+      backgroundColor: "var(--notice-info-bg)",
+      borderColor: "var(--notice-info-border)",
+      color: "var(--notice-info-text)",
+    },
     icon: (
-      <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--notice-info-icon)]" />
+      <Info
+        className="w-3.5 h-3.5 shrink-0 mt-0.5"
+        style={{ color: "var(--notice-info-icon)" }}
+      />
     ),
   },
 };
 
 function InlineNotice({ tone, title, children }: InlineNoticeProps) {
-  const { wrapper, icon } = NOTICE_STYLES[tone];
+  const { style, icon } = NOTICE_STYLES[tone];
   return (
     <div
-      className={`flex items-start gap-2 rounded-md border px-3 py-2 text-[11px] leading-relaxed ${wrapper}`}
+      className="settings-inline-notice flex items-start gap-2 rounded-md border px-3 py-2 text-[11px] leading-relaxed"
+      style={style}
     >
       {icon}
       <div className="min-w-0 flex-1">
         {title && (
-          <div className="font-medium text-[var(--text-primary)]">{title}</div>
+          <div
+            className="font-medium"
+            style={{ color: "var(--notice-title-text, var(--text-primary))" }}
+          >
+            {title}
+          </div>
         )}
         <div className={title ? "mt-0.5" : undefined}>{children}</div>
       </div>

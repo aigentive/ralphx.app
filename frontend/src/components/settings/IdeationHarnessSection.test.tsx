@@ -139,6 +139,27 @@ describe("IdeationHarnessSection", () => {
     expect(screen.queryByText("Execution Worker")).not.toBeInTheDocument();
   });
 
+  it("renders settings notices with explicit token-backed paint styles", () => {
+    render(<IdeationHarnessSection />);
+
+    const lockedNotice = screen
+      .getByText(
+        "Temporarily locked for Codex: RalphX MCP tools currently require Never approval and Danger Full Access.",
+      )
+      .closest(".settings-inline-notice");
+
+    expect(lockedNotice).not.toBeNull();
+    expect(lockedNotice?.getAttribute("style")).toContain(
+      "background-color: var(--notice-info-bg)",
+    );
+    expect(lockedNotice?.getAttribute("style")).toContain(
+      "border-color: var(--notice-info-border)",
+    );
+    expect(lockedNotice?.getAttribute("style")).toContain(
+      "color: var(--notice-info-text)",
+    );
+  });
+
   it("allows switching model presets without clearing the current value first", async () => {
     render(<IdeationHarnessSection />);
 

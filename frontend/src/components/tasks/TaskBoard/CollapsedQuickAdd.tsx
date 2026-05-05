@@ -40,9 +40,9 @@ export function CollapsedQuickAdd({ onActivate }: CollapsedQuickAddProps) {
           alignItems: "center",
           width: "100%",
           marginTop: "8px",
-          padding: "8px 9px",
-          borderRadius: "10px",
-          border: "1.5px dashed var(--overlay-moderate)",
+          padding: "9px 12px",
+          borderRadius: "6px",
+          border: "1px dashed var(--border-strong)",
           backgroundColor: "transparent",
           cursor: "pointer",
           transition: "all 180ms cubic-bezier(0.4, 0, 0.2, 1)",
@@ -78,6 +78,7 @@ export function CollapsedQuickAdd({ onActivate }: CollapsedQuickAddProps) {
             fontWeight: 500,
             color: "var(--text-muted)",
             whiteSpace: "nowrap",
+            letterSpacing: 0,
             transition: "color 180ms ease",
           }}
         >
@@ -89,7 +90,7 @@ export function CollapsedQuickAdd({ onActivate }: CollapsedQuickAddProps) {
       <style>{`
         .collapsed-quick-add-btn:hover {
           border-color: var(--accent-primary) !important;
-          background-color: color-mix(in srgb, var(--accent-primary) 4%, transparent) !important;
+          background-color: var(--accent-muted) !important;
         }
         .collapsed-quick-add-btn:hover .collapsed-quick-add-icon {
           color: var(--accent-primary) !important;

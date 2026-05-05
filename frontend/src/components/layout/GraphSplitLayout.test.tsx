@@ -63,6 +63,9 @@ describe("GraphSplitLayout", () => {
 
     renderGraphSplitLayout();
 
+    expect(screen.getByTestId("graph-split-layout").getAttribute("style")).toContain(
+      "background-color: var(--app-content-bg)"
+    );
     expect(screen.getByTestId("task-detail-overlay")).toBeInTheDocument();
     expect(screen.getByTestId("task-detail-overlay")).toHaveAttribute("data-constrained", "true");
     expect(screen.getByTestId("timeline-content")).toBeInTheDocument();
