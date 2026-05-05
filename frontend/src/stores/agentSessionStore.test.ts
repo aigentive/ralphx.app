@@ -69,6 +69,31 @@ describe("agentSessionStore", () => {
         "project-1": {
           provider: "claude",
           modelId: "opus",
+          effort: "xhigh",
+        },
+      },
+    });
+  });
+
+  it("preserves valid remembered runtime efforts during migration", () => {
+    expect(
+      migrateAgentSessionStore(
+        {
+          lastRuntimeByProjectId: {
+            "project-1": {
+              provider: "claude",
+              modelId: "opus",
+              effort: "high",
+            },
+          },
+        },
+        1,
+      ),
+    ).toMatchObject({
+      lastRuntimeByProjectId: {
+        "project-1": {
+          provider: "claude",
+          modelId: "opus",
           effort: "high",
         },
       },

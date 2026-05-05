@@ -5,10 +5,12 @@ import type {
 } from "@/stores/agentSessionStore";
 import {
   AGENT_EFFORT_CATALOG,
-  AGENT_MODEL_CATALOG,
+  agentEffortOptionsForModel,
+  agentModelOptionsForProvider,
   defaultEffortForModel,
   defaultModelForProvider,
   normalizeAgentRuntimeSelection,
+  type AgentModelRegistry,
 } from "@/lib/agent-models";
 
 export interface AgentModelOption {
@@ -28,19 +30,6 @@ export const AGENT_PROVIDER_OPTIONS: Array<{ id: AgentProvider; label: string }>
   { id: "codex", label: "Codex" },
 ];
 
-export const AGENT_MODEL_OPTIONS: Record<AgentProvider, AgentModelOption[]> = {
-  claude: AGENT_MODEL_CATALOG.claude.map(({ id, menuLabel, description }) => ({
-    id,
-    label: menuLabel,
-    ...(description ? { description } : {}),
-  })),
-  codex: AGENT_MODEL_CATALOG.codex.map(({ id, menuLabel, description }) => ({
-    id,
-    label: menuLabel,
-    ...(description ? { description } : {}),
-  })),
-};
-
 export const AGENT_EFFORT_OPTIONS: AgentEffortOption[] = AGENT_EFFORT_CATALOG.map(
   ({ id, label, description }) => ({
     id,
@@ -55,7 +44,37 @@ export const DEFAULT_AGENT_RUNTIME: AgentRuntimeSelection =
 export { defaultEffortForModel, defaultModelForProvider };
 
 export function normalizeRuntimeSelection(
-  runtime: unknown
+  runtime: unknown,
+  registry?: AgentModelRegistry
 ): AgentRuntimeSelection {
-  return normalizeAgentRuntimeSelection(runtime);
+  return normalizeAgentRuntimeSelection(runtime, registry);
 }
+
+export function agentModelOptions(
+  provider: AgentProvider,
+  registry?: AgentModelRegistry
+): AgentModelOption[] {
+  return agentModelOptionsForProvider(provider, registry).map(
+    ({ id, menuLabel, description }) => ({
+      id,
+      label: menuLabel,
+      ...(description ? { description } : {}),
+    })
+  );
+}
+
+export function agentEffortOptions(
+  provider: AgentProvider,
+  modelId: string,
+  registry?: AgentModelRegistry
+): AgentEffortOption[] {
+  return agentEffortOptionsForModel(provider, modelId, registry).map(
+    ({ id, label, description }) => ({
+      id,
+      label,
+      description,
+    })
+  );
+}
+
+export { agentEffortOptionsForModel };

@@ -32,8 +32,11 @@ use crate::application::publish_resilience::{
     PublishBranchFreshnessOutcome, PublishBranchFreshnessStatus, PublishFailureClass,
 };
 use crate::application::{AppChatService, AppState, ChatService, ChatServiceError, SendResult};
+use crate::commands::agent_model_commands::load_agent_model_registry;
 use crate::commands::ExecutionState;
-use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
+use crate::domain::agents::{
+    default_effort_for_provider, default_efforts_for_provider, AgentHarnessKind, LogicalEffort,
+};
 use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus};
 use crate::domain::entities::{
     AgentConversationWorkspace, AgentConversationWorkspaceMode,
@@ -1115,6 +1118,62 @@ fn build_agent_workspace_commit_message(conversation: &ChatConversation) -> Stri
     format!("feat: {title}")
 }
 
+fn normalized_effort_for_supported(
+    requested: Option<LogicalEffort>,
+    supported_efforts: &[LogicalEffort],
+    default_effort: LogicalEffort,
+) -> LogicalEffort {
+    requested
+        .filter(|effort| supported_efforts.contains(effort))
+        .unwrap_or(default_effort)
+}
+
+async fn normalize_agent_runtime_selection(
+    state: &AppState,
+    provider: Option<AgentHarnessKind>,
+    model_override: Option<String>,
+    effort_override: Option<LogicalEffort>,
+) -> Result<(Option<String>, Option<LogicalEffort>), String> {
+    let Some(provider) = provider else {
+        return Ok((model_override, effort_override));
+    };
+
+    let snapshot = load_agent_model_registry(state).await?;
+    if let Some(model_id) = model_override {
+        if let Some(model) = snapshot.find_enabled(provider, &model_id) {
+            let effort = normalized_effort_for_supported(
+                effort_override,
+                &model.supported_efforts,
+                model.default_effort,
+            );
+            return Ok((Some(model_id), Some(effort)));
+        }
+
+        let effort = normalized_effort_for_supported(
+            effort_override,
+            default_efforts_for_provider(provider),
+            default_effort_for_provider(provider),
+        );
+        return Ok((Some(model_id), Some(effort)));
+    }
+
+    let effort = if let Some(default_model) = snapshot.default_for_provider(provider) {
+        normalized_effort_for_supported(
+            effort_override,
+            &default_model.supported_efforts,
+            default_model.default_effort,
+        )
+    } else {
+        normalized_effort_for_supported(
+            effort_override,
+            default_efforts_for_provider(provider),
+            default_effort_for_provider(provider),
+        )
+    };
+
+    Ok((None, Some(effort)))
+}
+
 // ============================================================================
 // Commands
 // ============================================================================
@@ -1268,6 +1327,13 @@ pub async fn start_agent_conversation(
         .map(str::trim)
         .filter(|model| !model.is_empty())
         .map(str::to_string);
+    let (model_override, logical_effort_override) = normalize_agent_runtime_selection(
+        &state,
+        harness_override,
+        model_override,
+        input.logical_effort,
+    )
+    .await?;
     let send_result = service
         .send_message(
             ChatContextType::Project,
@@ -1277,7 +1343,7 @@ pub async fn start_agent_conversation(
                 harness_override,
                 agent_name_override: Some(agent_name_for_workspace_mode(mode).to_string()),
                 model_override,
-                logical_effort_override: input.logical_effort,
+                logical_effort_override,
                 conversation_id_override: Some(conversation.id),
                 ..Default::default()
             },
@@ -1561,6 +1627,13 @@ pub async fn send_agent_message(
         .map(str::trim)
         .filter(|model| !model.is_empty())
         .map(str::to_string);
+    let (model_override, logical_effort_override) = normalize_agent_runtime_selection(
+        &state,
+        harness_override,
+        model_override,
+        input.logical_effort,
+    )
+    .await?;
     let conversation_id_override = input
         .conversation_id
         .as_deref()
@@ -1576,7 +1649,7 @@ pub async fn send_agent_message(
             SendMessageOptions {
                 harness_override,
                 model_override,
-                logical_effort_override: input.logical_effort,
+                logical_effort_override,
                 conversation_id_override,
                 ..Default::default()
             },
@@ -3372,12 +3445,13 @@ mod tests {
         build_agent_workspace_publish_repair_message_for_target,
         merge_delegated_snapshot_into_result, parse_wrapped_mcp_result_object,
         project_plan_branch_publication_into_workspace_response,
-        send_agent_workspace_publish_repair_message_for_target, AgentConversationResponse,
+        send_agent_workspace_publish_repair_message_for_target,
+        switch_agent_conversation_mode_for_state, AgentConversationResponse,
         AgentConversationWorkspaceRepairTarget, AgentConversationWorkspaceResponse,
         AgentWorkspaceRepairRuntimeOverrides, DelegatedToolRuntimeSnapshot,
-        SwitchAgentConversationModeInput, switch_agent_conversation_mode_for_state,
+        SwitchAgentConversationModeInput,
     };
-    use crate::application::{AppState, chat_service::MockChatService};
+    use crate::application::{chat_service::MockChatService, AppState};
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
     use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus};
     use crate::domain::entities::{
@@ -3666,12 +3740,18 @@ mod tests {
         .await
         .expect("mode switch succeeds");
 
-        assert_eq!(response.conversation.agent_mode.as_deref(), Some("ideation"));
+        assert_eq!(
+            response.conversation.agent_mode.as_deref(),
+            Some("ideation")
+        );
         assert_eq!(
             response.conversation.provider_session_id.as_deref(),
             Some("codex-thread-existing")
         );
-        assert_eq!(response.conversation.provider_harness.as_deref(), Some("codex"));
+        assert_eq!(
+            response.conversation.provider_harness.as_deref(),
+            Some("codex")
+        );
 
         let stored = state
             .chat_conversation_repo

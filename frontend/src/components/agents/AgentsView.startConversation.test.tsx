@@ -225,13 +225,13 @@ describe("AgentsView start conversation", () => {
     await userEvent.click(screen.getByTestId("agents-start-provider-claude"));
     await userEvent.click(screen.getByTestId("agents-start-model-opus"));
     await userEvent.click(screen.getByTestId("agent-composer-runtime-pill"));
-    await userEvent.click(screen.getByTestId("agents-start-effort-high"));
+    await userEvent.click(screen.getByTestId("agents-start-effort-max"));
 
     await waitFor(() =>
       expect(useAgentSessionStore.getState().lastRuntimeByProjectId["project-1"]).toEqual({
         provider: "claude",
         modelId: "opus",
-        effort: "high",
+        effort: "max",
       })
     );
 
@@ -245,7 +245,7 @@ describe("AgentsView start conversation", () => {
         expect.objectContaining({
           providerHarness: "claude",
           modelId: "opus",
-          logicalEffort: "high",
+          logicalEffort: "max",
         })
       )
     );

@@ -92,6 +92,8 @@ interface ModelFieldConfig {
   onValueChange: (value: string) => void;
   options: ComposerOption[];
   disabled?: boolean;
+  allowCustomValue?: boolean;
+  customPlaceholder?: string | undefined;
   testId?: string;
   className?: string;
 }
@@ -936,6 +938,8 @@ function ComposerRuntimePill({
             model.onValueChange(value);
             setOpen(false);
           }}
+          allowCustomValue={model.allowCustomValue ?? false}
+          customPlaceholder={model.customPlaceholder}
         />
         {effort.options.length > 0 && (
           <>
@@ -967,6 +971,8 @@ function ComposerOptionList({
   testId,
   icon: Icon,
   onValueChange,
+  allowCustomValue = false,
+  customPlaceholder = "Custom value",
 }: {
   label: string;
   value: string;
@@ -975,7 +981,26 @@ function ComposerOptionList({
   testId?: string;
   icon: ComponentType<{ className?: string }>;
   onValueChange: (value: string) => void;
+  allowCustomValue?: boolean;
+  customPlaceholder?: string | undefined;
 }) {
+  const [customValue, setCustomValue] = useState("");
+  const hasCurrentOption = options.some((option) => option.id === value);
+
+  useEffect(() => {
+    if (!hasCurrentOption) {
+      setCustomValue(value);
+    }
+  }, [hasCurrentOption, value]);
+
+  const commitCustomValue = useCallback(() => {
+    const nextValue = customValue.trim();
+    if (!nextValue || disabled) {
+      return;
+    }
+    onValueChange(nextValue);
+  }, [customValue, disabled, onValueChange]);
+
   return (
     <div className="py-1">
       <div className="flex items-center gap-1.5 px-2 py-1">
@@ -1017,6 +1042,35 @@ function ComposerOptionList({
           );
         })}
       </div>
+      {allowCustomValue && (
+        <div className="mt-1.5 flex items-center gap-1.5 px-1">
+          <Input
+            value={customValue}
+            onChange={(event) => setCustomValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitCustomValue();
+              }
+            }}
+            disabled={disabled}
+            placeholder={customPlaceholder}
+            data-testid={testId ? `${testId}-custom-input` : undefined}
+            className="h-8 min-w-0 flex-1 rounded-md border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={disabled || customValue.trim().length === 0}
+            onClick={commitCustomValue}
+            data-testid={testId ? `${testId}-custom-apply` : undefined}
+            className="h-8 rounded-md px-2 text-[12px]"
+          >
+            Use
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

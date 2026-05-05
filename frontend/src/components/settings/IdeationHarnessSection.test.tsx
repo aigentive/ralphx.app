@@ -13,6 +13,30 @@ vi.mock("@/hooks/useIdeationHarnessSettings", () => ({
   useAgentHarnessSettings: vi.fn(),
 }));
 
+vi.mock("@/hooks/useAgentModels", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/agent-models")>(
+    "@/lib/agent-models",
+  );
+  return {
+    useAgentModels: () => ({
+      models: [],
+      registry: actual.AGENT_MODEL_CATALOG,
+      isLoading: false,
+      isPlaceholderData: false,
+      isError: false,
+      error: null,
+      upsertModel: vi.fn(),
+      upsertModelAsync: vi.fn(),
+      isUpserting: false,
+      upsertError: null,
+      deleteModel: vi.fn(),
+      deleteModelAsync: vi.fn(),
+      isDeleting: false,
+      deleteError: null,
+    }),
+  };
+});
+
 vi.mock("@/stores/projectStore", () => ({
   useProjectStore: vi.fn(),
   selectActiveProject: (state: { activeProject: unknown }) => state.activeProject,
@@ -151,7 +175,7 @@ describe("IdeationHarnessSection", () => {
           lane: "ideation_primary",
           harness: "codex",
           model: "gpt-5.4-mini",
-          effort: "xhigh",
+          effort: null,
           approvalPolicy: "never",
           sandboxMode: "danger-full-access",
         },
@@ -190,9 +214,9 @@ describe("IdeationHarnessSection", () => {
 
     openSelect("model-ideation_verifier");
 
-    expect(screen.getByRole("option", { name: "sonnet" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "opus" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "haiku" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /sonnet/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /opus/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /haiku/ })).toBeInTheDocument();
   });
 
   it("exposes explicit accessible labels for provider and model controls", () => {
@@ -202,10 +226,10 @@ describe("IdeationHarnessSection", () => {
     expect(screen.getByLabelText("Primary Ideation model")).toBeInTheDocument();
   });
 
-  it("shows effort options with clearer labels including Default and Maximum", () => {
+  it("shows effort options with clearer labels including Default and Extra High", () => {
     render(<IdeationHarnessSection />);
 
-    // The effort select for ideation_primary shows "Maximum" for xhigh
+    // The effort select for ideation_primary shows "Extra High" for xhigh
     // Check that the effort dropdowns render with the updated labels in the DOM
     const effortTriggers = document.querySelectorAll('[placeholder="Select effort"]');
     expect(effortTriggers.length).toBe(0); // triggers don't have placeholders; SelectValue shows selected

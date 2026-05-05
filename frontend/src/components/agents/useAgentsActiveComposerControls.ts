@@ -10,6 +10,7 @@ import type {
 import { invalidateConversationDataQueries } from "@/hooks/useChat";
 import type { AgentEffort, AgentRuntimeSelection } from "@/stores/agentSessionStore";
 import type { Project } from "@/types/project";
+import type { AgentModelRegistry } from "@/lib/agent-models";
 
 import type { AgentConversation } from "./agentConversations";
 import { resolveConversationAgentMode } from "./agentConversationMode";
@@ -27,6 +28,7 @@ interface UseAgentsActiveComposerControlsArgs {
   defaultProjectId: string | null;
   invalidateProjectConversations: (targetProjectId: string) => Promise<unknown>;
   lastRuntimeByProjectId: Record<string, AgentRuntimeSelection>;
+  modelRegistry: AgentModelRegistry;
   normalizedActiveRuntime: AgentRuntimeSelection;
   projects: Project[];
   queryClient: QueryClient;
@@ -47,6 +49,7 @@ export function useAgentsActiveComposerControls({
   defaultProjectId,
   invalidateProjectConversations,
   lastRuntimeByProjectId,
+  modelRegistry,
   normalizedActiveRuntime,
   projects,
   queryClient,
@@ -82,11 +85,16 @@ export function useAgentsActiveComposerControls({
       setRuntimeForConversation(selectedConversationId, activeProjectId, {
         provider: normalizedActiveRuntime.provider,
         modelId,
-        effort: defaultEffortForModel(normalizedActiveRuntime.provider, modelId),
+        effort: defaultEffortForModel(
+          normalizedActiveRuntime.provider,
+          modelId,
+          modelRegistry
+        ),
       });
     },
     [
       activeProjectId,
+      modelRegistry,
       normalizedActiveRuntime.provider,
       selectedConversationId,
       setRuntimeForConversation,
@@ -101,15 +109,19 @@ export function useAgentsActiveComposerControls({
       setRuntimeForConversation(
         selectedConversationId,
         activeProjectId,
-        normalizeRuntimeSelection({
-          provider: normalizedActiveRuntime.provider,
-          modelId: normalizedActiveRuntime.modelId,
-          effort: effort as AgentEffort,
-        })
+        normalizeRuntimeSelection(
+          {
+            provider: normalizedActiveRuntime.provider,
+            modelId: normalizedActiveRuntime.modelId,
+            effort: effort as AgentEffort,
+          },
+          modelRegistry,
+        ),
       );
     },
     [
       activeProjectId,
+      modelRegistry,
       normalizedActiveRuntime.modelId,
       normalizedActiveRuntime.provider,
       selectedConversationId,
