@@ -1,8 +1,7 @@
 /**
- * InlineTaskAdd - Quick Add Task widget with macOS Tahoe styling
+ * InlineTaskAdd - Quick Add Task widget with v29a Kanban styling
  *
- * A native-feeling inline task creation widget that appears on column hover.
- * Features frosted glass aesthetics, refined typography, and smooth spring animations.
+ * A compact inline task creation widget that appears in draft/backlog columns.
  *
  * Keyboard shortcuts:
  * - Enter: Create task (from title or description)
@@ -138,27 +137,26 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
       <>
         <style>{`
           .inline-task-add-collapsed {
-            border: 1.5px dashed var(--overlay-moderate) !important;
+            border-color: var(--border-strong) !important;
+            border-style: dashed !important;
+            border-width: 1px !important;
             background-color: transparent;
-            transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+            transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease;
           }
           .inline-task-add-collapsed:hover {
-            border-color: var(--accent-primary) !important;
-            background-color: color-mix(in srgb, var(--accent-primary) 4%, transparent);
+            border-color: var(--border-strong) !important;
+            border-style: solid !important;
+            background-color: var(--bg-elevated);
           }
           .inline-task-add-collapsed .add-icon {
             background-color: transparent;
-            transition: background-color 180ms ease;
-          }
-          .inline-task-add-collapsed:hover .add-icon {
-            background-color: color-mix(in srgb, var(--accent-primary) 12%, transparent);
           }
           .inline-task-add-collapsed .add-content {
             color: var(--text-muted);
             transition: color 180ms ease;
           }
           .inline-task-add-collapsed:hover .add-content {
-            color: var(--accent-primary);
+            color: var(--text-primary);
           }
         `}</style>
         <button
@@ -166,36 +164,36 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
           onClick={handleExpand}
           className="inline-task-add-collapsed group w-full relative overflow-hidden"
           style={{
-            padding: "10px 12px",
-            borderRadius: "10px",
+            padding: "9px 12px",
+            borderRadius: "6px",
             cursor: "pointer",
           }}
         >
-          <div className="add-content flex items-center gap-2">
+          <div className="add-content flex items-center justify-center gap-[7px]">
             <div
               className="add-icon"
               style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: "18px",
-                height: "18px",
+                width: "12px",
+                height: "12px",
                 borderRadius: "5px",
               }}
             >
               <Plus
                 style={{
-                  width: "13px",
-                  height: "13px",
-                  strokeWidth: 2.5,
+                  width: "12px",
+                  height: "12px",
+                  strokeWidth: 2,
                 }}
               />
             </div>
             <span
               style={{
-                fontSize: "13px",
+                fontSize: "12.5px",
                 fontWeight: 500,
-                letterSpacing: "-0.01em",
+                letterSpacing: 0,
               }}
             >
               Add task
@@ -213,10 +211,12 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
       className="w-full relative"
       style={{
         padding: "12px",
-        borderRadius: "10px",
-        backgroundColor: "var(--bg-surface)",
-        border: "1px solid var(--overlay-weak)",
-        boxShadow: "var(--shadow-md)",
+        borderRadius: "8px",
+        backgroundColor: "var(--kanban-card-bg)",
+        borderColor: "var(--kanban-card-border)",
+        borderStyle: "solid",
+        borderWidth: "1px",
+        boxShadow: "none",
         animation: "fadeInScale 180ms cubic-bezier(0.34, 1.56, 0.64, 1)",
       }}
     >
@@ -245,7 +245,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             color: "var(--text-primary)",
             fontSize: "13px",
             fontWeight: 500,
-            letterSpacing: "-0.01em",
+            letterSpacing: 0,
             boxShadow: "none",
             outline: "none",
           }}
@@ -267,7 +267,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
                 fontSize: "9px",
                 fontWeight: 600,
                 color: "var(--text-muted)",
-                letterSpacing: "0.02em",
+                letterSpacing: 0,
                 textTransform: "uppercase",
               }}
             >
@@ -318,7 +318,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
               color: "var(--text-secondary)",
               fontSize: "12px",
               lineHeight: 1.5,
-              letterSpacing: "-0.006em",
+              letterSpacing: 0,
               marginTop: "8px",
               paddingTop: "8px",
               borderTop: "1px solid var(--overlay-weak)",
@@ -367,7 +367,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
               fontSize: "11px",
               fontWeight: 500,
               color: "var(--accent-primary)",
-              letterSpacing: "-0.006em",
+              letterSpacing: 0,
             }}
           >
             More

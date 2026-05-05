@@ -225,6 +225,20 @@ describe("TaskBoard", () => {
         expect(board).toHaveClass("overflow-x-auto");
       });
     });
+
+    it("keeps the kanban toolbar divider on the v29a line token", async () => {
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
+
+      render(<TaskBoard projectId="p1" />, { wrapper: createWrapper() });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("kanban-toolbar")).toHaveStyle({
+          borderBottomColor: "var(--kanban-toolbar-border, #2E2E36)",
+          borderBottomStyle: "solid",
+          borderBottomWidth: "1px",
+        });
+      });
+    });
   });
 
   describe("error handling", () => {

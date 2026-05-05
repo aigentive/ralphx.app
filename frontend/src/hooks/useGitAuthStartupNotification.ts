@@ -24,6 +24,10 @@ export function createStartupGitAuthToastOptions(
   return {
     duration: GIT_AUTH_STARTUP_TOAST_DURATION,
     id: `git-auth-startup:${projectId}`,
+    className: "git-auth-startup-toast",
+    classNames: {
+      actionButton: "git-auth-startup-toast-action",
+    },
     action: {
       label: "Open Settings",
       onClick: () => openModal("settings", { section: "repository" }),

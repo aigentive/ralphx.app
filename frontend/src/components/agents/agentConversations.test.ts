@@ -148,11 +148,11 @@ describe("agent conversations", () => {
     expect(formatAgentConversationCreatedAt(new Date(2026, 3, 25, 14, 33, 0))).toBe("2 hours ago");
   });
 
-  it("formats old sidebar timestamps as time then date", () => {
+  it("formats old sidebar timestamps as date-only labels", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 3, 25, 16, 33, 0));
 
-    expect(formatAgentConversationCreatedAt(new Date(2026, 3, 17, 16, 33, 0))).toBe("4:33 PM * Apr 17");
+    expect(formatAgentConversationCreatedAt(new Date(2026, 3, 17, 16, 33, 0))).toBe("Apr 17");
   });
 
   it("provides a full sidebar timestamp title", () => {
