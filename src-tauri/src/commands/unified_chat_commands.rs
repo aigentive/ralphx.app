@@ -3443,7 +3443,8 @@ pub async fn update_agent_conversation_title(
 mod tests {
     use super::{
         build_agent_workspace_publish_repair_message_for_target,
-        merge_delegated_snapshot_into_result, parse_wrapped_mcp_result_object,
+        merge_delegated_snapshot_into_result, normalize_agent_runtime_selection,
+        normalized_effort_for_supported, parse_wrapped_mcp_result_object,
         project_plan_branch_publication_into_workspace_response,
         send_agent_workspace_publish_repair_message_for_target,
         switch_agent_conversation_mode_for_state, AgentConversationResponse,
@@ -3452,7 +3453,9 @@ mod tests {
         SwitchAgentConversationModeInput,
     };
     use crate::application::{chat_service::MockChatService, AppState};
-    use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
+    use crate::domain::agents::{
+        AgentHarnessKind, AgentModelDefinition, LogicalEffort, ProviderSessionRef,
+    };
     use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus};
     use crate::domain::entities::{
         AgentConversationWorkspace, AgentConversationWorkspaceMode, ArtifactId, ChatConversation,
@@ -3461,6 +3464,141 @@ mod tests {
     };
     use serde_json::json;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn normalized_effort_for_supported_keeps_supported_request_or_default() {
+        let supported = [
+            LogicalEffort::Low,
+            LogicalEffort::Medium,
+            LogicalEffort::High,
+        ];
+
+        assert_eq!(
+            normalized_effort_for_supported(
+                Some(LogicalEffort::High),
+                &supported,
+                LogicalEffort::Medium,
+            ),
+            LogicalEffort::High
+        );
+        assert_eq!(
+            normalized_effort_for_supported(
+                Some(LogicalEffort::Max),
+                &supported,
+                LogicalEffort::Medium,
+            ),
+            LogicalEffort::Medium
+        );
+        assert_eq!(
+            normalized_effort_for_supported(None, &supported, LogicalEffort::Low),
+            LogicalEffort::Low
+        );
+    }
+
+    #[tokio::test]
+    async fn normalize_agent_runtime_without_provider_preserves_overrides() {
+        let state = AppState::new_test();
+
+        let normalized = normalize_agent_runtime_selection(
+            &state,
+            None,
+            Some("manual-model".to_string()),
+            Some(LogicalEffort::Max),
+        )
+        .await
+        .expect("normalization should preserve providerless overrides");
+
+        assert_eq!(
+            normalized,
+            (Some("manual-model".to_string()), Some(LogicalEffort::Max))
+        );
+    }
+
+    #[tokio::test]
+    async fn normalize_agent_runtime_uses_known_model_compatibility() {
+        let state = AppState::new_test();
+
+        let normalized = normalize_agent_runtime_selection(
+            &state,
+            Some(AgentHarnessKind::Claude),
+            Some("haiku".to_string()),
+            Some(LogicalEffort::Max),
+        )
+        .await
+        .expect("known model should normalize");
+
+        assert_eq!(
+            normalized,
+            (Some("haiku".to_string()), Some(LogicalEffort::Medium))
+        );
+    }
+
+    #[tokio::test]
+    async fn normalize_agent_runtime_uses_provider_defaults_for_unknown_model() {
+        let state = AppState::new_test();
+
+        let normalized = normalize_agent_runtime_selection(
+            &state,
+            Some(AgentHarnessKind::Codex),
+            Some("gpt-5.6".to_string()),
+            Some(LogicalEffort::Max),
+        )
+        .await
+        .expect("unknown model should use provider defaults");
+
+        assert_eq!(
+            normalized,
+            (Some("gpt-5.6".to_string()), Some(LogicalEffort::XHigh))
+        );
+    }
+
+    #[tokio::test]
+    async fn normalize_agent_runtime_uses_registry_default_when_model_absent() {
+        let state = AppState::new_test();
+
+        let normalized = normalize_agent_runtime_selection(
+            &state,
+            Some(AgentHarnessKind::Codex),
+            None,
+            Some(LogicalEffort::Low),
+        )
+        .await
+        .expect("missing model should use registry defaults");
+
+        assert_eq!(normalized, (None, Some(LogicalEffort::Low)));
+    }
+
+    #[tokio::test]
+    async fn normalize_agent_runtime_falls_back_when_provider_models_disabled() {
+        let state = AppState::new_test();
+        for model_id in ["sonnet", "opus", "haiku"] {
+            state
+                .agent_model_registry_repo
+                .upsert_custom_model(&AgentModelDefinition::custom(
+                    AgentHarnessKind::Claude,
+                    model_id,
+                    model_id,
+                    model_id,
+                    None,
+                    vec![LogicalEffort::Low],
+                    LogicalEffort::Low,
+                    false,
+                ))
+                .await
+                .expect("disabled override should save");
+        }
+
+        let normalized = normalize_agent_runtime_selection(
+            &state,
+            Some(AgentHarnessKind::Claude),
+            None,
+            Some(LogicalEffort::Max),
+        )
+        .await
+        .expect("missing enabled default should use provider fallback");
+
+        assert_eq!(normalized, (None, Some(LogicalEffort::Medium)));
+    }
 
     #[test]
     fn linked_plan_branch_publication_is_projected_into_workspace_response() {
