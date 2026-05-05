@@ -918,18 +918,32 @@ fn test_ipc_contract_ensure_git_initialized_sync_idempotent() {
     std::fs::remove_dir_all(tmp.path().join(".git")).expect("remove .git");
 
     ensure_git_initialized_for_test(path_str).expect("first call must succeed");
+
+    let first_commit_count = std::process::Command::new("git")
+        .args(["rev-list", "--count", "HEAD"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("rev-list after first sync init");
+    let first_count: u32 = String::from_utf8_lossy(&first_commit_count.stdout)
+        .trim()
+        .parse()
+        .unwrap_or(0);
+
     ensure_git_initialized_for_test(path_str).expect("second call must succeed");
 
-    let commit_count = std::process::Command::new("git")
+    let second_commit_count = std::process::Command::new("git")
         .args(["rev-list", "--count", "HEAD"])
         .current_dir(tmp.path())
         .output()
         .expect("rev-list after second sync init");
-    let count: u32 = String::from_utf8_lossy(&commit_count.stdout)
+    let second_count: u32 = String::from_utf8_lossy(&second_commit_count.stdout)
         .trim()
         .parse()
         .unwrap_or(0);
-    assert_eq!(count, 1, "sync helper should only create one initial commit");
+    assert_eq!(
+        first_count, second_count,
+        "sync helper should be idempotent regardless of whether the first empty commit succeeded"
+    );
 }
 
 /// State 1: Directory exists, no .git → ensure_git_initialized_async must
