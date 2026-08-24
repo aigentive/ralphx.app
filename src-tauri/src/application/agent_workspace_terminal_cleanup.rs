@@ -129,33 +129,37 @@ pub(crate) async fn terminalize_agent_workspace_after_pr(
     project: &Project,
     cause: TerminalAgentWorkspaceCause,
 ) -> TerminalAgentWorkspaceOutcome {
+    // A read failure is degraded state and stays fail-closed, but a vanished workspace row is a
+    // definitive absence: there are no persisted fixer runtimes left to enumerate. Fall back to the
+    // conversation's own runtime and let local cleanup report the missing row, so the poller's
+    // terminal retry loop cannot spin forever on a workspace that no longer exists.
     let workspace = match workspace_repo.get_by_conversation_id(conversation_id).await {
-        Ok(Some(workspace)) => workspace,
-        Ok(None) => {
-            return TerminalAgentWorkspaceOutcome::runtime_blocked(
-                "Agent workspace disappeared before terminal runtime cleanup".to_string(),
-            );
-        }
+        Ok(workspace) => workspace,
         Err(error) => {
             return TerminalAgentWorkspaceOutcome::runtime_blocked(format!(
                 "Failed to load the workspace before terminal runtime cleanup: {error}"
             ));
         }
     };
-    let observed_publish_lease_token = workspace.publish_lease_token.clone();
-    let mut runtime_conversations = match agent_workspace_fixer_runtime_conversations(
-        &workspace,
-        workspace_repo.as_ref(),
-        repair_repo.as_ref(),
-    )
-    .await
-    {
-        Ok(conversations) => conversations,
-        Err(error) => {
-            return TerminalAgentWorkspaceOutcome::runtime_blocked(format!(
-                "Failed to resolve workspace fixer runtimes: {error}"
-            ));
-        }
+    let observed_publish_lease_token = workspace
+        .as_ref()
+        .and_then(|workspace| workspace.publish_lease_token.clone());
+    let mut runtime_conversations = match workspace.as_ref() {
+        Some(workspace) => match agent_workspace_fixer_runtime_conversations(
+            workspace,
+            workspace_repo.as_ref(),
+            repair_repo.as_ref(),
+        )
+        .await
+        {
+            Ok(conversations) => conversations,
+            Err(error) => {
+                return TerminalAgentWorkspaceOutcome::runtime_blocked(format!(
+                    "Failed to resolve workspace fixer runtimes: {error}"
+                ));
+            }
+        },
+        None => vec![*conversation_id],
     };
     match workspace_repo
         .get_workspace_review_monitor(conversation_id)
