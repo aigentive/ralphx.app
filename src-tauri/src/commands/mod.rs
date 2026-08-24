@@ -17,6 +17,9 @@ pub mod agent_plan_commands;
 mod agent_plan_commands_tests;
 pub mod agent_profile_commands;
 pub mod agent_sidebar_commands;
+pub(crate) mod agent_sidebar_review_state;
+#[cfg(test)]
+mod agent_sidebar_review_state_tests;
 pub mod agent_terminal_commands;
 pub(crate) mod agent_workspace_completion_dispatch;
 #[cfg(test)]
@@ -86,9 +89,15 @@ pub mod permission_commands;
 pub mod persona_commands;
 pub mod plan_branch_commands;
 pub mod plan_commands;
+pub mod project_clone_commands;
+#[cfg(test)]
+mod project_clone_commands_tests;
 pub mod project_commands;
 #[cfg(test)]
 mod project_commands_tests;
+pub mod project_probe_commands;
+#[cfg(test)]
+mod project_probe_commands_tests;
 pub mod provider_cli_management_commands;
 pub mod qa_commands;
 pub mod question_commands;

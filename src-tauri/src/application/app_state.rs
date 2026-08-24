@@ -394,6 +394,11 @@ pub struct AppState {
     pub streaming_state_cache: crate::application::chat_service::StreamingStateCache,
     /// Interactive process registry for stdin-based multi-turn messaging
     pub interactive_process_registry: Arc<crate::application::InteractiveProcessRegistry>,
+    /// Live project-clone jobs and their retained terminal outcomes.
+    ///
+    /// Tauri-graph only: no MCP/HTTP caller exists, so this is deliberately not
+    /// cloned into the HTTP object graph in `shell/runtime_wiring.rs`.
+    pub clone_jobs: Arc<crate::application::clone_job_registry::CloneJobRegistry>,
     /// Provider-neutral event sink for backend UI/runtime events.
     pub events: Arc<dyn EventSink>,
     /// Shared backend event bus used by the event sink and later internal subscribers.
@@ -1816,6 +1821,7 @@ impl AppState {
             interactive_process_registry: Arc::new(
                 crate::application::InteractiveProcessRegistry::new(),
             ),
+            clone_jobs: Arc::new(crate::application::clone_job_registry::CloneJobRegistry::new()),
             events,
             internal_event_bus,
             app_paths,
@@ -2058,6 +2064,7 @@ impl AppState {
             interactive_process_registry: Arc::new(
                 crate::application::InteractiveProcessRegistry::new(),
             ),
+            clone_jobs: Arc::new(crate::application::clone_job_registry::CloneJobRegistry::new()),
             events,
             internal_event_bus,
             app_paths,
@@ -2265,6 +2272,7 @@ impl AppState {
             interactive_process_registry: Arc::new(
                 crate::application::InteractiveProcessRegistry::new(),
             ),
+            clone_jobs: Arc::new(crate::application::clone_job_registry::CloneJobRegistry::new()),
             events,
             internal_event_bus,
             app_paths,
@@ -2498,6 +2506,7 @@ impl AppState {
             interactive_process_registry: Arc::new(
                 crate::application::InteractiveProcessRegistry::new(),
             ),
+            clone_jobs: Arc::new(crate::application::clone_job_registry::CloneJobRegistry::new()),
             events,
             internal_event_bus,
             app_paths,
@@ -2690,6 +2699,7 @@ impl AppState {
             interactive_process_registry: Arc::new(
                 crate::application::InteractiveProcessRegistry::new(),
             ),
+            clone_jobs: Arc::new(crate::application::clone_job_registry::CloneJobRegistry::new()),
             events,
             internal_event_bus,
             app_paths,

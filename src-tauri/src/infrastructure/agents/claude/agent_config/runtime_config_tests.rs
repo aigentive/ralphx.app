@@ -61,6 +61,7 @@ fn test_all_defaults_are_sensible() {
     assert_eq!(cfg.reconciliation.validation_deadline_secs, 1200);
     assert_eq!(cfg.reconciliation.branch_freshness_timeout_secs, 60);
     assert_eq!(cfg.git.cmd_timeout_secs, 60);
+    assert_eq!(cfg.git.clone_timeout_secs, 900);
     assert_eq!(cfg.git.startup_auth_preflight_timeout_secs, 10);
     assert_eq!(cfg.git.retry_backoff_secs, vec![1, 2, 4]);
     assert_eq!(cfg.git.provider_probe_cache_ttl_secs, 300);
@@ -107,6 +108,22 @@ fn test_all_defaults_are_sensible() {
     assert_eq!(
         default_agent_workspace_repair_reconciliation_scan_interval_secs(),
         60
+    );
+    assert_eq!(
+        cfg.git.agent_workspace_repair_inert_effect_min_age_secs,
+        300
+    );
+    assert_eq!(
+        default_agent_workspace_repair_inert_effect_min_age_secs(),
+        300
+    );
+    assert_eq!(
+        cfg.git.agent_workspace_repair_wedged_attempt_max_age_secs,
+        86_400
+    );
+    assert_eq!(
+        default_agent_workspace_repair_wedged_attempt_max_age_secs(),
+        86_400
     );
     assert_eq!(cfg.git.terminal_pr_local_cleanup_interval_secs, 900);
     assert_eq!(cfg.git.terminal_pr_local_cleanup_retry_secs, 3_600);
@@ -238,6 +255,7 @@ fn test_env_overrides_apply() {
         "RALPHX_DB_AUTO_COMPACT_MIN_FREELIST_PERCENT" => Some("35".to_string()),
         "RALPHX_RECONCILIATION_MERGER_TIMEOUT_SECS" => Some("2400".to_string()),
         "RALPHX_GIT_CMD_TIMEOUT_SECS" => Some("120".to_string()),
+        "RALPHX_GIT_CLONE_TIMEOUT_SECS" => Some("1800".to_string()),
         "RALPHX_GIT_STARTUP_AUTH_PREFLIGHT_TIMEOUT_SECS" => Some("9".to_string()),
         "RALPHX_GIT_RETRY_BACKOFF_SECS" => Some("2,4,8,16".to_string()),
         "RALPHX_GIT_PROVIDER_PROBE_CACHE_TTL_SECS" => Some("120".to_string()),
@@ -259,6 +277,10 @@ fn test_env_overrides_apply() {
         "RALPHX_GIT_AGENT_WORKSPACE_PUBLISH_RECOVERY_INTERVAL_SECS" => Some("180".to_string()),
         "RALPHX_GIT_AGENT_WORKSPACE_REPAIR_RECONCILIATION_SCAN_INTERVAL_SECS" => {
             Some("90".to_string())
+        }
+        "RALPHX_GIT_AGENT_WORKSPACE_REPAIR_INERT_EFFECT_MIN_AGE_SECS" => Some("450".to_string()),
+        "RALPHX_GIT_AGENT_WORKSPACE_REPAIR_WEDGED_ATTEMPT_MAX_AGE_SECS" => {
+            Some("43200".to_string())
         }
         "RALPHX_GIT_TERMINAL_PR_LOCAL_CLEANUP_INTERVAL_SECS" => Some("300".to_string()),
         "RALPHX_GIT_TERMINAL_PR_LOCAL_CLEANUP_RETRY_SECS" => Some("1800".to_string()),
@@ -313,6 +335,7 @@ fn test_env_overrides_apply() {
     // validation_deadline_secs not overridden — should keep default
     assert_eq!(cfg.reconciliation.validation_deadline_secs, 1200);
     assert_eq!(cfg.git.cmd_timeout_secs, 120);
+    assert_eq!(cfg.git.clone_timeout_secs, 1800);
     assert_eq!(cfg.git.startup_auth_preflight_timeout_secs, 9);
     assert_eq!(cfg.git.retry_backoff_secs, vec![2, 4, 8, 16]);
     assert_eq!(cfg.git.provider_probe_cache_ttl_secs, 120);
@@ -345,6 +368,14 @@ fn test_env_overrides_apply() {
         cfg.git
             .agent_workspace_repair_reconciliation_scan_interval_secs,
         90
+    );
+    assert_eq!(
+        cfg.git.agent_workspace_repair_inert_effect_min_age_secs,
+        450
+    );
+    assert_eq!(
+        cfg.git.agent_workspace_repair_wedged_attempt_max_age_secs,
+        43_200
     );
     assert_eq!(cfg.git.terminal_pr_local_cleanup_interval_secs, 300);
     assert_eq!(cfg.git.terminal_pr_local_cleanup_retry_secs, 1800);
@@ -1416,6 +1447,40 @@ fn test_ui_ticketing_dashboard_env_unrecognized_disables() {
 fn test_ui_ticketing_dashboard_env_missing_keeps_default() {
     // No env var present → field stays at its default (false).
     assert!(!ticketing_dashboard_after_env(None));
+}
+
+/// An installed `config/ralphx.yaml` predates `clone_timeout_secs`, so the field
+/// must carry a serde default rather than becoming a hard load failure.
+#[test]
+fn git_config_without_clone_timeout_falls_back_to_the_default() {
+    let yaml_without_clone_timeout = r#"
+cmd_timeout_secs: 60
+startup_auth_preflight_timeout_secs: 10
+max_retries: 3
+retry_backoff_secs: [1, 2, 4]
+index_lock_stale_secs: 5
+provider_probe_cache_ttl_secs: 300
+workspace_freshness_cache_ttl_ms: 2000
+workspace_review_cache_ttl_ms: 2000
+workspace_pr_description_cache_ttl_ms: 300000
+workspace_pr_annotations_cache_ttl_ms: 30000
+workspace_pr_annotations_check_run_fetch_limit: 10
+orphan_worktree_cleanup_marker_retry_secs: 86400
+agent_kill_settle_secs: 0
+agent_stop_timeout_secs: 3
+cleanup_worktree_timeout_secs: 15
+cleanup_git_op_timeout_secs: 30
+worktree_lsof_timeout_secs: 5
+step_0b_kill_timeout_secs: 30
+"#;
+
+    let cfg: GitRuntimeConfig = serde_yaml::from_str(yaml_without_clone_timeout)
+        .expect("a config written before clone_timeout_secs existed must still load");
+
+    assert_eq!(
+        cfg.clone_timeout_secs, 900,
+        "serde default should apply when the key is absent"
+    );
 }
 
 // ── Workspace Review durations ───────────────────────────────────────────

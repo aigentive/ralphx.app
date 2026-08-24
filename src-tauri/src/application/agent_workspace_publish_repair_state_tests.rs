@@ -26,6 +26,7 @@ use crate::application::agent_workspace_publish_repair_state::{
     load_agent_workspace_repair_operation_recovery_action, mark_agent_workspace_base_update_target,
     reconcile_active_agent_workspace_repair, record_agent_workspace_pr_autofix_base_update_head,
     record_agent_workspace_repair_validation, release_agent_workspace_base_stale_hold,
+    release_agent_workspace_needs_human_hold_for_green_head,
     reopen_agent_workspace_repair_after_validation_failure, repair_attempt_projection,
     repair_event_authorizes_active_run, rerun_agent_workspace_ci_for_hold,
     reserve_agent_workspace_base_parity_transient, reserve_agent_workspace_base_stale_hold,
@@ -4628,6 +4629,218 @@ async fn block_needs_human_is_idempotent_on_pending_reasons() {
     );
 }
 
+/// Builds a persisted Blocked+`needs_human` attempt carrying `dispatch_reason` alongside the
+/// marker, which is the exact shape a CI-escalated PR autofix generation leaves behind.
+async fn blocked_needs_human_attempt(
+    slug: &str,
+    dispatch_reason: &str,
+    dispatch_head_commit: Option<&str>,
+) -> (
+    Arc<dyn AgentWorkspaceRepairRepository>,
+    AgentWorkspaceRepairAttempt,
+) {
+    let workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
+    let repair_repo = Arc::clone(&workspace_repo) as Arc<dyn AgentWorkspaceRepairRepository>;
+    let branch_update_repo: Arc<dyn BranchUpdateRepository> =
+        Arc::new(MemoryBranchUpdateRepository::new());
+    let conversation_id = ChatConversationId::from_string(slug);
+    workspace_repo
+        .create_or_update(repair_workspace(conversation_id.clone()))
+        .await
+        .expect("persist workspace");
+    let mut attempt = start_or_join_agent_workspace_repair(
+        Arc::clone(&repair_repo),
+        Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+        repair_start_request(
+            conversation_id.clone(),
+            AgentWorkspaceRepairSource::PrAutofix,
+            AgentWorkspaceRepairContinuation::ResumePrSupervision,
+            dispatch_reason,
+        ),
+    )
+    .await
+    .expect("start repair")
+    .into_attempt();
+    attempt.pr_autofix_dispatch_head_commit = dispatch_head_commit.map(str::to_string);
+
+    let AgentWorkspaceRepairTransitionOutcome::Applied(blocked) =
+        block_agent_workspace_repair_needs_human(
+            Arc::clone(&repair_repo),
+            Arc::clone(&branch_update_repo),
+            attempt,
+            "A human must resolve this repair.",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("block as needs-human")
+    else {
+        panic!("needs-human block must apply");
+    };
+    assert_eq!(blocked.phase, AgentWorkspaceRepairPhase::Blocked);
+    (repair_repo, blocked)
+}
+
+#[tokio::test]
+async fn green_head_release_clears_marker_and_promotes_to_ready() {
+    let dispatch_reason = "PR #7 has 1 failing check";
+    let (repair_repo, blocked) = blocked_needs_human_attempt(
+        "green-head-release-applies",
+        dispatch_reason,
+        Some("head-a"),
+    )
+    .await;
+
+    // Green at the *same* head the hold was dispatched against: the head-difference proof used by
+    // release_agent_workspace_needs_human_hold_for_new_head can never clear this shape.
+    let outcome = release_agent_workspace_needs_human_hold_for_green_head(
+        Arc::clone(&repair_repo),
+        blocked,
+        "head-a",
+        "GitHub reports every check green at the current head.",
+    )
+    .await
+    .expect("green-head release must not error");
+
+    let AgentWorkspaceRepairTransitionOutcome::Applied(released) = outcome else {
+        panic!("fully green health at a known head must release the hold");
+    };
+    assert_eq!(
+        released.phase,
+        AgentWorkspaceRepairPhase::Ready,
+        "the released generation must leave the Blocked phase so the sidebar stops reporting a \
+         blocked repair"
+    );
+    assert!(
+        !released
+            .pending_reasons
+            .iter()
+            .any(|reason| reason == NEEDS_HUMAN_REPAIR_REASON),
+        "the needs_human fence must be removed atomically with the phase move"
+    );
+    assert!(
+        released
+            .pending_reasons
+            .iter()
+            .any(|reason| reason == dispatch_reason),
+        "non-marker pending reasons are free-form prose and must survive the release"
+    );
+    assert_eq!(
+        released.summary.as_deref(),
+        Some("GitHub reports every check green at the current head."),
+    );
+
+    let persisted = repair_repo
+        .get_current_repair_attempt(&released.conversation_id)
+        .await
+        .expect("load current attempt")
+        .expect("the released generation stays current until it settles");
+    assert_eq!(persisted.phase, AgentWorkspaceRepairPhase::Ready);
+    assert!(!persisted
+        .pending_reasons
+        .iter()
+        .any(|reason| reason == NEEDS_HUMAN_REPAIR_REASON));
+}
+
+#[tokio::test]
+async fn green_head_release_clears_even_with_null_dispatch_head() {
+    let (repair_repo, blocked) = blocked_needs_human_attempt(
+        "green-head-release-null-dispatch-head",
+        "PR #7 has 1 failing check",
+        None,
+    )
+    .await;
+    assert!(
+        blocked.pr_autofix_dispatch_head_commit.is_none(),
+        "rescued orphan attempts can carry a NULL dispatch head"
+    );
+
+    let outcome = release_agent_workspace_needs_human_hold_for_green_head(
+        Arc::clone(&repair_repo),
+        blocked,
+        "head-a",
+        "Green at the current head.",
+    )
+    .await
+    .expect("green-head release must not error");
+
+    let AgentWorkspaceRepairTransitionOutcome::Applied(released) = outcome else {
+        panic!("green evidence is head-agnostic proof, so a NULL dispatch head must still heal");
+    };
+    assert_eq!(released.phase, AgentWorkspaceRepairPhase::Ready);
+}
+
+#[tokio::test]
+async fn green_head_release_fails_closed_on_blank_head() {
+    let (repair_repo, blocked) = blocked_needs_human_attempt(
+        "green-head-release-blank-head",
+        "PR #7 has 1 failing check",
+        Some("head-a"),
+    )
+    .await;
+
+    let outcome = release_agent_workspace_needs_human_hold_for_green_head(
+        Arc::clone(&repair_repo),
+        blocked,
+        "  ",
+        "Degraded health must never release the fence.",
+    )
+    .await
+    .expect("green-head release must not error");
+
+    let AgentWorkspaceRepairTransitionOutcome::Stale(unchanged) = outcome else {
+        panic!("a blank head is degraded evidence, not proof of green");
+    };
+    assert_eq!(unchanged.phase, AgentWorkspaceRepairPhase::Blocked);
+    assert!(unchanged
+        .pending_reasons
+        .iter()
+        .any(|reason| reason == NEEDS_HUMAN_REPAIR_REASON));
+}
+
+#[tokio::test]
+async fn green_head_release_fails_closed_without_needs_human_marker() {
+    let workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
+    let repair_repo = Arc::clone(&workspace_repo) as Arc<dyn AgentWorkspaceRepairRepository>;
+    let conversation_id = ChatConversationId::from_string("green-head-release-no-marker");
+    workspace_repo
+        .create_or_update(repair_workspace(conversation_id.clone()))
+        .await
+        .expect("persist workspace");
+    let attempt = start_or_join_agent_workspace_repair(
+        Arc::clone(&repair_repo),
+        Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+        repair_start_request(
+            conversation_id.clone(),
+            AgentWorkspaceRepairSource::PrAutofix,
+            AgentWorkspaceRepairContinuation::ResumePrSupervision,
+            "PR #7 has 1 failing check",
+        ),
+    )
+    .await
+    .expect("start repair")
+    .into_attempt();
+    let starting_phase = attempt.phase;
+
+    let outcome = release_agent_workspace_needs_human_hold_for_green_head(
+        Arc::clone(&repair_repo),
+        attempt,
+        "head-a",
+        "There is no fence to release.",
+    )
+    .await
+    .expect("green-head release must not error");
+
+    let AgentWorkspaceRepairTransitionOutcome::Stale(unchanged) = outcome else {
+        panic!("without the needs_human marker there is nothing for this release to prove stale");
+    };
+    assert_eq!(
+        unchanged.phase, starting_phase,
+        "an attempt with no fence must not be phase-shifted by the release"
+    );
+}
+
 #[tokio::test]
 async fn reserve_pre_existing_on_base_settles_to_ready_with_marker() {
     let workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
@@ -5480,7 +5693,8 @@ async fn rerun_agent_workspace_ci_for_hold_reruns_and_clears_the_base_parity_hol
 
     let mock_github = Arc::new(MockGithubService::new());
     mock_github.state().fetch_pr_health_result = Some(Ok(transient_ci_health("rerun-head", 42)));
-    let github: Arc<dyn GithubServiceTrait> = Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>;
+    let github: Arc<dyn GithubServiceTrait> =
+        Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>;
 
     let outcome = rerun_agent_workspace_ci_for_hold(
         Arc::clone(&repair_repo),
@@ -5564,8 +5778,7 @@ async fn rerun_agent_workspace_ci_for_hold_preserves_stored_narrative() {
 
     let mut narrated = held.clone();
     narrated.what_happened = Some("GitHub cancelled the test job before it started.".to_string());
-    narrated.what_i_did =
-        Some("Left the branch untouched so a re-run can pick it up.".to_string());
+    narrated.what_i_did = Some("Left the branch untouched so a re-run can pick it up.".to_string());
     narrated.updated_at += chrono::Duration::microseconds(1);
     let held = match repair_repo
         .transition_repair_attempt(AgentWorkspaceRepairAttemptTransition {
@@ -5585,7 +5798,8 @@ async fn rerun_agent_workspace_ci_for_hold_preserves_stored_narrative() {
 
     let mock_github = Arc::new(MockGithubService::new());
     mock_github.state().fetch_pr_health_result = Some(Ok(transient_ci_health("rerun-head", 42)));
-    let github: Arc<dyn GithubServiceTrait> = Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>;
+    let github: Arc<dyn GithubServiceTrait> =
+        Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>;
 
     let outcome = rerun_agent_workspace_ci_for_hold(
         Arc::clone(&repair_repo),
@@ -5656,13 +5870,19 @@ async fn rerun_agent_workspace_ci_for_hold_rejects_a_stale_generation() {
     .await
     .expect("a stale CAS mismatch is a typed outcome, not an error");
 
-    assert!(matches!(outcome, AgentWorkspaceCiRerunActionOutcome::Stale(_)));
+    assert!(matches!(
+        outcome,
+        AgentWorkspaceCiRerunActionOutcome::Stale(_)
+    ));
     let unchanged = repair_repo
         .get_current_repair_attempt(&conversation_id)
         .await
         .expect("load current attempt")
         .expect("attempt still exists");
-    assert_eq!(unchanged, held, "a stale CAS rejection must not mutate the durable attempt");
+    assert_eq!(
+        unchanged, held,
+        "a stale CAS rejection must not mutate the durable attempt"
+    );
 }
 
 #[tokio::test]
@@ -5694,7 +5914,8 @@ async fn rerun_agent_workspace_ci_for_hold_reports_budget_exhaustion_without_mut
         outcome => panic!("expected the exhausted-budget fixture to persist, got {outcome:?}"),
     };
     let mock_github = Arc::new(MockGithubService::new());
-    let github: Arc<dyn GithubServiceTrait> = Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>;
+    let github: Arc<dyn GithubServiceTrait> =
+        Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>;
 
     let outcome = rerun_agent_workspace_ci_for_hold(
         Arc::clone(&repair_repo),
@@ -6043,5 +6264,74 @@ async fn terminated_update_effect_restores_retry_repair_without_an_escalation_re
         .expect("classify scheduled recovery action"),
         AgentWorkspaceRepairOperationRecoveryAction::None,
         "a scheduled automatic retry owns the attempt, so the button stays hidden"
+    );
+}
+
+/// Vocabulary that must never reach a user-facing repair summary.
+///
+/// These are the exact terms that produced the reported incident's unreadable hold card:
+/// "Workspace repair publication needs attention because its external effect remains open after 3
+/// recovery checks. RalphX retained the effect fence and did not reacquire or release Git
+/// authority: Conflict: workspace repair continuation lost its canonical target authority while an
+/// external effect remains open".
+///
+/// Machine-written summaries are rendered verbatim in the Agents publish surface, so a raw
+/// `AppError` interpolation is a product defect, not a diagnostic convenience. The error belongs in
+/// the log and the structured technical-details slot instead.
+const BANNED_REPAIR_SUMMARY_VOCABULARY: &[&str] = &[
+    "effect fence",
+    "canonical target authority",
+    "reacquire or release Git authority",
+    "external effect",
+    "recovery error",
+    "Conflict:",
+    "AppError",
+];
+
+#[test]
+fn machine_written_repair_summaries_contain_no_internal_vocabulary() {
+    // The literal summary strings written by the durable recovery module. Kept as a table rather
+    // than scraped from source so that adding a new summary is a deliberate act with a deliberate
+    // review, and so the assertion reads as a contract.
+    let summaries = [
+        "RalphX tried 3 times to finish publishing this repair and could not complete it. It stopped so the work is not left half-done.",
+        "RalphX stopped publishing this repair after 3 failed attempts.",
+        "RalphX hit a problem finishing this repair's publish step and will try again shortly.",
+        "RalphX can't confirm whether an earlier publish step reached GitHub, so it stopped rather than risk sending it twice.",
+        "RalphX can't confirm whether an earlier publish step reached GitHub, so it is holding this repair rather than risking a duplicate push.",
+        "RalphX is still checking whether an earlier publish step reached GitHub before it continues this repair.",
+        "RalphX could not finish publishing this repair and has stopped retrying on its own. Retry publication to have it try again.",
+        "RalphX stopped retrying this repair because a publish step never finished. Retry publication to try again.",
+        "RalphX checked GitHub and the branch is still exactly where it was before the publish step, so that step never reached GitHub. RalphX cleared it and the repair is continuing.",
+        "RalphX found a publish step that was recorded but never started, so nothing was sent to GitHub. It has been cleared and the repair is continuing.",
+    ];
+
+    for summary in summaries {
+        for banned in BANNED_REPAIR_SUMMARY_VOCABULARY {
+            assert!(
+                !summary.contains(banned),
+                "user-facing repair summary leaks internal vocabulary {banned:?}: {summary:?}"
+            );
+        }
+        assert!(
+            !summary.contains('{') && !summary.contains('}'),
+            "an uninterpolated format placeholder escaped into a summary: {summary:?}"
+        );
+    }
+}
+
+#[test]
+fn banned_repair_summary_vocabulary_actually_catches_the_reported_incident_text() {
+    // Falsifies the guard itself: a table that matched nothing would pass vacuously forever.
+    let reported = "Workspace repair publication needs attention because its external effect \
+                    remains open after 3 recovery checks. RalphX retained the effect fence and did \
+                    not reacquire or release Git authority: Conflict: workspace repair \
+                    continuation lost its canonical target authority while an external effect \
+                    remains open";
+    assert!(
+        BANNED_REPAIR_SUMMARY_VOCABULARY
+            .iter()
+            .any(|banned| reported.contains(banned)),
+        "the banned-vocabulary table must reject the exact string this work exists to eliminate"
     );
 }
