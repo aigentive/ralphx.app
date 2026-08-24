@@ -27,6 +27,7 @@ mod agent_workspace_auto_publish_tests;
 pub(crate) mod agent_workspace_auto_review;
 #[cfg(test)]
 mod agent_workspace_auto_review_tests;
+pub(crate) mod agent_workspace_blocked_repair_base_retry_scan;
 pub(crate) mod agent_workspace_repair_reconciliation_scan;
 #[cfg(test)]
 mod agent_workspace_repair_reconciliation_scan_tests;
@@ -44,6 +45,9 @@ pub mod clickup_commands;
 mod clickup_commands_tests;
 pub mod conversation_folder_reference_commands;
 pub mod conversation_stats_commands;
+pub mod data_retention_commands;
+#[cfg(test)]
+mod data_retention_commands_tests;
 pub mod database_maintenance_commands;
 pub mod diagnostic_commands;
 #[cfg(test)]
@@ -90,7 +94,6 @@ pub mod qa_commands;
 pub mod question_commands;
 #[cfg(test)]
 mod question_commands_tests;
-pub mod registry;
 pub mod release_notes_commands;
 pub mod repository_settings_commands;
 #[cfg(test)]
@@ -121,12 +124,6 @@ pub mod validation_commands;
 pub mod workflow_commands;
 pub mod workspace_open_commands;
 pub mod workspace_review_settings_commands;
-
-#[doc(hidden)]
-pub use agent_workspace_completion_dispatch::{
-    install_agent_workspace_completion_dispatch_for_test,
-    AgentWorkspaceCompletionDispatchTestHandle,
-};
 
 // Re-export commands for registration
 pub use crate::application::automation::api::{

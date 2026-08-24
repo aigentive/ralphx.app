@@ -32,7 +32,7 @@ use crate::application::notification_service::NotificationService;
 use crate::application::plan_verification_service::PlanVerificationCompletionAdapter;
 use crate::application::question_state::QuestionState;
 use crate::application::runtime_factory::{build_chat_service_from_deps, ChatRuntimeFactoryDeps};
-use crate::commands::ExecutionState;
+use crate::application::execution_state::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversationId, ChatMessageAttribution, InternalStatus,
@@ -160,10 +160,10 @@ pub(super) fn should_process_stream_queue(
 }
 
 const AGENT_TASK_LEDGER_SUBSTANTIAL_TOOL_CALL_COUNT: usize = 3;
+// Ledger writes only: reading the injected snapshot is not evidence that the run
+// engaged the ledger, so `list_agent_tasks` / `get_agent_task` do not suppress the warning.
 const AGENT_TASK_LEDGER_TOOL_NAMES: &[&str] = &[
     "create_agent_task",
-    "get_agent_task",
-    "list_agent_tasks",
     "update_agent_task",
     "claim_agent_task",
     "complete_agent_task",
@@ -1167,8 +1167,12 @@ pub fn spawn_send_message_background(ctx: BackgroundRunContext) {
                 if let Some(ref sess_id) = provider_session_id {
                     tracing::info!("[CHAT_SERVICE] Updating conversation with session_id={}", sess_id);
                     if persist_conversation_provider_session_ref {
-                        if let Err(e) = conversation_repo
-                            .update_provider_session_ref(
+                        // Refresh-only: this write runs on the stream exit path, potentially
+                        // after a Plan→Edit handoff deliberately cleared the ref. Never
+                        // resurrect a cleared ref — a resurrected plan session would be
+                        // derived as a harness override on the next send and reject it.
+                        match conversation_repo
+                            .refresh_provider_session_ref(
                                 &conversation_id,
                                 &ProviderSessionRef {
                                     harness,
@@ -1177,12 +1181,22 @@ pub fn spawn_send_message_background(ctx: BackgroundRunContext) {
                             )
                             .await
                         {
-                            tracing::error!(
-                                error = %e,
-                                conversation_id = conversation_id.as_str(),
-                                session_id = %sess_id,
-                                "[CHAT_SERVICE] Failed to persist provider_session_id — next resume attempt will use stale session ID"
-                            );
+                            Ok(true) => {}
+                            Ok(false) => {
+                                tracing::info!(
+                                    conversation_id = conversation_id.as_str(),
+                                    session_id = %sess_id,
+                                    "[CHAT_SERVICE] Skipped provider session persist — ref was cleared during teardown"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    error = %e,
+                                    conversation_id = conversation_id.as_str(),
+                                    session_id = %sess_id,
+                                    "[CHAT_SERVICE] Failed to persist provider_session_id — next resume attempt will use stale session ID"
+                                );
+                            }
                         }
                     }
 

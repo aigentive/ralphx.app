@@ -135,6 +135,11 @@ const CROSS_HARNESS_CHAT_AGENTS: &[(&str, &str, &str)] = &[
 
 const CROSS_HARNESS_SUPPORT_AGENTS: &[(&str, &str, &str)] = &[
     (
+        "ralphx-workspace-annotator",
+        "workspace_annotator",
+        "ralphx-workspace-annotator",
+    ),
+    (
         "ralphx-automation-judge",
         "automation-judge",
         "ralphx-automation-judge",
@@ -1451,7 +1456,6 @@ fn workspace_reviewer_codex_surface_uses_shared_prompt_and_review_tools() {
         "fs_glob",
         "get_workspace_review_context",
         "write_workspace_review_artifact",
-        "write_workspace_review_hunk_annotations",
         "complete_workspace_review_run",
         "delegate_start",
         "delegate_wait",
@@ -1505,6 +1509,9 @@ fn workspace_reviewer_codex_surface_uses_shared_prompt_and_review_tools() {
         "search_memories",
         "get_memory",
         "get_memories_for_paths",
+        // Hunk annotations moved to the background ralphx-workspace-annotator; the reviewer must
+        // not hold the tool, or its run tail reacquires the work the annotator now owns.
+        "write_workspace_review_hunk_annotations",
     ] {
         assert!(
             !definition
@@ -1518,11 +1525,101 @@ fn workspace_reviewer_codex_surface_uses_shared_prompt_and_review_tools() {
             !metadata.mcp_tools.iter().any(|tool| tool == removed_tool),
             "workspace reviewer Codex surface should not retain unrelated MCP tool {removed_tool}"
         );
+        assert!(
+            !prompt.contains(removed_tool),
+            "workspace reviewer prompt should not instruct use of {removed_tool}"
+        );
     }
+    // The reviewer performs exactly one artifact write, at the end, always carrying a typed
+    // outcome. A provisional early write would make `previous_review` self-referential and would
+    // leave a half-finished pair the degraded-settlement path must never trust.
+    assert_eq!(
+        prompt.matches("Call `write_workspace_review_artifact`").count(),
+        1,
+        "workspace reviewer prompt should contain exactly one artifact-write step"
+    );
+    assert!(
+        !prompt.to_lowercase().contains("provisional"),
+        "workspace reviewer prompt should no longer instruct a provisional artifact write"
+    );
+    assert!(
+        prompt.contains("`outcome` matching your disposition line")
+            && prompt.contains("blocking_summary"),
+        "workspace reviewer prompt should require the typed outcome on its single artifact write"
+    );
     assert_eq!(
         metadata.runtime_features.get("shell_tool"),
         Some(&false),
         "workspace reviewer should use review_packet and bounded filesystem tools instead of Codex shell"
+    );
+}
+
+/// The annotator writes reading aids for a settled review. It must hold the annotation tool and
+/// nothing that could reach the review gate.
+#[test]
+fn workspace_annotator_surface_is_annotation_only() {
+    let root = project_root();
+    let definition = load_canonical_agent_definition(&root, "ralphx-workspace-annotator")
+        .expect("expected canonical workspace annotator definition");
+    let prompt = load_harness_agent_prompt(
+        &root,
+        "ralphx-workspace-annotator",
+        AgentPromptHarness::Codex,
+    )
+    .expect("expected workspace annotator Codex prompt");
+    let metadata = load_canonical_codex_metadata(&root, "ralphx-workspace-annotator");
+
+    for required_tool in [
+        "get_workspace_review_context",
+        "list_workspace_review_files",
+        "get_workspace_review_diff_page",
+        "write_workspace_review_hunk_annotations",
+    ] {
+        assert!(
+            definition
+                .capabilities
+                .mcp_tools
+                .iter()
+                .any(|tool| tool == required_tool),
+            "workspace annotator canonical surface should include {required_tool}"
+        );
+        assert!(
+            metadata.mcp_tools.iter().any(|tool| tool == required_tool),
+            "workspace annotator Codex surface should include {required_tool}"
+        );
+        assert!(
+            prompt.contains(required_tool),
+            "workspace annotator prompt should mention {required_tool}"
+        );
+    }
+
+    for denied_tool in [
+        "write_workspace_review_artifact",
+        "complete_workspace_review_run",
+        "delegate_start",
+    ] {
+        assert!(
+            !definition
+                .capabilities
+                .mcp_tools
+                .iter()
+                .any(|tool| tool == denied_tool),
+            "workspace annotator must not hold gate-mutating tool {denied_tool}"
+        );
+        assert!(
+            !metadata.mcp_tools.iter().any(|tool| tool == denied_tool),
+            "workspace annotator Codex surface must not hold {denied_tool}"
+        );
+    }
+
+    assert!(
+        !prompt.contains("mcp__ralphx__"),
+        "Codex workspace annotator prompt should not use Claude-style MCP names"
+    );
+    assert_eq!(
+        metadata.runtime_features.get("shell_tool"),
+        Some(&false),
+        "workspace annotator should read diffs through review tools, not a Codex shell"
     );
 }
 
@@ -2335,12 +2432,34 @@ fn canonical_agent_task_appendix_is_injected_only_for_agent_task_agents() {
             "prompt for {agent_name} should mention live agent task tools"
         );
         assert!(
-            prompt.contains("Before search, read, edit, shell, or other tool-backed work"),
-            "prompt for {agent_name} should require ledger listing before work starts"
+            prompt.contains("treat it as the authoritative ledger snapshot for this turn"),
+            "prompt for {agent_name} should trust the injected runtime-state ledger snapshot"
         );
         assert!(
-            prompt.contains("do not perform search, read, shell, edit, or other tool-backed work"),
-            "prompt for {agent_name} should hard-gate empty-ledger required work"
+            prompt.contains("`state=\"empty\"` means no open or active tasks exist"),
+            "prompt for {agent_name} should define the explicit empty-ledger marker"
+        );
+        assert!(
+            prompt.contains("Call `list_agent_tasks` only when no `<task_ledger>` block is present"),
+            "prompt for {agent_name} should scope list calls to missing/unavailable/stale snapshots"
+        );
+        assert!(
+            prompt.contains("the block reports `state=\"unavailable\"`"),
+            "prompt for {agent_name} should treat unavailable as unknown rather than empty"
+        );
+        assert!(
+            prompt.contains(
+                "create concrete tasks for each independent work item before performing search, read, shell, edit, or other tool-backed work"
+            ),
+            "prompt for {agent_name} should hard-gate required work behind task creation"
+        );
+        assert!(
+            prompt.contains("trust the mutation tool results over the turn-start snapshot"),
+            "prompt for {agent_name} should prefer fresh mutation results over the snapshot"
+        );
+        assert!(
+            !prompt.contains("Before search, read, edit, shell, or other tool-backed work"),
+            "prompt for {agent_name} should no longer mandate a redundant ledger read"
         );
         assert!(
             prompt.contains("Read-only audits, multi-file investigations, prompt-surface reviews"),

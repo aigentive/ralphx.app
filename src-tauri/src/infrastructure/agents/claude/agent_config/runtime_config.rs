@@ -64,6 +64,7 @@ pub struct AllRuntimeConfig {
     pub verification: VerificationConfig,
     pub external_mcp: ExternalMcpConfig,
     pub delegation: DelegationConfig,
+    pub workspace_review: WorkspaceReviewRuntimeConfig,
     /// Seconds of inactivity before an agent is considered "likely_waiting" vs "likely_generating".
     /// Used by get_child_session_status to derive estimated_status. Default: 10.
     pub child_session_activity_threshold_secs: Option<u64>,
@@ -99,6 +100,30 @@ impl Default for DelegationConfig {
             park_max_secs: 3600,
             park_wake_retry_max: 5,
             park_wake_retry_backoff_secs: 30,
+        }
+    }
+}
+
+/// Workspace Review reviewer deadlines. Liveness-aware: an actively producing reviewer is never
+/// terminalized by `reviewer_idle_timeout_secs`, only by `reviewer_max_wall_clock_secs`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct WorkspaceReviewRuntimeConfig {
+    /// Fail the review run only after no new persisted reviewer output for this long.
+    pub reviewer_idle_timeout_secs: u64,
+    /// Absolute runaway cap regardless of reviewer activity.
+    pub reviewer_max_wall_clock_secs: u64,
+    /// Extra window granted for `complete_workspace_review_run` when a current Review
+    /// artifact pair already exists at the moment a deadline trips.
+    pub reviewer_completion_grace_secs: u64,
+}
+
+impl Default for WorkspaceReviewRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            reviewer_idle_timeout_secs: 600,
+            reviewer_max_wall_clock_secs: 3600,
+            reviewer_completion_grace_secs: 120,
         }
     }
 }
@@ -345,6 +370,12 @@ pub struct StreamTimeoutsConfig {
     pub execution_attempt_start_tolerance_secs: u64,
     #[serde(default = "default_desktop_notification_coalesce_window_secs")]
     pub desktop_notification_coalesce_window_secs: u64,
+    #[serde(default = "default_desktop_notification_max_click_waits")]
+    pub desktop_notification_max_click_waits: usize,
+    #[serde(default = "default_desktop_notification_click_wait_ttl_secs")]
+    pub desktop_notification_click_wait_ttl_secs: u64,
+    #[serde(default = "default_desktop_notification_reap_interval_secs")]
+    pub desktop_notification_reap_interval_secs: u64,
     #[serde(default = "default_notification_retention_read_days")]
     pub notification_retention_read_days: u64,
     #[serde(default = "default_notification_retention_max_rows")]
@@ -357,6 +388,18 @@ pub struct StreamTimeoutsConfig {
     pub chat_payload_retention_archived_days: u64,
     #[serde(default = "default_chat_payload_retention_batch_rows")]
     pub chat_payload_retention_batch_rows: u64,
+    /// Recommendation surfaced in Settings only. Never seeds the active size budget:
+    /// size pruning deletes payloads still inside the time window and needs user consent.
+    #[serde(default = "default_chat_payload_size_budget_recommended_bytes")]
+    pub chat_payload_size_budget_recommended_bytes: u64,
+    #[serde(default = "default_chat_payload_advisory_threshold_bytes")]
+    pub chat_payload_advisory_threshold_bytes: u64,
+    #[serde(default = "default_chat_payload_retention_interval_hours")]
+    pub chat_payload_retention_interval_hours: u64,
+    #[serde(default = "default_chat_payload_retention_batch_pause_ms")]
+    pub chat_payload_retention_batch_pause_ms: u64,
+    #[serde(default = "default_chat_payload_retention_checkpoint_batches")]
+    pub chat_payload_retention_checkpoint_batches: u64,
     #[serde(default = "default_db_lock_wait_warn_ms")]
     pub db_lock_wait_warn_ms: u64,
     #[serde(default = "default_db_lock_hold_warn_ms")]
@@ -403,6 +446,18 @@ fn default_desktop_notification_coalesce_window_secs() -> u64 {
     DEFAULT_DESKTOP_NOTIFICATION_COALESCE_WINDOW_SECS
 }
 
+fn default_desktop_notification_max_click_waits() -> usize {
+    3
+}
+
+fn default_desktop_notification_click_wait_ttl_secs() -> u64 {
+    900
+}
+
+fn default_desktop_notification_reap_interval_secs() -> u64 {
+    60
+}
+
 fn default_notification_retention_read_days() -> u64 {
     DEFAULT_NOTIFICATION_RETENTION_READ_DAYS
 }
@@ -424,7 +479,27 @@ fn default_chat_payload_retention_archived_days() -> u64 {
 }
 
 fn default_chat_payload_retention_batch_rows() -> u64 {
-    2000
+    500
+}
+
+fn default_chat_payload_size_budget_recommended_bytes() -> u64 {
+    5_368_709_120
+}
+
+fn default_chat_payload_advisory_threshold_bytes() -> u64 {
+    10_737_418_240
+}
+
+fn default_chat_payload_retention_interval_hours() -> u64 {
+    6
+}
+
+fn default_chat_payload_retention_batch_pause_ms() -> u64 {
+    50
+}
+
+fn default_chat_payload_retention_checkpoint_batches() -> u64 {
+    50
 }
 
 fn default_db_lock_wait_warn_ms() -> u64 {
@@ -455,12 +530,24 @@ impl Default for StreamTimeoutsConfig {
             execution_attempt_start_tolerance_secs: 1,
             desktop_notification_coalesce_window_secs:
                 DEFAULT_DESKTOP_NOTIFICATION_COALESCE_WINDOW_SECS,
+            desktop_notification_max_click_waits: default_desktop_notification_max_click_waits(),
+            desktop_notification_click_wait_ttl_secs:
+                default_desktop_notification_click_wait_ttl_secs(),
+            desktop_notification_reap_interval_secs:
+                default_desktop_notification_reap_interval_secs(),
             notification_retention_read_days: DEFAULT_NOTIFICATION_RETENTION_READ_DAYS,
             notification_retention_max_rows: DEFAULT_NOTIFICATION_RETENTION_MAX_ROWS,
             chat_payload_retention_enabled: default_chat_payload_retention_enabled(),
             chat_payload_retention_days: default_chat_payload_retention_days(),
             chat_payload_retention_archived_days: default_chat_payload_retention_archived_days(),
             chat_payload_retention_batch_rows: default_chat_payload_retention_batch_rows(),
+            chat_payload_size_budget_recommended_bytes:
+                default_chat_payload_size_budget_recommended_bytes(),
+            chat_payload_advisory_threshold_bytes: default_chat_payload_advisory_threshold_bytes(),
+            chat_payload_retention_interval_hours: default_chat_payload_retention_interval_hours(),
+            chat_payload_retention_batch_pause_ms: default_chat_payload_retention_batch_pause_ms(),
+            chat_payload_retention_checkpoint_batches:
+                default_chat_payload_retention_checkpoint_batches(),
             db_lock_wait_warn_ms: default_db_lock_wait_warn_ms(),
             db_lock_hold_warn_ms: default_db_lock_hold_warn_ms(),
         }
@@ -658,8 +745,14 @@ pub struct GitRuntimeConfig {
     pub index_lock_stale_secs: u64,
     /// TTL for reusable provider CLI runtime probes, in seconds.
     pub provider_probe_cache_ttl_secs: u64,
-    /// Short TTL for agent workspace freshness responses, in milliseconds.
+    /// Short TTL for local-scope agent workspace freshness responses, in milliseconds.
     pub workspace_freshness_cache_ttl_ms: u64,
+    /// TTL for full-scope agent workspace freshness responses, in milliseconds.
+    ///
+    /// Full scope fetches the origin remote and reads PR status per PR-as-base workspace, so it is
+    /// far more expensive than local scope and tolerates a much longer window.
+    #[serde(default = "default_workspace_freshness_full_scope_cache_ttl_ms")]
+    pub workspace_freshness_full_scope_cache_ttl_ms: u64,
     /// Short TTL for agent workspace review context and payload cache, in milliseconds.
     pub workspace_review_cache_ttl_ms: u64,
     /// Short TTL for precomputed agent workspace PR descriptions, in milliseconds.
@@ -708,6 +801,30 @@ pub struct GitRuntimeConfig {
     pub agent_kill_settle_secs: u64,
     /// Timeout in seconds for each stop_agent() call in pre-merge cleanup step 0.
     pub agent_stop_timeout_secs: u64,
+    /// Base interval between agent workspace PR poll iterations, in seconds.
+    ///
+    /// The workspace poller escalates from this value toward
+    /// `workspace_pr_poll_max_secs` while a PR shows no observable change, and snaps back here
+    /// the moment health changes or a supervision branch dispatches work.
+    #[serde(default = "default_workspace_pr_poll_base_secs")]
+    pub workspace_pr_poll_base_secs: u64,
+    /// Ceiling for the adaptive agent workspace PR poll interval, in seconds.
+    ///
+    /// Also bounds worst-case merged/closed detection latency for an otherwise idle PR.
+    #[serde(default = "default_workspace_pr_poll_max_secs")]
+    pub workspace_pr_poll_max_secs: u64,
+    /// Minimum seconds between `gh api rate_limit` probes shared by all PR pollers.
+    ///
+    /// The probe endpoint does not consume quota, but it is still a subprocess per call, so one
+    /// poller refreshes the shared state on behalf of the rest.
+    #[serde(default = "default_github_rate_limit_probe_interval_secs")]
+    pub github_rate_limit_probe_interval_secs: u64,
+    /// TTL for a repository's batched PR snapshot, in seconds.
+    ///
+    /// Sits just under the base poll cadence so each tick still reads GitHub once, while every
+    /// other workspace polling the same repository inside that tick is served from the batch.
+    #[serde(default = "default_pr_snapshot_hub_ttl_secs")]
+    pub pr_snapshot_hub_ttl_secs: u64,
     /// Timeout in seconds for deleting the task worktree during pre-merge cleanup.
     pub cleanup_worktree_timeout_secs: u64,
     /// Timeout in seconds for merge/rebase worktree deletion and git clean during pre-merge cleanup.
@@ -731,6 +848,12 @@ impl Default for GitRuntimeConfig {
             index_lock_stale_secs: 5,
             provider_probe_cache_ttl_secs: 300,
             workspace_freshness_cache_ttl_ms: 2_000,
+            workspace_freshness_full_scope_cache_ttl_ms:
+                default_workspace_freshness_full_scope_cache_ttl_ms(),
+            workspace_pr_poll_base_secs: default_workspace_pr_poll_base_secs(),
+            workspace_pr_poll_max_secs: default_workspace_pr_poll_max_secs(),
+            github_rate_limit_probe_interval_secs: default_github_rate_limit_probe_interval_secs(),
+            pr_snapshot_hub_ttl_secs: default_pr_snapshot_hub_ttl_secs(),
             workspace_review_cache_ttl_ms: 2_000,
             workspace_pr_description_cache_ttl_ms: 300_000,
             workspace_pr_annotations_cache_ttl_ms: 30_000,
@@ -783,6 +906,26 @@ fn default_agent_workspace_publish_lease_heartbeat_interval_secs() -> u64 {
 
 fn default_agent_workspace_publish_recovery_interval_secs() -> u64 {
     120
+}
+
+fn default_workspace_freshness_full_scope_cache_ttl_ms() -> u64 {
+    30_000
+}
+
+fn default_workspace_pr_poll_base_secs() -> u64 {
+    60
+}
+
+fn default_workspace_pr_poll_max_secs() -> u64 {
+    300
+}
+
+fn default_github_rate_limit_probe_interval_secs() -> u64 {
+    300
+}
+
+fn default_pr_snapshot_hub_ttl_secs() -> u64 {
+    55
 }
 
 fn default_agent_workspace_repair_reconciliation_scan_interval_secs() -> u64 {
@@ -1048,6 +1191,22 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
         cfg.stream.agent_completion_correlation_ttl_secs,
         "RALPHX_STREAM_AGENT_COMPLETION_CORRELATION_TTL_SECS"
     );
+
+    // Workspace Review reviewer deadlines
+    env_u64!(
+        cfg.workspace_review.reviewer_idle_timeout_secs,
+        "RALPHX_WORKSPACE_REVIEW_REVIEWER_IDLE_TIMEOUT_SECS"
+    );
+    env_u64!(
+        cfg.workspace_review.reviewer_max_wall_clock_secs,
+        "RALPHX_WORKSPACE_REVIEW_REVIEWER_MAX_WALL_CLOCK_SECS"
+    );
+    env_u64!(
+        cfg.workspace_review.reviewer_completion_grace_secs,
+        "RALPHX_WORKSPACE_REVIEW_REVIEWER_COMPLETION_GRACE_SECS"
+    );
+
+    validate_workspace_review_config(&mut cfg.workspace_review);
     if let Some(value) = lookup("RALPHX_STREAM_AGENT_COMPLETION_CORRELATION_CAPACITY") {
         if let Ok(capacity) = value.parse::<usize>() {
             cfg.stream.agent_completion_correlation_capacity = capacity;
@@ -1074,6 +1233,19 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
         cfg.stream.desktop_notification_coalesce_window_secs,
         "RALPHX_STREAM_DESKTOP_NOTIFICATION_COALESCE_WINDOW_SECS"
     );
+    if let Some(value) = lookup("RALPHX_STREAM_DESKTOP_NOTIFICATION_MAX_CLICK_WAITS") {
+        if let Ok(max_click_waits) = value.parse::<usize>() {
+            cfg.stream.desktop_notification_max_click_waits = max_click_waits;
+        }
+    }
+    env_u64!(
+        cfg.stream.desktop_notification_click_wait_ttl_secs,
+        "RALPHX_STREAM_DESKTOP_NOTIFICATION_CLICK_WAIT_TTL_SECS"
+    );
+    env_u64!(
+        cfg.stream.desktop_notification_reap_interval_secs,
+        "RALPHX_STREAM_DESKTOP_NOTIFICATION_REAP_INTERVAL_SECS"
+    );
     env_u64!(
         cfg.stream.notification_retention_read_days,
         "RALPHX_STREAM_NOTIFICATION_RETENTION_READ_DAYS"
@@ -1098,6 +1270,26 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(
         cfg.stream.chat_payload_retention_batch_rows,
         "RALPHX_STREAM_CHAT_PAYLOAD_RETENTION_BATCH_ROWS"
+    );
+    env_u64!(
+        cfg.stream.chat_payload_size_budget_recommended_bytes,
+        "RALPHX_STREAM_CHAT_PAYLOAD_SIZE_BUDGET_RECOMMENDED_BYTES"
+    );
+    env_u64!(
+        cfg.stream.chat_payload_advisory_threshold_bytes,
+        "RALPHX_STREAM_CHAT_PAYLOAD_ADVISORY_THRESHOLD_BYTES"
+    );
+    env_u64!(
+        cfg.stream.chat_payload_retention_interval_hours,
+        "RALPHX_STREAM_CHAT_PAYLOAD_RETENTION_INTERVAL_HOURS"
+    );
+    env_u64!(
+        cfg.stream.chat_payload_retention_batch_pause_ms,
+        "RALPHX_STREAM_CHAT_PAYLOAD_RETENTION_BATCH_PAUSE_MS"
+    );
+    env_u64!(
+        cfg.stream.chat_payload_retention_checkpoint_batches,
+        "RALPHX_STREAM_CHAT_PAYLOAD_RETENTION_CHECKPOINT_BATCHES"
     );
     env_u64!(
         cfg.stream.db_lock_wait_warn_ms,
@@ -1294,6 +1486,26 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(
         cfg.git.workspace_freshness_cache_ttl_ms,
         "RALPHX_GIT_WORKSPACE_FRESHNESS_CACHE_TTL_MS"
+    );
+    env_u64!(
+        cfg.git.workspace_freshness_full_scope_cache_ttl_ms,
+        "RALPHX_GIT_WORKSPACE_FRESHNESS_FULL_SCOPE_CACHE_TTL_MS"
+    );
+    env_u64!(
+        cfg.git.workspace_pr_poll_base_secs,
+        "RALPHX_GIT_WORKSPACE_PR_POLL_BASE_SECS"
+    );
+    env_u64!(
+        cfg.git.workspace_pr_poll_max_secs,
+        "RALPHX_GIT_WORKSPACE_PR_POLL_MAX_SECS"
+    );
+    env_u64!(
+        cfg.git.github_rate_limit_probe_interval_secs,
+        "RALPHX_GIT_GITHUB_RATE_LIMIT_PROBE_INTERVAL_SECS"
+    );
+    env_u64!(
+        cfg.git.pr_snapshot_hub_ttl_secs,
+        "RALPHX_GIT_PR_SNAPSHOT_HUB_TTL_SECS"
     );
     env_u64!(
         cfg.git.workspace_review_cache_ttl_ms,
@@ -1542,6 +1754,20 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
         "RALPHX_DELEGATION_PARK_WAKE_RETRY_BACKOFF_SECS"
     );
 
+    // Workspace Review
+    env_u64!(
+        cfg.workspace_review.reviewer_idle_timeout_secs,
+        "RALPHX_WORKSPACE_REVIEW_REVIEWER_IDLE_TIMEOUT_SECS"
+    );
+    env_u64!(
+        cfg.workspace_review.reviewer_max_wall_clock_secs,
+        "RALPHX_WORKSPACE_REVIEW_REVIEWER_MAX_WALL_CLOCK_SECS"
+    );
+    env_u64!(
+        cfg.workspace_review.reviewer_completion_grace_secs,
+        "RALPHX_WORKSPACE_REVIEW_REVIEWER_COMPLETION_GRACE_SECS"
+    );
+
     // Ideation
     if let Some(v) = lookup("RALPHX_IDEATION_ACTIVITY_THRESHOLD_SECS") {
         if let Ok(n) = v.parse::<u64>() {
@@ -1619,6 +1845,49 @@ pub fn validate_reconciliation_config(cfg: &mut ReconciliationConfig) {
     if cfg.git_isolation_retry_base_secs == 0 {
         warn!("git_isolation_retry_base_secs must be > 0, got 0; clamping to 5");
         cfg.git_isolation_retry_base_secs = 5;
+    }
+}
+
+/// Validate WorkspaceReviewRuntimeConfig and clamp to safe values.
+///
+/// Called after env overrides are applied so invalid YAML or env vars are caught. The clamps
+/// exist so a misconfigured deadline can never re-create the bug this config was added to fix:
+/// an idle timeout short enough to kill a reviewer mid-turn.
+pub fn validate_workspace_review_config(cfg: &mut WorkspaceReviewRuntimeConfig) {
+    const MIN_IDLE_TIMEOUT_SECS: u64 = 60;
+    const MIN_COMPLETION_GRACE_SECS: u64 = 10;
+
+    if cfg.reviewer_idle_timeout_secs < MIN_IDLE_TIMEOUT_SECS {
+        warn!(
+            "workspace_review.reviewer_idle_timeout_secs must be >= {}s, got {}; clamping",
+            MIN_IDLE_TIMEOUT_SECS, cfg.reviewer_idle_timeout_secs
+        );
+        cfg.reviewer_idle_timeout_secs = MIN_IDLE_TIMEOUT_SECS;
+    }
+
+    if cfg.reviewer_max_wall_clock_secs < cfg.reviewer_idle_timeout_secs {
+        warn!(
+            "workspace_review.reviewer_max_wall_clock_secs ({}) < reviewer_idle_timeout_secs ({}); \
+             clamping the wall-clock cap up to the idle timeout",
+            cfg.reviewer_max_wall_clock_secs, cfg.reviewer_idle_timeout_secs
+        );
+        cfg.reviewer_max_wall_clock_secs = cfg.reviewer_idle_timeout_secs;
+    }
+
+    if cfg.reviewer_completion_grace_secs < MIN_COMPLETION_GRACE_SECS
+        || cfg.reviewer_completion_grace_secs > cfg.reviewer_idle_timeout_secs
+    {
+        let clamped = cfg
+            .reviewer_completion_grace_secs
+            .clamp(MIN_COMPLETION_GRACE_SECS, cfg.reviewer_idle_timeout_secs);
+        warn!(
+            "workspace_review.reviewer_completion_grace_secs must be [{}, {}], got {}; clamping to {}",
+            MIN_COMPLETION_GRACE_SECS,
+            cfg.reviewer_idle_timeout_secs,
+            cfg.reviewer_completion_grace_secs,
+            clamped
+        );
+        cfg.reviewer_completion_grace_secs = clamped;
     }
 }
 

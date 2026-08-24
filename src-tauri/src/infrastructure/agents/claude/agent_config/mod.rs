@@ -33,7 +33,8 @@ pub use runtime_config::{
     validate_external_mcp_config, AllRuntimeConfig, AutomationsRuntimeConfig,
     DatabaseMaintenanceConfig, DelegationConfig, ExternalMcpConfig, GitRuntimeConfig, LimitsConfig,
     ReconciliationConfig, SchedulerConfig, ShutdownConfig, SpecialistEntry, StreamTimeoutsConfig,
-    SupervisorRuntimeConfig, VerificationConfig, MAX_EXTERNAL_MCP_SHUTDOWN_GRACE_MS,
+    SupervisorRuntimeConfig, VerificationConfig, WorkspaceReviewRuntimeConfig,
+    MAX_EXTERNAL_MCP_SHUTDOWN_GRACE_MS,
 };
 
 const VALID_EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
@@ -269,6 +270,8 @@ struct RalphxConfig {
     external_mcp: ExternalMcpConfig,
     #[serde(default)]
     delegation: runtime_config::DelegationConfig,
+    #[serde(default)]
+    workspace_review: runtime_config::WorkspaceReviewRuntimeConfig,
     #[serde(default)]
     ui: Option<UiConfig>,
     #[serde(default)]
@@ -1259,6 +1262,7 @@ fn resolve_loaded_config_with_lookup(
         verification: parsed.ideation.verification,
         external_mcp: parsed.external_mcp,
         delegation: parsed.delegation,
+        workspace_review: parsed.workspace_review,
         child_session_activity_threshold_secs: parsed
             .ideation
             .child_session_activity_threshold_secs,
@@ -1721,6 +1725,7 @@ fn load_config() -> LoadedConfig {
                 verification: VerificationConfig::default(),
                 external_mcp: ExternalMcpConfig::default(),
                 delegation: runtime_config::DelegationConfig::default(),
+                workspace_review: runtime_config::WorkspaceReviewRuntimeConfig::default(),
                 child_session_activity_threshold_secs: None,
                 ui_feature_flags: UiFeatureFlagsConfig::default(),
             };
@@ -1907,6 +1912,14 @@ pub fn stream_timeouts() -> &'static StreamTimeoutsConfig {
 /// Backend-held delegation waiting settings (bounded `delegate_wait` + park/wake).
 pub fn delegation_config() -> &'static runtime_config::DelegationConfig {
     &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.delegation
+}
+
+/// Workspace Review reviewer deadlines (idle / absolute wall-clock / completion grace).
+pub fn workspace_review_config() -> &'static runtime_config::WorkspaceReviewRuntimeConfig {
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .runtime
+        .workspace_review
 }
 
 pub fn database_maintenance_config() -> &'static runtime_config::DatabaseMaintenanceConfig {

@@ -73,9 +73,13 @@ Only `tools` and `disallowedTools` are valid Claude agent frontmatter fields; `a
 - Agent: grant it only to canonical agents/profiles whose prompt contract gives them a reason to use it.
 - Validation: assert both allowed and denied agents, unknown-tool behavior, backend payload shape, and any side-effect guard.
 
+## Runtime-Injected Role-Tiered Grants
+
+Atlassian (Jira/Confluence) tools are granted per `RoutingRole` tier (`none|read|read_write`) and injected per spawn through the MCP runtime context, additively on top of canonical `capabilities.mcp_tools` — never through `agents/<agent>/agent.yaml` or generated frontmatter, which have no run/project/role context. Backend handlers re-derive the tier per request from the run's persisted `routing_role`/`project_id`. See `docs/features/atlassian-mcp-access.md`.
+
 ## Ticket Attachment Tools (NON-NEGOTIABLE)
 
-`list_ticket_attachments` and `fetch_ticket_attachment` are read-only, pointer-based tools granted only to execution worker and coder surfaces; never expose credentials, provider transport handles, direct download URLs, cache paths, raw bytes, or trusted-content semantics.
+`list_ticket_attachments` and `fetch_ticket_attachment` are read-only tools granted only to execution worker and coder surfaces. Access is tier-driven per request, not just spawn-time tool visibility: Jira calls re-derive the caller's persisted `routing_role` through the same `AtlassianMcpAccess` gate as the other Atlassian tools (`list_ticket_attachments`/`fetch_ticket_attachment` are part of `ATLASSIAN_READ_TOOLS`); Linear/ClickUp calls stay on the canonical worker/coder grant and a trusted, live caller-run identity check, never a fall-through with no check. `fetch_ticket_attachment` may return a materialized `contentPath` under RalphX-managed attachment storage (readable by Claude-harness runs; other sandboxed harnesses may not have filesystem access to it) plus an optional inline `contentText` preview for small `text/*` attachments. Raw provider URLs, credentials, and provider transport handles are still never exposed — see `plugins/app/ralphx-mcp-server/src/ticket-attachment-tools.ts` for the redaction allowlist/denylist that enforces this.
 
 ## Persona Builder Tools
 

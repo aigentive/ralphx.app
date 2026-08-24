@@ -677,6 +677,7 @@ async fn block_valid_current_attempt(
             blocker: Some("Choose the safe repair path before continuing.".to_string()),
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     )
     .await
@@ -740,6 +741,7 @@ async fn legacy_pr_fix_transport_without_a_durable_attempt_fails_closed_without_
             fix_commit_sha: None,
             created_by_run_id: Some(owner_run_id.to_string()),
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -800,6 +802,7 @@ async fn legacy_pr_fix_transport_rejects_wrong_durable_run_without_effects() {
             fix_commit_sha: None,
             created_by_run_id: Some(wrong_run_id.to_string()),
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -833,6 +836,7 @@ async fn legacy_pr_fix_transport_uses_durable_completion_without_legacy_publish_
             fix_commit_sha: Some("f".repeat(40)),
             created_by_run_id: Some(owner_run_id.to_string()),
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -908,6 +912,7 @@ async fn transport_authority_rejects_missing_runtime_headers_without_mutation() 
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -950,6 +955,7 @@ async fn transport_authority_rejects_malformed_runtime_run_without_mutation() {
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -978,6 +984,7 @@ async fn transport_authority_rejects_header_conversation_mismatch_without_mutati
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -1014,6 +1021,7 @@ async fn transport_authority_rejects_cross_conversation_runtime_run_without_muta
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -1050,6 +1058,7 @@ async fn transport_authority_rejects_nonowning_runtime_run_without_mutation() {
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -1084,6 +1093,7 @@ async fn transport_authority_rejects_missing_current_run_row_without_mutation() 
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -1118,6 +1128,7 @@ async fn transport_authority_rejects_nonrunning_current_run_without_mutation() {
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -1147,6 +1158,7 @@ async fn transport_authority_keeps_semantic_repair_outcomes_successful() {
                 blocker: None,
                 reported_fix_commit_sha: None,
                 resolution: None,
+                ..Default::default()
             },
         )
         .await,
@@ -1188,6 +1200,7 @@ async fn transport_authority_keeps_semantic_repair_outcomes_successful() {
                 blocker: None,
                 reported_fix_commit_sha: None,
                 resolution: None,
+                ..Default::default()
             },
         )
         .await,
@@ -1208,6 +1221,7 @@ async fn transport_authority_keeps_semantic_repair_outcomes_successful() {
                 blocker: Some("Choose whether to preserve the legacy schema.".to_string()),
                 reported_fix_commit_sha: None,
                 resolution: None,
+                ..Default::default()
             },
         )
         .await,
@@ -1266,6 +1280,7 @@ async fn transport_authority_keeps_semantic_repair_outcomes_successful() {
                 blocker: None,
                 reported_fix_commit_sha: None,
                 resolution: None,
+                ..Default::default()
             },
         )
         .await,
@@ -1301,6 +1316,7 @@ async fn unknown_run_is_rejected_before_any_git_probe_or_attempt_mutation() {
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     )
     .await
@@ -1365,6 +1381,7 @@ async fn stale_validation_reservation_returns_before_every_git_probe() {
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     ));
     reservation_gate.wait().await;
@@ -1445,6 +1462,7 @@ async fn racing_success_handoff_for_the_same_run_is_already_completed_without_du
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     ));
     continuation_gate.wait().await;
@@ -1541,6 +1559,7 @@ async fn racing_success_duplicates_for_the_same_run_skip_extra_git_and_complete_
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         })
     };
     let mut first = tokio::spawn(complete_agent_workspace_repair(
@@ -1643,6 +1662,7 @@ async fn racing_blocker_duplicates_for_the_same_run_are_already_blocked_without_
             blocker: Some("Choose whether to preserve the legacy schema.".to_string()),
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     ));
     let second = tokio::spawn(complete_agent_workspace_repair(
@@ -1654,6 +1674,7 @@ async fn racing_blocker_duplicates_for_the_same_run_are_already_blocked_without_
             blocker: Some("Choose whether to preserve the legacy schema.".to_string()),
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     ));
     blocker_gate.wait().await;
@@ -1736,6 +1757,7 @@ async fn completion_from_a_superseded_generation_stays_superseded_without_side_e
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     )
     .await
@@ -1780,6 +1802,7 @@ async fn trusted_blocker_settles_the_generation_once_without_git_or_audit_side_e
             blocker: Some("Choose whether to preserve the legacy schema.".to_string()),
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     )
     .await
@@ -1816,6 +1839,7 @@ async fn trusted_blocker_settles_the_generation_once_without_git_or_audit_side_e
             blocker: Some("Different stale blocker".to_string()),
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     )
     .await
@@ -1885,6 +1909,7 @@ async fn blocked_exact_run_with_clean_repair_resurrects_through_validation_and_c
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     )
     .await
@@ -1943,6 +1968,7 @@ async fn blocked_exact_run_with_unproven_repair_stays_blocked_without_continuati
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     )
     .await
@@ -1992,6 +2018,7 @@ async fn blocked_different_run_cannot_resurrect_the_current_generation() {
             blocker: None,
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         },
     )
     .await;
@@ -2026,6 +2053,7 @@ async fn blocked_exact_run_with_blocker_keeps_the_canned_blocked_response() {
             blocker: Some("Still awaiting maintainer direction.".to_string()),
             reported_fix_commit_sha: None,
             resolution: None,
+            ..Default::default()
         }),
     )
     .await
@@ -2067,4 +2095,374 @@ async fn workspace_response_projects_only_the_unsettled_maintenance_operation() 
     assert_eq!(operation.status.to_string(), "active");
     assert_eq!(operation.recovery_action.to_string(), "none");
     assert!(operation.automatic_continuation);
+}
+
+/// Seeds the exact state a routed Workspace Review fixer holds: a workspace, a blocking review
+/// monitor linked to a live `Running` fixer run, and deliberately **no** durable repair attempt.
+async fn seed_active_review_fixer(state: &HttpServerState) -> (ChatConversationId, AgentRunId) {
+    use ralphx_lib::domain::entities::{
+        AgentWorkspaceReviewGateStatus, AgentWorkspaceReviewMonitor,
+        AgentWorkspaceReviewMonitorStatus, AgentWorkspaceReviewOutcome,
+        AgentWorkspaceReviewTargetScope, ArtifactId,
+    };
+
+    let conversation_id = ChatConversationId::new();
+    let project_id = ProjectId::from_string("review-fixer-project".to_string());
+    let workspace = AgentConversationWorkspace::new(
+        conversation_id,
+        project_id.clone(),
+        AgentConversationWorkspaceMode::Edit,
+        IdeationAnalysisBaseRefKind::ProjectDefault,
+        "main".to_string(),
+        Some("main".to_string()),
+        Some("base-head".to_string()),
+        "ralphx/test/review-fixer".to_string(),
+        "/missing-on-purpose".to_string(),
+    );
+    state
+        .app_state
+        .agent_conversation_workspace_repo
+        .create_or_update(workspace)
+        .await
+        .expect("seed review fixer workspace");
+
+    let run = AgentRun::new(conversation_id);
+    let run_id = run.id;
+    state
+        .app_state
+        .agent_run_repo
+        .create(run)
+        .await
+        .expect("seed review fixer run");
+
+    let mut monitor = AgentWorkspaceReviewMonitor::new(conversation_id, project_id);
+    monitor.status = AgentWorkspaceReviewMonitorStatus::Ready;
+    monitor.review_outcome = AgentWorkspaceReviewOutcome::Blocking;
+    monitor.review_gate_status = AgentWorkspaceReviewGateStatus::Blocking;
+    monitor.current_target_scope = Some(AgentWorkspaceReviewTargetScope::WorkspaceDelta);
+    monitor.reviewed_target_scope = Some(AgentWorkspaceReviewTargetScope::WorkspaceDelta);
+    monitor.current_diff_fingerprint = Some("diff-review-fixer".to_string());
+    monitor.reviewed_diff_fingerprint = Some("diff-review-fixer".to_string());
+    monitor.review_artifact_id = Some(ArtifactId::from_string("artifact-review-fixer"));
+    monitor.review_artifact_version = Some(1);
+    monitor.review_requested_changes_artifact_id =
+        Some(ArtifactId::from_string("requested-changes-review-fixer"));
+    monitor.review_requested_changes_artifact_version = Some(1);
+    monitor.review_blocking_fingerprint = Some("blocker-review-fixer".to_string());
+    monitor.review_fixer_status = Some("running".to_string());
+    monitor.review_fixer_attempt_id = Some("review-fixer-attempt".to_string());
+    monitor.review_fixer_run_id = Some(run_id.as_str());
+    monitor.review_fixer_conversation_id = Some(conversation_id);
+    state
+        .app_state
+        .agent_conversation_workspace_repo
+        .upsert_workspace_review_monitor(monitor)
+        .await
+        .expect("seed review fixer monitor");
+
+    (conversation_id, run_id)
+}
+
+/// The shared `repair_completion_http_response` helper omits `resolution`; these cases need it.
+async fn repair_completion_http_response_with_body(
+    state: HttpServerState,
+    conversation_id: &ChatConversationId,
+    headers: HeaderMap,
+    body: serde_json::Value,
+) -> axum::response::Response {
+    let mut request = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/api/agent-workspaces/{}/complete-repair",
+            conversation_id
+        ))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&body).expect("serialize repair completion request"),
+        ))
+        .expect("build repair completion request");
+    request.headers_mut().extend(headers);
+    repair_completion_app(state)
+        .oneshot(request)
+        .await
+        .expect("repair completion router response")
+}
+
+async fn error_detail(response: axum::response::Response) -> (StatusCode, String) {
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read repair completion response body");
+    let detail = serde_json::from_slice::<serde_json::Value>(&body)
+        .expect("repair completion response JSON")
+        .get("error")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    (status, detail)
+}
+
+async fn review_fixer_status(
+    state: &HttpServerState,
+    conversation_id: &ChatConversationId,
+) -> (Option<String>, Option<String>) {
+    let monitor = state
+        .app_state
+        .agent_conversation_workspace_repo
+        .get_workspace_review_monitor(conversation_id)
+        .await
+        .expect("read review monitor")
+        .expect("review monitor exists");
+    (monitor.review_fixer_status, monitor.last_error)
+}
+
+#[tokio::test]
+async fn review_fixer_summary_completes_instead_of_conflicting() {
+    let state = test_state();
+    let (conversation_id, run_id) = seed_active_review_fixer(&state).await;
+
+    let response = repair_completion_http_response(
+        state.clone(),
+        &conversation_id,
+        completion_headers(conversation_id, run_id),
+        CompleteAgentWorkspaceRepairRequest {
+            summary: "Applied the requested review changes and committed them.".to_string(),
+            blocker: None,
+            reported_fix_commit_sha: None,
+            resolution: None,
+            what_happened: None,
+            what_i_did: None,
+        },
+    )
+    .await;
+
+    let (status, response_status) = response_status(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(response_status, "accepted");
+
+    // The success path must not settle the fixer or invent a durable repair attempt.
+    let (fixer_status, last_error) = review_fixer_status(&state, &conversation_id).await;
+    assert_eq!(fixer_status.as_deref(), Some("running"));
+    assert!(last_error.is_none());
+    assert!(state
+        .app_state
+        .agent_workspace_repair_repo
+        .get_repair_attempt_for_run(&conversation_id, &run_id)
+        .await
+        .expect("read repair attempt")
+        .is_none());
+    assert!(state
+        .app_state
+        .agent_workspace_repair_repo
+        .get_current_repair_attempt(&conversation_id)
+        .await
+        .expect("read current repair attempt")
+        .is_none());
+}
+
+#[tokio::test]
+async fn review_fixer_blocker_settles_the_review_gate() {
+    let state = test_state();
+    let (conversation_id, run_id) = seed_active_review_fixer(&state).await;
+
+    let response = repair_completion_http_response(
+        state.clone(),
+        &conversation_id,
+        completion_headers(conversation_id, run_id),
+        CompleteAgentWorkspaceRepairRequest {
+            summary: "Could not repair safely.".to_string(),
+            blocker: Some("The requested change needs a schema migration.".to_string()),
+            reported_fix_commit_sha: None,
+            resolution: None,
+            what_happened: None,
+            what_i_did: None,
+        },
+    )
+    .await;
+
+    let (status, response_status) = response_status(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(response_status, "blocked");
+
+    let (fixer_status, last_error) = review_fixer_status(&state, &conversation_id).await;
+    assert_eq!(fixer_status.as_deref(), Some("failed"));
+    assert!(last_error
+        .as_deref()
+        .is_some_and(|error| error.contains("The requested change needs a schema migration.")));
+}
+
+#[tokio::test]
+async fn review_fixer_needs_human_blocks_and_pr_autofix_resolutions_are_rejected() {
+    let state = test_state();
+    let (conversation_id, run_id) = seed_active_review_fixer(&state).await;
+
+    for resolution in ["transient_ci", "pre_existing_on_base"] {
+        let response = repair_completion_http_response_with_body(
+            state.clone(),
+            &conversation_id,
+            completion_headers(conversation_id, run_id),
+            serde_json::json!({
+                "summary": "Cannot classify this as a PR autofix outcome.",
+                "resolution": resolution,
+            }),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "{resolution} must be rejected for a Review fixer"
+        );
+    }
+    assert_eq!(
+        review_fixer_status(&state, &conversation_id)
+            .await
+            .0
+            .as_deref(),
+        Some("running")
+    );
+
+    let response = repair_completion_http_response_with_body(
+        state.clone(),
+        &conversation_id,
+        completion_headers(conversation_id, run_id),
+        serde_json::json!({
+            "summary": "This repair needs a human decision about the API contract.",
+            "resolution": "needs_human",
+        }),
+    )
+    .await;
+
+    let (status, response_status) = response_status(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(response_status, "blocked");
+
+    let (fixer_status, last_error) = review_fixer_status(&state, &conversation_id).await;
+    assert_eq!(fixer_status.as_deref(), Some("failed"));
+    assert!(last_error
+        .as_deref()
+        .is_some_and(|error| error.contains("a human decision about the API contract")));
+}
+
+#[tokio::test]
+async fn review_fixer_with_resolution_fixed_completes_as_accepted() {
+    let state = test_state();
+    let (conversation_id, run_id) = seed_active_review_fixer(&state).await;
+
+    let response = repair_completion_http_response_with_body(
+        state.clone(),
+        &conversation_id,
+        completion_headers(conversation_id, run_id),
+        serde_json::json!({
+            "summary": "Applied all requested review changes and committed the fix.",
+            "resolution": "fixed",
+        }),
+    )
+    .await;
+
+    let (status, response_status) = response_status(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(response_status, "accepted");
+
+    // resolution: "fixed" must not settle the fixer or create a durable repair attempt.
+    let (fixer_status, last_error) = review_fixer_status(&state, &conversation_id).await;
+    assert_eq!(fixer_status.as_deref(), Some("running"));
+    assert!(last_error.is_none());
+    assert!(state
+        .app_state
+        .agent_workspace_repair_repo
+        .get_repair_attempt_for_run(&conversation_id, &run_id)
+        .await
+        .expect("read repair attempt")
+        .is_none());
+}
+
+#[tokio::test]
+async fn review_fixer_completion_is_idempotent_after_settlement() {
+    let state = test_state();
+    let (conversation_id, run_id) = seed_active_review_fixer(&state).await;
+
+    for _ in 0..2 {
+        repair_completion_http_response(
+            state.clone(),
+            &conversation_id,
+            completion_headers(conversation_id, run_id),
+            CompleteAgentWorkspaceRepairRequest {
+                summary: "Could not repair safely.".to_string(),
+                blocker: Some("Needs a human decision.".to_string()),
+                reported_fix_commit_sha: None,
+                resolution: None,
+                what_happened: None,
+                what_i_did: None,
+            },
+        )
+        .await;
+    }
+
+    let response = repair_completion_http_response(
+        state.clone(),
+        &conversation_id,
+        completion_headers(conversation_id, run_id),
+        CompleteAgentWorkspaceRepairRequest {
+            summary: "Could not repair safely.".to_string(),
+            blocker: Some("Needs a human decision.".to_string()),
+            reported_fix_commit_sha: None,
+            resolution: None,
+            what_happened: None,
+            what_i_did: None,
+        },
+    )
+    .await;
+
+    let (status, response_status) = response_status(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(response_status, "already_completed");
+}
+
+#[tokio::test]
+async fn run_without_any_repair_assignment_gets_a_distinct_conflict_detail() {
+    let state = test_state();
+    let (conversation_id, _fixer_run_id) = seed_active_review_fixer(&state).await;
+
+    // A live run on the same workspace that is neither a durable repair nor the active fixer.
+    let stranger = AgentRun::new(conversation_id);
+    let stranger_id = stranger.id;
+    state
+        .app_state
+        .agent_run_repo
+        .create(stranger)
+        .await
+        .expect("seed unrelated run");
+
+    let response = repair_completion_http_response(
+        state.clone(),
+        &conversation_id,
+        completion_headers(conversation_id, stranger_id),
+        CompleteAgentWorkspaceRepairRequest {
+            summary: "I think I am a repair agent.".to_string(),
+            blocker: None,
+            reported_fix_commit_sha: None,
+            resolution: None,
+            what_happened: None,
+            what_i_did: None,
+        },
+    )
+    .await;
+
+    let (status, detail) = error_detail(response).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        detail.contains("no durable workspace repair assignment"),
+        "unexpected conflict detail: {detail}"
+    );
+    assert_ne!(
+        detail, "The repair run is not authorized for the active workspace repair.",
+        "the missing-assignment case must be distinguishable from authority loss"
+    );
+    assert_eq!(
+        review_fixer_status(&state, &conversation_id)
+            .await
+            .0
+            .as_deref(),
+        Some("running")
+    );
 }

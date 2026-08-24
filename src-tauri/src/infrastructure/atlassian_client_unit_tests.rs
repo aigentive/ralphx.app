@@ -3,6 +3,8 @@ use hyper::Method;
 use serde_json::Value;
 use std::sync::Mutex;
 
+use crate::domain::integrations::AtlassianApiError;
+
 use super::atlassian_client::*;
 
 #[test]
@@ -53,17 +55,18 @@ impl AtlassianJsonRequester for FakeRequester {
         url: String,
         _auth: RequestAuth<'_>,
         body: Option<Value>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, AtlassianApiError> {
         self.recorded
             .lock()
             .unwrap()
             .push(RecordedRequest { method, url, body });
         let mut responses = self.responses.lock().unwrap();
-        if responses.len() > 1 {
+        let response = if responses.len() > 1 {
             responses.remove(0)
         } else {
             responses.first().cloned().unwrap_or(Ok(Value::Null))
-        }
+        };
+        response.map_err(AtlassianApiError::transport)
     }
 }
 
@@ -255,6 +258,31 @@ fn jira_comment_adf_builds_expected_document_structure() {
     assert_eq!(inner.len(), 1);
     assert_eq!(inner[0]["type"], "text");
     assert_eq!(inner[0]["text"], "Hello from RalphX");
+}
+
+#[test]
+fn jira_comment_adf_renders_markdown_formatting() {
+    // Regression: jira_comment_adf must go through the markdown writer, not a
+    // plain-text wrapper, so headings/lists/bold render as real ADF nodes.
+    let adf = jira_comment_adf("## Heads up\n\n- one\n- two\n\n**bold** and *italic*");
+    let content = adf["content"].as_array().expect("content array");
+
+    assert_eq!(content[0]["type"], "heading");
+    assert_eq!(content[0]["attrs"]["level"], 2);
+    assert_eq!(content[0]["content"][0]["text"], "Heads up");
+
+    assert_eq!(content[1]["type"], "bulletList");
+    let items = content[1]["content"].as_array().expect("list items");
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["content"][0]["content"][0]["text"], "one");
+
+    let paragraph = &content[2];
+    assert_eq!(paragraph["type"], "paragraph");
+    let spans = paragraph["content"].as_array().expect("paragraph spans");
+    assert_eq!(spans[0]["text"], "bold");
+    assert_eq!(spans[0]["marks"][0]["type"], "strong");
+    assert_eq!(spans[2]["text"], "italic");
+    assert_eq!(spans[2]["marks"][0]["type"], "em");
 }
 
 // ---- Empty-input guards (return Err before any network request) ----------

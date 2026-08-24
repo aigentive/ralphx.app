@@ -12,7 +12,7 @@
 
 use super::helpers::*;
 use crate::application::{AppState, TaskTransitionService};
-use crate::commands::ExecutionState;
+use crate::application::execution_state::ExecutionState;
 use crate::domain::entities::{
     InternalStatus, MergeFailureSource, MergeRecoveryEventKind, MergeRecoveryMetadata,
     MergeValidationMode, Project, ProjectId, Task,
@@ -173,6 +173,36 @@ fn test_transient_error_shallow_file() {
     assert!(
         is_transient_merge_error(&err),
         "shallow file changed errors should be transient"
+    );
+}
+
+/// An exhausted GitHub rate limit resolves on its own when the window resets, so it must be
+/// retryable. Before the typed variant existed this arrived as `Infrastructure` and was permanent
+/// (`DeterministicInfra`), which is what let the 2026-08-11 incident terminalize attempts.
+#[test]
+fn test_transient_error_github_rate_limit() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GithubRateLimited {
+        message:
+            "gh exited with code 1: GraphQL: API rate limit already exceeded for user ID 6580668."
+                .to_string(),
+    };
+    assert!(
+        is_transient_merge_error(&err),
+        "an exhausted GitHub rate limit must be retryable, not a permanent block"
+    );
+}
+
+/// Auth failures must stay permanent even though they arrive from the same GitHub surface.
+#[test]
+fn test_permanent_error_github_auth_is_not_transient() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitAuth(
+        "could not read Username for 'https://github.com'".to_string(),
+    );
+    assert!(
+        !is_transient_merge_error(&err),
+        "auth failures must never be blind-retried"
     );
 }
 

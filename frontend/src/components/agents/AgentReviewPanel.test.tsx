@@ -54,6 +54,7 @@ function reviewMonitor(
     status: "ready",
     reviewOutcome: "none",
     reviewGateStatus: "required",
+    reviewSettlementSource: null,
     currentTargetScope: "workspace_delta",
     reviewedTargetScope: "workspace_delta",
     reviewConversationId: "review-conversation-1",
@@ -119,6 +120,41 @@ function reviewContext(
     ...overrides,
   };
 }
+
+it("explains a passed gate that was settled from a timed-out reviewer's artifact", () => {
+  renderPanel({
+    reviewContext: reviewContext({
+      isCurrent: true,
+      isOutdated: false,
+      monitor: reviewMonitor({
+        reviewOutcome: "passed",
+        reviewGateStatus: "passed",
+        reviewSettlementSource: "artifact_degraded",
+      }),
+    }),
+  });
+
+  // The gate still reads as passed: a degraded settlement authorizes exactly what a typed one does.
+  expect(screen.getByText("Review passed")).toBeInTheDocument();
+  expect(screen.getByText(/reviewer timed out before reporting/i)).toBeInTheDocument();
+});
+
+it("does not explain settlement for an ordinary typed pass", () => {
+  renderPanel({
+    reviewContext: reviewContext({
+      isCurrent: true,
+      isOutdated: false,
+      monitor: reviewMonitor({
+        reviewOutcome: "passed",
+        reviewGateStatus: "passed",
+        reviewSettlementSource: "typed",
+      }),
+    }),
+  });
+
+  expect(screen.getByText("Review passed")).toBeInTheDocument();
+  expect(screen.queryByText(/reviewer timed out before reporting/i)).not.toBeInTheDocument();
+});
 
 it("distinguishes a blocking review authorized by a human bypass", () => {
   renderPanel({
@@ -455,6 +491,81 @@ describe("AgentReviewPanel", () => {
     expect(
       screen.getByText("Turn Auto Review & Fix off, then on to re-arm the loop with a fresh cycle budget."),
     ).toBeInTheDocument();
+  });
+
+  it("surfaces the blocker a Workspace Review fixer reported", () => {
+    renderPanel({
+      reviewContext: reviewContext({
+        isCurrent: true,
+        isOutdated: false,
+        monitor: reviewMonitor({
+          reviewOutcome: "blocking",
+          reviewGateStatus: "blocking",
+          reviewBlockingSummary: "One unresolved blocker remains.",
+          reviewFixerStatus: "failed",
+          lastError:
+            "Workspace Review fixer reported a blocker: this needs a schema migration.",
+        }),
+      }),
+    });
+
+    expect(
+      screen.getByText("Automatic fix stopped"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "One unresolved blocker remains. Workspace Review fixer reported a blocker: this needs a schema migration.",
+      ),
+    ).toBeInTheDocument();
+    // The blocker is recoverable: the user must still be able to retry manually.
+    expect(screen.getByRole("button", { name: "Fix Issues" })).toBeEnabled();
+  });
+
+  it("surfaces the same headline for a fixer launch failure (provider error)", () => {
+    renderPanel({
+      reviewContext: reviewContext({
+        isCurrent: true,
+        isOutdated: false,
+        monitor: reviewMonitor({
+          reviewOutcome: "blocking",
+          reviewGateStatus: "blocking",
+          reviewBlockingSummary: "One unresolved blocker remains.",
+          reviewFixerStatus: "failed",
+          lastError:
+            "Failed to resolve Review fixer provider: no provider configured",
+        }),
+      }),
+    });
+
+    expect(
+      screen.getByText("Automatic fix stopped"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "One unresolved blocker remains. Failed to resolve Review fixer provider: no provider configured",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fix Issues" })).toBeEnabled();
+  });
+
+  it("leaves the ordinary blocking banner untouched without a failed fixer", () => {
+    renderPanel({
+      reviewContext: reviewContext({
+        isCurrent: true,
+        isOutdated: false,
+        monitor: reviewMonitor({
+          reviewOutcome: "blocking",
+          reviewGateStatus: "blocking",
+          reviewBlockingSummary: "One unresolved blocker remains.",
+          reviewFixerStatus: null,
+        }),
+      }),
+    });
+
+    expect(screen.getByText("Review blocking")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Automatic fix stopped"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the Workspace Review-only automation row and writes its explicit override", async () => {

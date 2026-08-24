@@ -128,20 +128,21 @@ pub use agent_conversation_workspace::{
     AgentWorkspacePrReviewActionStatus, AgentWorkspacePrReviewMonitor,
     AgentWorkspacePrReviewMonitorStatus, AgentWorkspacePublicationMetadataPhase,
     AgentWorkspacePublicationMetadataReceipt, AgentWorkspacePublicationMetadataState,
-    AgentWorkspaceReviewAutoMergeGuard,
+    AgentWorkspacePreviousReviewSnapshot,
+    AgentWorkspaceReviewArtifactOutcome, AgentWorkspaceReviewAutoMergeGuard,
     AgentWorkspaceReviewAutoMergeGuardStatus, AgentWorkspaceReviewGateStatus,
     AgentWorkspaceReviewApprovalSnapshot, AgentWorkspaceReviewFixerSnapshot,
     AgentWorkspaceReviewHunkAnnotation,
     AgentWorkspaceReviewMonitor,
     AgentWorkspaceReviewMonitorStatus, AgentWorkspaceReviewOutcome,
-    AgentWorkspaceReviewRuntimeState,
+    AgentWorkspaceReviewRuntimeState, AgentWorkspaceReviewSettlementSource,
     AgentWorkspaceReviewTargetScope, AgentWorkspaceSourcePullRequest,
     DEFAULT_AGENT_WORKSPACE_PR_AUTO_MERGE_METHOD, WORKSPACE_REVIEW_FIXER_STATUS_CYCLE_CAPPED,
     WORKSPACE_REVIEW_FIXER_STATUS_QUEUED, WORKSPACE_REVIEW_FIXER_STATUS_ROUTING,
     WORKSPACE_REVIEW_FIXER_STATUS_RUNNING,
 };
 pub use agent_workspace_repair::{
-    AgentWorkspaceRepairAttempt, AgentWorkspaceRepairAttemptId,
+    AgentWorkspacePrAutofixIssueKind, AgentWorkspaceRepairAttempt, AgentWorkspaceRepairAttemptId,
     AgentWorkspaceRepairCompletionAuthority, AgentWorkspaceRepairContinuation,
     AgentWorkspaceRepairEffect, AgentWorkspaceRepairEffectId, AgentWorkspaceRepairEffectKind,
     AgentWorkspaceRepairEffectStatus, AgentWorkspaceRepairOperationRecoveryAction,
@@ -150,6 +151,7 @@ pub use agent_workspace_repair::{
     AgentWorkspaceRepairOperationStatus,
     AgentWorkspaceRepairOutcome, AgentWorkspaceRepairPhase, AgentWorkspaceRepairSource,
     CONTINUATION_OPEN_EFFECT_ATTENTION_PENDING_REASON,
+    PR_AUTOFIX_BASE_PARITY_TRANSIENT_PENDING_REASON,
     PR_AUTOFIX_BASE_STALE_AFTER_UPDATE_PENDING_REASON,
 };
 pub use agent_workspace_pr_metadata::AgentWorkspacePrMetadataDecision;
@@ -305,7 +307,7 @@ pub use task_metadata::{
     ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
     ExecutionRecoveryState, MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind,
     MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
-    RetryStrategy, ReviewScopeMetadata, ValidationCacheMetadata,
+    compute_validation_hint, RetryStrategy, ReviewScopeMetadata, ValidationCacheMetadata,
 };
 pub use task_qa::TaskQA;
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};

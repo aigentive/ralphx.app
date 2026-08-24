@@ -21,16 +21,17 @@ use crate::application::agent_workspace_fixer_conversation::{
 };
 use crate::application::agent_workspace_review_base::resolve_agent_workspace_review_base;
 use crate::application::chat_service::{
-    ChatService, SendCallerContext, SendMessageOptions, SendQueuePolicy,
+    get_assistant_role, ChatService, SendCallerContext, SendMessageOptions, SendQueuePolicy,
 };
 use crate::application::git_service::git_cmd::{self, GitCommandLane};
 use crate::application::{AppState, GitService};
 use crate::domain::entities::{
     workspace_review_fixer_status_is_active, AgentConversationWorkspace,
     AgentConversationWorkspaceMode, AgentRun, AgentRunAction, AgentRunActionKind, AgentRunId,
-    AgentRunStatus, AgentWorkspaceReviewFixerSnapshot, AgentWorkspaceReviewGateStatus,
-    AgentWorkspaceReviewMonitor, AgentWorkspaceReviewMonitorStatus, AgentWorkspaceReviewOutcome,
-    AgentWorkspaceReviewRuntimeState, AgentWorkspaceReviewTargetScope, Artifact, ArtifactContent,
+    AgentRunStatus, AgentWorkspaceReviewArtifactOutcome, AgentWorkspaceReviewFixerSnapshot,
+    AgentWorkspaceReviewGateStatus, AgentWorkspaceReviewMonitor, AgentWorkspaceReviewMonitorStatus,
+    AgentWorkspaceReviewOutcome, AgentWorkspaceReviewRuntimeState,
+    AgentWorkspaceReviewSettlementSource, AgentWorkspaceReviewTargetScope, Artifact, ArtifactContent,
     ArtifactId, ChatContextType, ChatConversation, ChatConversationId, MessageRole, Project,
     WORKSPACE_REVIEW_FIXER_STATUS_CYCLE_CAPPED, WORKSPACE_REVIEW_FIXER_STATUS_QUEUED,
     WORKSPACE_REVIEW_FIXER_STATUS_ROUTING, WORKSPACE_REVIEW_FIXER_STATUS_RUNNING,
@@ -47,10 +48,12 @@ use crate::domain::services::{
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::agent_names;
 
-const WORKSPACE_REVIEWER_TIMEOUT_SECS: u64 = 900;
 const WORKSPACE_REVIEW_RUN_POLL_INTERVAL_MS: u64 = 250;
+/// Reviewer liveness is read from persisted timeline activity, which is far more expensive than
+/// the run-status poll. Evaluate it on its own slower cadence.
+const WORKSPACE_REVIEW_ACTIVITY_CHECK_INTERVAL_MS: u64 = 5_000;
 const WORKSPACE_REVIEW_LOG_TARGET: &str = "ralphx_lib::application::agent_workspace_review";
-const WORKSPACE_REVIEW_PATCH_EXCERPT_CHARS: usize = 42_000;
+const WORKSPACE_REVIEW_PATCH_EXCERPT_CHARS: usize = 60_000;
 const WORKSPACE_REVIEW_MAX_CHANGED_FILES: usize = 120;
 const WORKSPACE_REVIEW_MAX_HUNK_ANCHORS: usize = 600;
 const WORKSPACE_REVIEW_MAX_INHERITED_PROJECT_REFERENCES: usize = 8;
@@ -64,6 +67,17 @@ const WORKSPACE_REVIEW_GOAL_POLICY: &str =
     "Goal Wins: explicit parent workspace requests and linked/approved plan artifacts are authoritative unless the diff introduces a concrete security, data-loss, build, or correctness blocker.";
 const WORKSPACE_REVIEW_TARGET_MISMATCH_ERROR: &str =
     "Workspace reviewer completion did not match the current Review target";
+/// A deadline expired and the reviewer never wrote a current Review for this target.
+pub(crate) const WORKSPACE_REVIEW_ERR_TIMED_OUT_NO_REVIEW: &str =
+    "Workspace reviewer timed out without producing a current Review";
+/// A deadline expired while a current Review artifact pair already existed, but the reviewer
+/// never confirmed the outcome through `complete_workspace_review_run`.
+pub(crate) const WORKSPACE_REVIEW_ERR_UNCONFIRMED_REVIEW: &str =
+    "Workspace reviewer wrote a current Review but did not confirm completion before the deadline";
+/// A deadline expired and the durable monitor could not be read during the grace window, so
+/// whether a current Review exists is unknown. Distinct from a verified absence.
+pub(crate) const WORKSPACE_REVIEW_ERR_UNVERIFIABLE_REVIEW: &str =
+    "Workspace reviewer deadline expired and the durable Review state could not be read";
 #[cfg(test)]
 pub(crate) const WORKSPACE_REVIEW_UNFINISHED_GIT_OPERATION_ERROR: &str =
     "Resolve conflicts and complete or abort the merge or rebase before retrying Workspace Review.";
@@ -76,6 +90,9 @@ const WORKSPACE_REVIEW_FIXER_INTERRUPTED_ON_STARTUP_ERROR: &str =
 const WORKSPACE_REVIEW_FIXER_INVALID_AUTHORITY_ON_STARTUP_ERROR: &str =
     "Workspace Review fixer recovery found invalid attempt authority";
 const WORKSPACE_REVIEW_FIXER_STATUS_FAILED: &str = "failed";
+/// Prefix for the `last_error` a Workspace Review fixer writes when it cannot repair safely.
+const WORKSPACE_REVIEW_FIXER_BLOCKER_ERROR_PREFIX: &str =
+    "Workspace Review fixer reported a blocker: ";
 const WORKSPACE_REVIEW_FIXER_SKIPPED_ALREADY_ACTIVE: &str = "fixer_already_active";
 const WORKSPACE_REVIEW_PLAN_CONTEXT_CHANGED_ERROR: &str =
     "The linked plan changed after this Workspace Review. Run Workspace Review again before repairing its findings.";
@@ -241,6 +258,11 @@ pub struct AgentWorkspaceReviewChangedFile {
     pub path: String,
     pub status: String,
     pub sources: Vec<String>,
+    /// Set when the file carries little per-line review signal (lockfile, generated output,
+    /// snapshot, asset, binary). Its hunks are omitted from the patch excerpt and remain
+    /// retrievable in full through `get_workspace_review_diff_page`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub low_signal: Option<crate::application::agent_workspace_review_low_signal::LowSignalClass>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -984,6 +1006,10 @@ async fn start_agent_workspace_review_with_revalidated_target_and_chat_service<
         phase_started,
         request_started,
     );
+    // Freeze the settled review before this run touches anything. This is the only correct capture
+    // point: the target-refresh path runs on every context read, and the completion/blocked paths
+    // run after the run's own artifact write has already overwritten `reviewed_*`.
+    monitor.capture_previous_review_snapshot();
     apply_current_target_to_monitor(&mut monitor, target.as_ref());
     carry_forward_existing_merged_pr_review_if_current(workspace, &mut monitor, target.as_ref());
     let phase_started = Instant::now();
@@ -1418,6 +1444,7 @@ async fn start_agent_workspace_review_with_revalidated_target_and_chat_service<
         workspace.clone(),
         target.clone(),
         send_result.agent_run_id.clone(),
+        WorkspaceReviewWaiterDeadlines::from_runtime_config(),
     );
     log_workspace_review_phase(
         "workspace_review_start_phase",
@@ -2027,15 +2054,96 @@ fn push_workspace_review_resolved_artifact(
     artifacts.push(artifact);
 }
 
+/// Liveness-aware deadlines for one workspace Review run.
+///
+/// Injected rather than read from ambient runtime config so the waiter can be driven at
+/// millisecond scale in tests (project rule: test determinism).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WorkspaceReviewWaiterDeadlines {
+    /// Fail only after the reviewer child has persisted no new output for this long.
+    pub idle_timeout: Duration,
+    /// Absolute runaway cap regardless of reviewer activity.
+    pub max_wall_clock: Duration,
+    /// Extra window for the typed completion call when a current Review already exists.
+    pub completion_grace: Duration,
+}
+
+impl WorkspaceReviewWaiterDeadlines {
+    fn from_runtime_config() -> Self {
+        let config = crate::infrastructure::agents::claude::workspace_review_config();
+        Self {
+            idle_timeout: Duration::from_secs(config.reviewer_idle_timeout_secs),
+            max_wall_clock: Duration::from_secs(config.reviewer_max_wall_clock_secs),
+            completion_grace: Duration::from_secs(config.reviewer_completion_grace_secs),
+        }
+    }
+}
+
+/// Which bound ended the wait. Only used for logging; both map to the same settlement sequence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkspaceReviewDeadlineKind {
+    Idle,
+    WallClock,
+}
+
+impl WorkspaceReviewDeadlineKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Idle => "idle_timeout",
+            Self::WallClock => "max_wall_clock",
+        }
+    }
+}
+
+/// Outcome of the post-deadline settlement sequence.
+enum WorkspaceReviewDeadlineSettlement {
+    /// The reviewer's typed completion already landed for this target; leave it alone.
+    TypedCompletionPreserved,
+    /// The run reached a terminal state during settlement; the normal terminal branch owns it.
+    RunTerminal(Box<AgentRun>),
+    /// The deadline stands. Block the gate with this error.
+    Failed(&'static str),
+}
+
 fn spawn_workspace_review_waiter(
     state: Arc<AppState>,
     workspace: AgentConversationWorkspace,
     target: AgentWorkspaceReviewTarget,
     run_id: String,
+    deadlines: WorkspaceReviewWaiterDeadlines,
 ) {
+    let chat_service = Arc::new(state.build_chat_service());
+    let _handle = spawn_workspace_review_waiter_with_chat_service(
+        state,
+        workspace,
+        target,
+        run_id,
+        deadlines,
+        chat_service,
+    );
+}
+
+fn spawn_workspace_review_waiter_with_chat_service<S>(
+    state: Arc<AppState>,
+    workspace: AgentConversationWorkspace,
+    target: AgentWorkspaceReviewTarget,
+    run_id: String,
+    deadlines: WorkspaceReviewWaiterDeadlines,
+    chat_service: Arc<S>,
+) -> tokio::task::JoinHandle<()>
+where
+    S: ChatService + ?Sized + 'static,
+{
     tokio::spawn(async move {
         let wait_started = Instant::now();
         let run_entity_id = AgentRunId::from_string(run_id.clone());
+        let assistant_role: MessageRole = get_assistant_role(&ChatContextType::Project);
+        let mut activity_probe = WorkspaceReviewActivityProbe::new();
+        // Never sample slower than a quarter of the idle window, so detection granularity stays
+        // bounded relative to the configured deadline instead of a fixed wall-clock cadence.
+        let activity_check_interval =
+            Duration::from_millis(WORKSPACE_REVIEW_ACTIVITY_CHECK_INTERVAL_MS)
+                .min(deadlines.idle_timeout / 4);
         info!(
             target: WORKSPACE_REVIEW_LOG_TARGET,
             operation = "child_chat_wait_started",
@@ -2043,26 +2151,16 @@ fn spawn_workspace_review_waiter(
             project_id = %workspace.project_id,
             branch = %workspace.branch_name,
             run_id = %run_id,
-            timeout_secs = WORKSPACE_REVIEWER_TIMEOUT_SECS,
+            idle_timeout_secs = deadlines.idle_timeout.as_secs(),
+            max_wall_clock_secs = deadlines.max_wall_clock.as_secs(),
+            completion_grace_secs = deadlines.completion_grace.as_secs(),
             target_scope = %target.scope,
             diff_fingerprint = %compact_log_fingerprint(Some(&target.diff_fingerprint)),
             "Waiting for workspace Review child chat completion"
         );
 
         loop {
-            if wait_started.elapsed() >= Duration::from_secs(WORKSPACE_REVIEWER_TIMEOUT_SECS) {
-                mark_workspace_review_blocked(
-                    &state,
-                    &workspace,
-                    &target,
-                    &run_id,
-                    "Workspace reviewer timed out before producing a current Review".to_string(),
-                )
-                .await;
-                return;
-            }
-
-            let run = match state.agent_run_repo.get_by_id(&run_entity_id).await {
+            let mut run = match state.agent_run_repo.get_by_id(&run_entity_id).await {
                 Ok(Some(run)) => run,
                 Ok(None) => {
                     mark_workspace_review_blocked(
@@ -2085,12 +2183,103 @@ fn spawn_workspace_review_waiter(
                         elapsed_ms = wait_started.elapsed().as_millis(),
                         "Failed to poll workspace Review child chat run"
                     );
+                    // The wall-clock cap must hold even when the run row is unreadable.
+                    // Idle is meaningless without a run, so only the unconditional cap fires here.
+                    // No stop_agent: with the run row unreadable there is no verified child to stop,
+                    // and stopping blind would re-open the "stopped by user" error overwrite.
+                    if wait_started.elapsed() >= deadlines.max_wall_clock {
+                        warn!(
+                            target: WORKSPACE_REVIEW_LOG_TARGET,
+                            operation = "child_chat_deadline_tripped",
+                            conversation_id = %workspace.conversation_id,
+                            project_id = %workspace.project_id,
+                            branch = %workspace.branch_name,
+                            run_id = %run_id,
+                            deadline = WorkspaceReviewDeadlineKind::WallClock.as_str(),
+                            elapsed_ms = wait_started.elapsed().as_millis(),
+                            target_scope = %target.scope,
+                            "Workspace Review deadline tripped on run-poll error; failing the gate"
+                        );
+                        mark_workspace_review_blocked(
+                            &state,
+                            &workspace,
+                            &target,
+                            &run_id,
+                            WORKSPACE_REVIEW_ERR_TIMED_OUT_NO_REVIEW.to_string(),
+                        )
+                        .await;
+                        return;
+                    }
                     sleep(Duration::from_millis(WORKSPACE_REVIEW_RUN_POLL_INTERVAL_MS)).await;
                     continue;
                 }
             };
 
-            if run.status == AgentRunStatus::Running {
+            let tripped = if wait_started.elapsed() >= deadlines.max_wall_clock {
+                Some(WorkspaceReviewDeadlineKind::WallClock)
+            } else if run.status == AgentRunStatus::Running
+                && activity_probe
+                    .idle_for(&state, &run, assistant_role, activity_check_interval)
+                    .await
+                    .is_some_and(|idle| idle >= deadlines.idle_timeout)
+            {
+                Some(WorkspaceReviewDeadlineKind::Idle)
+            } else {
+                None
+            };
+
+            if let Some(kind) = tripped {
+                warn!(
+                    target: WORKSPACE_REVIEW_LOG_TARGET,
+                    operation = "child_chat_deadline_tripped",
+                    conversation_id = %workspace.conversation_id,
+                    project_id = %workspace.project_id,
+                    branch = %workspace.branch_name,
+                    run_id = %run_id,
+                    deadline = kind.as_str(),
+                    elapsed_ms = wait_started.elapsed().as_millis(),
+                    run_status = %run.status,
+                    target_scope = %target.scope,
+                    "Workspace Review deadline tripped; settling before failing the gate"
+                );
+                match settle_workspace_review_deadline(
+                    &state,
+                    &workspace,
+                    &target,
+                    &run_id,
+                    &run_entity_id,
+                    deadlines,
+                    wait_started,
+                )
+                .await
+                {
+                    WorkspaceReviewDeadlineSettlement::TypedCompletionPreserved => return,
+                    WorkspaceReviewDeadlineSettlement::RunTerminal(terminal_run) => {
+                        run = *terminal_run;
+                    }
+                    WorkspaceReviewDeadlineSettlement::Failed(error) => {
+                        mark_workspace_review_blocked(
+                            &state,
+                            &workspace,
+                            &target,
+                            &run_id,
+                            error.to_string(),
+                        )
+                        .await;
+                        // Order matters: the stop reconciliation in `chat_service` overwrites
+                        // `last_error` with the "stopped by user" text while the monitor is still
+                        // `Reviewing`. Blocking first makes it early-return instead.
+                        stop_workspace_review_child_after_block(
+                            chat_service.as_ref(),
+                            &workspace,
+                            &run,
+                            &run_id,
+                        )
+                        .await;
+                        return;
+                    }
+                }
+            } else if run.status == AgentRunStatus::Running {
                 sleep(Duration::from_millis(WORKSPACE_REVIEW_RUN_POLL_INTERVAL_MS)).await;
                 continue;
             }
@@ -2224,19 +2413,399 @@ fn spawn_workspace_review_waiter(
                         diff_fingerprint = %compact_log_fingerprint(Some(&target.diff_fingerprint)),
                         "Workspace reviewer child chat completed without writing a current Review"
                     );
-                    mark_workspace_review_blocked(
+                    if settle_workspace_review_from_durable_evidence(
                         &state,
                         &workspace,
                         &target,
                         &run_id,
-                        "Workspace reviewer completed without writing a current Review".to_string(),
                     )
-                    .await;
+                    .await
+                        == WorkspaceReviewSettlement::NotSettled
+                    {
+                        mark_workspace_review_blocked(
+                            &state,
+                            &workspace,
+                            &target,
+                            &run_id,
+                            "Workspace reviewer completed without writing a current Review"
+                                .to_string(),
+                        )
+                        .await;
+                    }
                 }
             }
             return;
         }
-    });
+    })
+}
+
+/// Rate-limited, fail-closed reader for "is the reviewer still producing output?".
+///
+/// The signal is persisted assistant activity on the reviewer's own child conversation. Timeline
+/// block `updated_at` is the only source that advances *during* a long turn — `chat_messages` has
+/// no `updated_at` and its `created_at` stays frozen for the whole turn, which is exactly the trap
+/// that made a fixed deadline kill live reviewers.
+struct WorkspaceReviewActivityProbe {
+    last_checked: Option<Instant>,
+    last_idle: Option<Duration>,
+}
+
+impl WorkspaceReviewActivityProbe {
+    fn new() -> Self {
+        Self {
+            last_checked: None,
+            last_idle: None,
+        }
+    }
+
+    /// `Some(idle)` when the reviewer is provably idle for that long; `None` when the idle
+    /// timeout must be deferred. A failed read always yields `None` (treat as active) so a repo
+    /// hiccup can never terminalize a working reviewer — only the wall-clock cap can.
+    async fn idle_for(
+        &mut self,
+        state: &AppState,
+        run: &AgentRun,
+        assistant_role: MessageRole,
+        check_interval: Duration,
+    ) -> Option<Duration> {
+        let now = Instant::now();
+        if let Some(last_checked) = self.last_checked {
+            if now.duration_since(last_checked) < check_interval {
+                return self.last_idle;
+            }
+        }
+        self.last_checked = Some(now);
+
+        let timeline_read = state
+            .chat_timeline_repo
+            .latest_assistant_activity_at_for_conversation(&run.conversation_id, assistant_role);
+        let message_read = state
+            .chat_message_repo
+            .get_recent_by_conversation_paginated(&run.conversation_id, 1, 0);
+        let (timeline_activity_at, recent_messages) = match tokio::try_join!(
+            timeline_read,
+            message_read
+        ) {
+            Ok(values) => values,
+            Err(error) => {
+                warn!(
+                    target: WORKSPACE_REVIEW_LOG_TARGET,
+                    operation = "child_chat_activity_read_failed",
+                    conversation_id = %run.conversation_id,
+                    run_id = %run.id,
+                    error = %error,
+                    "Failed to read workspace Review reviewer activity; treating the reviewer as active"
+                );
+                self.last_idle = None;
+                return None;
+            }
+        };
+
+        let message_activity_at = recent_messages
+            .into_iter()
+            .find(|message| message.role == assistant_role)
+            .map(|message| message.created_at);
+        let activity_at = [timeline_activity_at, message_activity_at]
+            .into_iter()
+            .flatten()
+            .max()
+            .unwrap_or(run.started_at);
+        let idle = (Utc::now() - activity_at)
+            .to_std()
+            .unwrap_or(Duration::ZERO);
+        self.last_idle = Some(idle);
+        Some(idle)
+    }
+}
+
+/// Decide what a tripped deadline actually means before failing the gate.
+///
+/// The reviewer contract writes the Review artifact pair first and calls
+/// `complete_workspace_review_run` last, so there is a real window where the review is finished in
+/// substance but the monitor is still `Reviewing`. Failing immediately in that window strands a
+/// current Review behind a failed gate.
+async fn settle_workspace_review_deadline(
+    state: &AppState,
+    workspace: &AgentConversationWorkspace,
+    target: &AgentWorkspaceReviewTarget,
+    run_id: &str,
+    run_entity_id: &AgentRunId,
+    deadlines: WorkspaceReviewWaiterDeadlines,
+    wait_started: Instant,
+) -> WorkspaceReviewDeadlineSettlement {
+    let settlement_started = Instant::now();
+    let mut saw_review_artifact_pair = false;
+    let mut saw_monitor_read_failure = false;
+
+    loop {
+        let mut monitor_read_failed = false;
+        match state
+            .agent_conversation_workspace_repo
+            .get_workspace_review_monitor(&workspace.conversation_id)
+            .await
+        {
+            Ok(durable_monitor) => {
+                if let Some(monitor) = durable_monitor.as_ref() {
+                    if workspace_review_monitor_has_typed_completion_for_target(
+                        monitor, target, run_id,
+                    ) {
+                        info!(
+                            target: WORKSPACE_REVIEW_LOG_TARGET,
+                            operation = "child_chat_typed_completion_preserved",
+                            conversation_id = %workspace.conversation_id,
+                            project_id = %workspace.project_id,
+                            branch = %workspace.branch_name,
+                            run_id = %run_id,
+                            elapsed_ms = wait_started.elapsed().as_millis(),
+                            monitor_status = %monitor.status,
+                            review_outcome = %monitor.review_outcome,
+                            review_gate_status = %monitor.review_gate_status,
+                            "Preserved typed workspace Review completion after a deadline tripped"
+                        );
+                        return WorkspaceReviewDeadlineSettlement::TypedCompletionPreserved;
+                    }
+                    if monitor.is_current_for_target(
+                        target.scope,
+                        target.head_sha.as_deref(),
+                        &target.diff_fingerprint,
+                    ) && monitor.has_review_artifact_pair()
+                    {
+                        saw_review_artifact_pair = true;
+                    }
+                }
+            }
+            Err(error) => {
+                warn!(
+                    target: WORKSPACE_REVIEW_LOG_TARGET,
+                    operation = "child_chat_deadline_settlement_retry",
+                    conversation_id = %workspace.conversation_id,
+                    run_id = %run_id,
+                    error = %error,
+                    elapsed_ms = wait_started.elapsed().as_millis(),
+                    "Failed to load durable workspace Review monitor during deadline settlement; retrying"
+                );
+                monitor_read_failed = true;
+                saw_monitor_read_failure = true;
+            }
+        }
+
+        // A terminal run means the ordinary terminal branch owns the outcome, including its own
+        // artifact verification and run_failed preservation. Only hand off when the monitor was
+        // actually readable: that branch reads the same monitor, so handing off during a repo
+        // outage would bounce straight back here with the deadline already exceeded.
+        if !monitor_read_failed {
+            if let Ok(Some(run)) = state.agent_run_repo.get_by_id(run_entity_id).await {
+                if run.status != AgentRunStatus::Running {
+                    return WorkspaceReviewDeadlineSettlement::RunTerminal(Box::new(run));
+                }
+            }
+        }
+
+        // Nothing to protect and nothing unknown: the deadline is final right away.
+        if !saw_review_artifact_pair && !monitor_read_failed {
+            return WorkspaceReviewDeadlineSettlement::Failed(
+                WORKSPACE_REVIEW_ERR_TIMED_OUT_NO_REVIEW,
+            );
+        }
+
+        if settlement_started.elapsed() >= deadlines.completion_grace {
+            return WorkspaceReviewDeadlineSettlement::Failed(if saw_review_artifact_pair {
+                WORKSPACE_REVIEW_ERR_UNCONFIRMED_REVIEW
+            } else if saw_monitor_read_failure {
+                WORKSPACE_REVIEW_ERR_UNVERIFIABLE_REVIEW
+            } else {
+                WORKSPACE_REVIEW_ERR_TIMED_OUT_NO_REVIEW
+            });
+        }
+
+        sleep(Duration::from_millis(WORKSPACE_REVIEW_RUN_POLL_INTERVAL_MS)).await;
+    }
+}
+
+/// Stop the reviewer child so it cannot keep working against a gate it no longer owns.
+///
+/// MUST be called only after `mark_workspace_review_blocked` has persisted: while the monitor is
+/// still `Reviewing`, `try_reconcile_stopped_workspace_review_child` replaces `last_error` with
+/// the "stopped by user" text and destroys the accurate timeout reason.
+async fn stop_workspace_review_child_after_block<S>(
+    chat_service: &S,
+    workspace: &AgentConversationWorkspace,
+    run: &AgentRun,
+    run_id: &str,
+) where
+    S: ChatService + ?Sized,
+{
+    match chat_service
+        .stop_agent(ChatContextType::Project, &run.conversation_id.as_str())
+        .await
+    {
+        Ok(stopped) => {
+            info!(
+                target: WORKSPACE_REVIEW_LOG_TARGET,
+                operation = "child_chat_stopped_after_deadline",
+                conversation_id = %workspace.conversation_id,
+                review_conversation_id = %run.conversation_id,
+                run_id = %run_id,
+                stopped,
+                "Stopped the workspace Review child run after failing the gate"
+            );
+        }
+        Err(error) => {
+            warn!(
+                target: WORKSPACE_REVIEW_LOG_TARGET,
+                operation = "child_chat_stop_after_deadline_failed",
+                conversation_id = %workspace.conversation_id,
+                review_conversation_id = %run.conversation_id,
+                run_id = %run_id,
+                error = %error,
+                "Failed to stop the workspace Review child run after failing the gate"
+            );
+        }
+    }
+}
+
+/// Result of trying to settle a review gate from durable evidence rather than a typed completion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WorkspaceReviewSettlement {
+    /// The reviewer already called `complete_workspace_review_run`; nothing to do.
+    TypedPreserved,
+    /// Settled from the recorded artifact outcome after the wrapper gave up on the run.
+    DegradedSettled(AgentWorkspaceReviewArtifactOutcome),
+    /// No durable evidence this run may settle from; the caller must fail the review.
+    NotSettled,
+}
+
+/// Settles the review gate from the outcome the reviewer recorded on its final artifact write.
+///
+/// This exists because the reviewer's wrapper deadline can fire in the tail of an otherwise
+/// finished review — after the artifact pair landed but before `complete_workspace_review_run` —
+/// and discarding a completed review because the process was slow to exit is the wrong trade.
+///
+/// It is deliberately narrower than typed completion:
+///
+/// - It requires the artifact pair to be current for this exact target AND the recorded outcome to
+///   name `run_id`. Without the run-id check a re-review of an unchanged delta would inherit the
+///   previous run's evidence, since target refresh does not clear artifact identity.
+/// - It re-runs the plan-context guard. A stale plan context must never be laundered into a pass.
+/// - It derives the gate through [`apply_review_gate_to_monitor`] instead of assigning one.
+/// - It does not route the blocking fixer and does not arm the auto-merge guard: a timed-out
+///   reviewer should not trigger automatic publication. It does record a blocking summary and
+///   fingerprint, without which the manual fixer action fails closed.
+pub(crate) async fn settle_workspace_review_from_durable_evidence(
+    state: &AppState,
+    workspace: &AgentConversationWorkspace,
+    target: &AgentWorkspaceReviewTarget,
+    run_id: &str,
+) -> WorkspaceReviewSettlement {
+    let _lifecycle_guard = lock_workspace_review_lifecycle(&workspace.conversation_id).await;
+    if load_current_workspace_review_eligible(state, workspace)
+        .await
+        .is_err()
+    {
+        return WorkspaceReviewSettlement::NotSettled;
+    }
+    let Ok(mut monitor) = load_or_create_monitor(state, workspace).await else {
+        return WorkspaceReviewSettlement::NotSettled;
+    };
+    if workspace_review_monitor_has_typed_completion_for_target(&monitor, target, run_id) {
+        return WorkspaceReviewSettlement::TypedPreserved;
+    }
+    if !workspace_review_block_matches_active_monitor(&monitor, target, run_id) {
+        return WorkspaceReviewSettlement::NotSettled;
+    }
+    let Some(recorded_outcome) = monitor
+        .review_artifact_recorded_outcome
+        .filter(|_| monitor.has_recorded_outcome_for_run(run_id))
+    else {
+        return WorkspaceReviewSettlement::NotSettled;
+    };
+
+    // Plan-context guard, mirroring typed completion. A read failure is treated as drift.
+    let Ok(live_plan_context_fingerprint) = load_linked_workspace_plan_snapshot(state, workspace)
+        .await
+        .map(|snapshot| snapshot.map(|snapshot| snapshot.fingerprint()))
+    else {
+        return WorkspaceReviewSettlement::NotSettled;
+    };
+    if monitor.reviewed_plan_context_fingerprint != live_plan_context_fingerprint {
+        return WorkspaceReviewSettlement::NotSettled;
+    }
+    apply_current_plan_context_to_monitor(
+        &mut monitor,
+        live_plan_context_fingerprint.as_deref(),
+    );
+
+    let artifact_current = monitor.is_current_for_target(
+        target.scope,
+        target.head_sha.as_deref(),
+        &target.diff_fingerprint,
+    ) && monitor.has_review_artifact_pair();
+    if !artifact_current {
+        return WorkspaceReviewSettlement::NotSettled;
+    }
+
+    monitor.clear_review_gate_bypass();
+    monitor.status = AgentWorkspaceReviewMonitorStatus::Ready;
+    monitor.last_error = None;
+    match recorded_outcome {
+        AgentWorkspaceReviewArtifactOutcome::Passed => {
+            monitor.review_outcome = AgentWorkspaceReviewOutcome::Passed;
+            clear_review_blocking_state(&mut monitor);
+            monitor.review_fixer_cycle_count = 0;
+        }
+        AgentWorkspaceReviewArtifactOutcome::Blocking => {
+            // The artifact write cleared live blocking state, so both fields are empty here and
+            // the fixer-start path would fail closed without them.
+            let blocking_summary = monitor
+                .review_artifact_recorded_blocking_summary
+                .clone()
+                .unwrap_or_else(|| {
+                    "Workspace Review recorded blocking findings; see the Requested Changes artifact."
+                        .to_string()
+                });
+            monitor.review_blocking_fingerprint = Some(workspace_review_blocking_fingerprint(
+                target,
+                &blocking_summary,
+            ));
+            monitor.review_blocking_summary = Some(blocking_summary);
+            monitor.review_outcome = AgentWorkspaceReviewOutcome::Blocking;
+        }
+    }
+    monitor.review_settlement_source = Some(AgentWorkspaceReviewSettlementSource::ArtifactDegraded);
+    apply_review_gate_to_monitor(&mut monitor, Some(target));
+
+    if let Err(error) = state
+        .agent_conversation_workspace_repo
+        .upsert_workspace_review_monitor(monitor)
+        .await
+    {
+        warn!(
+            target: WORKSPACE_REVIEW_LOG_TARGET,
+            operation = "degraded_settlement_persist_failed",
+            conversation_id = %workspace.conversation_id,
+            run_id = %run_id,
+            error = %error,
+            "Failed to persist degraded workspace Review settlement"
+        );
+        return WorkspaceReviewSettlement::NotSettled;
+    }
+    crate::application::agent_workspace_review_annotator::dispatch_workspace_review_annotator(
+        state, workspace, target,
+    )
+    .await;
+    info!(
+        target: WORKSPACE_REVIEW_LOG_TARGET,
+        operation = "degraded_settlement_applied",
+        conversation_id = %workspace.conversation_id,
+        project_id = %workspace.project_id,
+        branch = %workspace.branch_name,
+        run_id = %run_id,
+        recorded_outcome = %recorded_outcome,
+        target_scope = %target.scope,
+        diff_fingerprint = %compact_log_fingerprint(Some(&target.diff_fingerprint)),
+        "Settled workspace Review gate from recorded artifact outcome"
+    );
+    WorkspaceReviewSettlement::DegradedSettled(recorded_outcome)
 }
 
 async fn mark_workspace_review_blocked(
@@ -2638,6 +3207,7 @@ pub(crate) async fn complete_agent_workspace_review_run_unlocked(
             clear_review_blocking_state(&mut monitor);
         }
     }
+    monitor.review_settlement_source = Some(AgentWorkspaceReviewSettlementSource::Typed);
     apply_review_gate_to_monitor(&mut monitor, target.as_ref());
     let mut monitor = state
         .agent_conversation_workspace_repo
@@ -2654,6 +3224,16 @@ pub(crate) async fn complete_agent_workspace_review_run_unlocked(
         monitor = crate::application::agent_workspace_review_auto_merge::
             handle_passing_workspace_review_auto_merge_guard(state, workspace, &monitor)
                 .await?;
+    }
+    if let Some(target) = target.as_ref().filter(|_| {
+        matches!(
+            monitor.review_outcome,
+            AgentWorkspaceReviewOutcome::Passed | AgentWorkspaceReviewOutcome::Blocking
+        )
+    }) {
+        crate::application::agent_workspace_review_annotator::
+            dispatch_workspace_review_annotator(state, workspace, target)
+                .await;
     }
     let scope = target_scope_label(target.as_ref());
     let fingerprint = target_fingerprint_label(target.as_ref());
@@ -2814,6 +3394,49 @@ pub(crate) fn ensure_workspace_review_run_is_active(
             "{operation} requires created_by_run_id for the active workspace Review run"
         ))),
     }
+}
+
+/// Authorizes a hunk-annotation write.
+///
+/// Two callers are legitimate. The reviewer may still write annotations while its run is active
+/// (the historical path). The backend-registered annotator writes *after* the review settled, when
+/// the monitor is no longer `Reviewing`, so it cannot use active-run authority at all.
+///
+/// The annotator path is deliberately narrow: it requires the caller run to be the exact run the
+/// backend registered in `annotation_run_id`, and the reviewed target to still match the request
+/// exactly. Both are cleared on target refresh, so a stale annotator loses authority the moment
+/// the workspace moves on. Annotations never touch gate or outcome state.
+pub(crate) fn ensure_workspace_review_annotation_authority(
+    monitor: &AgentWorkspaceReviewMonitor,
+    created_by_run_id: Option<&str>,
+    target: &AgentWorkspaceReviewTarget,
+    operation: &str,
+) -> AppResult<()> {
+    let active_run_error =
+        match ensure_workspace_review_run_is_active(monitor, created_by_run_id, operation) {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
+
+    let Some(created_by_run_id) = created_by_run_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(active_run_error);
+    };
+    if monitor.annotation_run_id.as_deref() != Some(created_by_run_id) {
+        return Err(active_run_error);
+    }
+    if !monitor.is_current_for_target(
+        target.scope,
+        target.head_sha.as_deref(),
+        &target.diff_fingerprint,
+    ) {
+        return Err(AppError::Validation(format!(
+            "{operation} run is registered for a different workspace Review target"
+        )));
+    }
+    Ok(())
 }
 
 fn workspace_review_blocking_fingerprint(
@@ -3607,6 +4230,108 @@ async fn settle_workspace_review_fixer_attempt(
         })
 }
 
+/// Result of a Workspace Review fixer run reporting its own completion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceReviewFixerCompletionOutcome {
+    /// Summary accepted; the run should end and a fresh Workspace Review settles the loop.
+    Accepted,
+    /// Blocker recorded; the fixer attempt settled `failed`, so the loop stops re-routing.
+    Blocked,
+    /// Fixer linkage matches but the attempt already reached a terminal status.
+    AlreadySettled,
+    /// The fixer attempt was superseded between the monitor read and the CAS settle.
+    Superseded,
+    /// The run is not the active Review fixer for this conversation.
+    NotFixerRun,
+}
+
+/// Records a Workspace Review fixer run's own completion report.
+///
+/// Review fixers never own a durable `agent_workspace_repair_attempts` row, so the repair
+/// completion handler cannot authorize them from attempt lineage. This is their completion
+/// channel: it re-proves the caller is the active fixer, then either accepts the summary —
+/// leaving the run-end → re-review loop as the settlement authority — or records a blocker that
+/// terminates the fix loop for the same findings.
+///
+/// # Errors
+/// Returns an error when the run, the monitor, or the fixer settlement cannot be read or written.
+pub async fn complete_workspace_review_fixer_run(
+    state: &AppState,
+    conversation_id: &ChatConversationId,
+    run_id: &AgentRunId,
+    blocker: Option<&str>,
+) -> AppResult<WorkspaceReviewFixerCompletionOutcome> {
+    let outcome =
+        resolve_workspace_review_fixer_completion(state, conversation_id, run_id, blocker).await?;
+    info!(
+        target: WORKSPACE_REVIEW_LOG_TARGET,
+        operation = "fixer_completion_tool",
+        conversation_id = %conversation_id,
+        run_id = %run_id,
+        blocked = blocker.is_some(),
+        outcome = ?outcome,
+        "Workspace Review fixer reported completion"
+    );
+    Ok(outcome)
+}
+
+/// Fails closed at every gate: anything that cannot be proven is `NotFixerRun`, which leaves the
+/// caller on its existing rejection path.
+async fn resolve_workspace_review_fixer_completion(
+    state: &AppState,
+    conversation_id: &ChatConversationId,
+    run_id: &AgentRunId,
+    blocker: Option<&str>,
+) -> AppResult<WorkspaceReviewFixerCompletionOutcome> {
+    let Some(run) = state.agent_run_repo.get_by_id(run_id).await? else {
+        return Ok(WorkspaceReviewFixerCompletionOutcome::NotFixerRun);
+    };
+    if run.conversation_id != *conversation_id || run.status != AgentRunStatus::Running {
+        return Ok(WorkspaceReviewFixerCompletionOutcome::NotFixerRun);
+    }
+    let Some(monitor) = state
+        .agent_conversation_workspace_repo
+        .get_workspace_review_monitor(conversation_id)
+        .await?
+    else {
+        return Ok(WorkspaceReviewFixerCompletionOutcome::NotFixerRun);
+    };
+    if monitor.review_fixer_run_id.as_deref() != Some(run_id.as_str().as_str()) {
+        return Ok(WorkspaceReviewFixerCompletionOutcome::NotFixerRun);
+    }
+    if !workspace_review_fixer_status_is_active(monitor.review_fixer_status.as_deref()) {
+        return Ok(WorkspaceReviewFixerCompletionOutcome::AlreadySettled);
+    }
+    let Some(blocker) = blocker else {
+        // The run-end → review-invalidation → re-review loop remains the settlement authority for
+        // a successful fix, so the accepted path deliberately leaves the monitor untouched.
+        return Ok(WorkspaceReviewFixerCompletionOutcome::Accepted);
+    };
+    let Some(attempt_id) = monitor.review_fixer_attempt_id.clone() else {
+        return Ok(WorkspaceReviewFixerCompletionOutcome::NotFixerRun);
+    };
+    let Some(snapshot) = AgentWorkspaceReviewFixerSnapshot::from_monitor(&monitor) else {
+        return Ok(WorkspaceReviewFixerCompletionOutcome::NotFixerRun);
+    };
+    let mut next = monitor;
+    next.review_fixer_status = Some(WORKSPACE_REVIEW_FIXER_STATUS_FAILED.to_string());
+    next.last_error = Some(format!(
+        "{WORKSPACE_REVIEW_FIXER_BLOCKER_ERROR_PREFIX}{}",
+        blocker.trim()
+    ));
+    // The repo returns `None` for a lost CAS; read supersession from that, never from an error.
+    Ok(
+        match state
+            .agent_conversation_workspace_repo
+            .settle_workspace_review_fixer_attempt(next, &attempt_id, &snapshot)
+            .await?
+        {
+            Some(_) => WorkspaceReviewFixerCompletionOutcome::Blocked,
+            None => WorkspaceReviewFixerCompletionOutcome::Superseded,
+        },
+    )
+}
+
 fn workspace_review_fixer_request_metadata(
     conversation_id: &ChatConversationId,
     blocking_fingerprint: Option<&str>,
@@ -3855,8 +4580,30 @@ pub fn apply_review_artifact_pair_to_monitor(
     monitor.previous_version_id = previous_artifact_id;
     monitor.review_requested_changes_previous_version_id = requested_changes_previous_version_id;
     clear_review_blocking_state(monitor);
+    // Defensive: a write that records no outcome must not leave the previous write's evidence
+    // behind, or a later run could degrade-settle from an artifact it did not produce.
+    // `record_review_artifact_outcome` re-populates these when the write carries an outcome.
+    monitor.clear_recorded_review_evidence();
     monitor.last_run_id = created_by_run_id.or(monitor.last_run_id.take());
     monitor.last_error = None;
+}
+
+/// Stamps the reviewer's typed disposition onto the monitor at final artifact write.
+///
+/// Must run after [`apply_review_artifact_pair_to_monitor`], which clears prior evidence.
+/// The run id is what makes degraded settlement attempt-scoped: a `None` run id records evidence
+/// that can never authorize a settlement, which is the correct fail-closed behavior.
+pub fn record_review_artifact_outcome(
+    monitor: &mut AgentWorkspaceReviewMonitor,
+    outcome: AgentWorkspaceReviewArtifactOutcome,
+    blocking_summary: Option<String>,
+    created_by_run_id: Option<String>,
+) {
+    monitor.review_artifact_recorded_outcome = Some(outcome);
+    monitor.review_artifact_recorded_outcome_run_id = created_by_run_id;
+    monitor.review_artifact_recorded_blocking_summary = blocking_summary
+        .map(|summary| summary.trim().to_string())
+        .filter(|summary| !summary.is_empty());
 }
 
 fn mark_review_artifact_current_for_target(
@@ -4131,6 +4878,11 @@ pub(crate) fn apply_current_target_to_monitor(
     };
     if target_changed {
         clear_review_blocking_state(monitor);
+        // A new target invalidates every authority derived from the old one: the recorded
+        // artifact outcome a degraded settlement would read, and the annotator run allowed to
+        // write hunk annotations. Both must drop together with blocking state.
+        monitor.clear_recorded_review_evidence();
+        monitor.review_settlement_source = None;
     }
     let bypass_remains_current = target.is_some_and(|target| {
         monitor.has_current_review_bypass_for_target(
@@ -4248,12 +5000,22 @@ fn build_review_packet(
         .into_iter()
         .take(WORKSPACE_REVIEW_MAX_CHANGED_FILES)
         .map(|(path, entry)| AgentWorkspaceReviewChangedFile {
+            low_signal: crate::application::agent_workspace_review_low_signal::low_signal_class(
+                &path, false,
+            ),
             path,
             status: entry.status,
             sources: entry.sources.into_iter().collect(),
         })
         .collect::<Vec<_>>();
-    let (patch_excerpt, patch_excerpt_truncated) = build_patch_excerpt(patch_sections, status);
+    let (patch_excerpt, patch_excerpt_truncated, low_signal_omitted) =
+        build_patch_excerpt(patch_sections, status);
+    if low_signal_omitted {
+        notes.push(
+            "Patch excerpt omits low-signal files (lockfiles, generated output, snapshots, assets, binaries); they are flagged with low_signal in the changed-file list and their full diffs are available through get_workspace_review_diff_page."
+                .to_string(),
+        );
+    }
     if patch_excerpt_truncated {
         notes.push(format!(
             "Patch excerpt is limited to {WORKSPACE_REVIEW_PATCH_EXCERPT_CHARS} characters; inspect listed files with read-only filesystem tools only when needed."
@@ -4458,9 +5220,24 @@ fn parse_review_hunk_range(value: &str) -> Option<(u32, u32)> {
     }
 }
 
-fn build_patch_excerpt(patch_sections: &[(&str, &str)], status: Option<&str>) -> (String, bool) {
+/// Builds the inline patch excerpt, returning `(excerpt, truncated, low_signal_omitted)`.
+fn build_patch_excerpt(
+    patch_sections: &[(&str, &str)],
+    status: Option<&str>,
+) -> (String, bool, bool) {
     let mut packet = String::new();
+    let mut low_signal_omitted = false;
     for (label, diff) in patch_sections {
+        if diff.trim().is_empty() {
+            continue;
+        }
+        let (diff, dropped) =
+            crate::application::agent_workspace_review_low_signal::strip_low_signal_diff_sections(
+                diff,
+            );
+        if dropped {
+            low_signal_omitted = true;
+        }
         if diff.trim().is_empty() {
             continue;
         }
@@ -4483,9 +5260,10 @@ fn build_patch_excerpt(patch_sections: &[(&str, &str)], status: Option<&str>) ->
                 .take(WORKSPACE_REVIEW_PATCH_EXCERPT_CHARS)
                 .collect(),
             true,
+            low_signal_omitted,
         )
     } else {
-        (packet, false)
+        (packet, false, low_signal_omitted)
     }
 }
 

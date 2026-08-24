@@ -1897,6 +1897,7 @@ export const chatApi = {
   retryAgentConversationWorkspacePrAutofixOverride,
   stopAgentConversationWorkspacePrAutofixForFailure,
   retryAgentConversationWorkspacePublicationEffect,
+  rerunAgentConversationWorkspaceFailedChecks,
   commitAgentConversationWorkspaceLocally,
   setAgentConversationWorkspaceAutoPublish,
   setAgentConversationWorkspacePrSupervision,
@@ -1970,7 +1971,14 @@ export interface ComposerProjectReference {
 
 export interface ComposerIntegrationReference {
   provider: "atlassian" | "linear" | "clickup" | "granola";
-  kind: "jira" | "confluence" | "linear" | "clickup" | "note";
+  kind:
+    | "jira"
+    | "jira_board"
+    | "confluence"
+    | "confluence_link"
+    | "linear"
+    | "clickup"
+    | "note";
   id: string;
   key?: string;
   title?: string;
@@ -2118,7 +2126,8 @@ export type AgentWorkspaceMaintenanceOperationHoldReason =
   | "base_stale"
   | "health_evidence"
   | "publish_redrive"
-  | "publication_effect_attention";
+  | "publication_effect_attention"
+  | "pr_autofix_base_parity_transient";
 
 export interface AgentWorkspaceMaintenanceOperation {
   operationId: string;
@@ -2130,6 +2139,8 @@ export interface AgentWorkspaceMaintenanceOperation {
   holdReason?: AgentWorkspaceMaintenanceOperationHoldReason | null;
   summary: string | null;
   blocker: string | null;
+  whatHappened?: string | null;
+  whatIDid?: string | null;
   automaticContinuation: boolean;
   startedAt: string;
   updatedAt: string;
@@ -2404,6 +2415,8 @@ export type AgentWorkspaceReviewOutcome =
 export type AgentWorkspaceReviewGateStatus =
   "not_required" | "required" | "reviewing" | "passed" | "blocking" | "failed";
 
+export type AgentWorkspaceReviewSettlementSource = "typed" | "artifact_degraded";
+
 export type AgentWorkspaceReviewTargetScope =
   "selected_source" | "workspace_delta";
 
@@ -2503,6 +2516,10 @@ export interface AgentWorkspaceReviewMonitor {
   status: AgentWorkspaceReviewMonitorStatus;
   reviewOutcome: AgentWorkspaceReviewOutcome;
   reviewGateStatus: AgentWorkspaceReviewGateStatus;
+  /// How the gate was settled. `artifact_degraded` means the reviewer timed out and the backend
+  /// settled from the outcome it recorded on its artifact. Presentation only — a degraded gate
+  /// authorizes exactly what a typed one does.
+  reviewSettlementSource: AgentWorkspaceReviewSettlementSource | null;
   currentTargetScope: AgentWorkspaceReviewTargetScope | null;
   reviewedTargetScope: AgentWorkspaceReviewTargetScope | null;
   reviewConversationId: string | null;
@@ -2736,6 +2753,7 @@ export const AgentWorkspaceMaintenanceOperationResponseSchema = z.object({
       "health_evidence",
       "publish_redrive",
       "publication_effect_attention",
+      "pr_autofix_base_parity_transient",
     ])
     .nullable()
     .optional()
@@ -2743,6 +2761,8 @@ export const AgentWorkspaceMaintenanceOperationResponseSchema = z.object({
     .catch(null),
   summary: z.string().nullable(),
   blocker: z.string().nullable(),
+  what_happened: z.string().nullable().optional().default(null),
+  what_i_did: z.string().nullable().optional().default(null),
   automatic_continuation: z.boolean(),
   started_at: z.string(),
   updated_at: z.string(),
@@ -2999,6 +3019,10 @@ const AgentWorkspaceReviewMonitorResponseSchema = z.object({
     ])
     .optional()
     .default("not_required"),
+  review_settlement_source: z
+    .enum(["typed", "artifact_degraded"])
+    .nullable()
+    .optional(),
   current_target_scope: z
     .enum(["selected_source", "workspace_delta"])
     .nullable(),
@@ -3402,6 +3426,8 @@ function transformAgentConversationWorkspace(
           holdReason: raw.maintenance_operation.hold_reason,
           summary: raw.maintenance_operation.summary,
           blocker: raw.maintenance_operation.blocker,
+          whatHappened: raw.maintenance_operation.what_happened,
+          whatIDid: raw.maintenance_operation.what_i_did,
           automaticContinuation: raw.maintenance_operation.automatic_continuation,
           startedAt: raw.maintenance_operation.started_at,
           updatedAt: raw.maintenance_operation.updated_at,
@@ -3762,6 +3788,7 @@ function transformAgentWorkspaceReviewMonitor(
     status: raw.status,
     reviewOutcome: raw.review_outcome,
     reviewGateStatus: raw.review_gate_status,
+    reviewSettlementSource: raw.review_settlement_source ?? null,
     currentTargetScope: raw.current_target_scope,
     reviewedTargetScope: raw.reviewed_target_scope,
     reviewConversationId: raw.review_conversation_id ?? null,
@@ -4617,6 +4644,18 @@ export async function stopAgentConversationWorkspacePrAutofixForFailure(
 ): Promise<AgentConversationWorkspace> {
   const raw = await typedInvoke(
     "stop_pr_autofix_for_failure",
+    { input: { conversationId, ...input } },
+    AgentConversationWorkspaceResponseSchema,
+  );
+  return transformAgentConversationWorkspace(raw);
+}
+
+export async function rerunAgentConversationWorkspaceFailedChecks(
+  conversationId: string,
+  input: AgentWorkspaceRepairHoldActionInput,
+): Promise<AgentConversationWorkspace> {
+  const raw = await typedInvoke(
+    "rerun_agent_workspace_failed_checks",
     { input: { conversationId, ...input } },
     AgentConversationWorkspaceResponseSchema,
   );

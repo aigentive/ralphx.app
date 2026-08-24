@@ -1,16 +1,20 @@
 // Infrastructure layer - external implementations
 // SQLite, file system, and harness-specific external integrations
 
+pub(crate) mod adf_markdown_writer;
 pub(crate) mod agent_run_error_message;
 pub mod agents;
 pub mod atlassian_client;
 pub(crate) mod atlassian_jira_fields;
+pub(crate) mod atlassian_mcp_client;
 pub mod clickup_client;
+pub(crate) mod confluence_secondary;
 pub(crate) mod git_auth;
 #[cfg(test)]
 mod git_auth_tests;
 pub mod granola_client;
 pub(crate) mod jira_agile_client;
+pub(crate) mod jira_board_context_client;
 pub mod linear_client;
 pub mod login_shell_env;
 pub mod memory;
@@ -25,9 +29,7 @@ pub mod webhook_http_client;
 pub mod webhook_publisher;
 
 // Re-export commonly used items
-pub use agents::{
-    AgenticClientSpawner, ClaudeCodeClient, MockAgenticClient, MockCall, MockCallType,
-};
+pub use agents::{ClaudeCodeClient, MockAgenticClient, MockCall, MockCallType};
 pub use atlassian_client::HyperAtlassianApiClient;
 pub use clickup_client::HyperClickUpApiClient;
 pub use granola_client::HyperGranolaApiClient;
@@ -45,6 +47,8 @@ pub use webhook_http_client::{
 pub use webhook_publisher::WebhookPublisher as ConcreteWebhookPublisher;
 
 #[cfg(test)]
+mod adf_markdown_writer_tests;
+#[cfg(test)]
 mod agent_run_error_message_tests;
 #[cfg(test)]
 mod atlassian_client_tests;
@@ -53,9 +57,15 @@ mod atlassian_client_unit_tests;
 #[cfg(test)]
 mod atlassian_jira_fields_tests;
 #[cfg(test)]
+mod atlassian_mcp_client_tests;
+#[cfg(test)]
 mod jira_agile_client_tests;
 #[cfg(test)]
+mod jira_board_context_client_tests;
+#[cfg(test)]
 mod clickup_client_tests;
+#[cfg(test)]
+mod confluence_secondary_tests;
 #[cfg(test)]
 mod external_mcp_supervisor_tests;
 #[cfg(test)]

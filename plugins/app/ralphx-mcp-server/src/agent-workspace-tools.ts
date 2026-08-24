@@ -247,6 +247,17 @@ export const AGENT_WORKSPACE_TOOLS: Tool[] = [
           type: "string",
           description: "Target diff fingerprint from get_workspace_review_context.",
         },
+        outcome: {
+          type: "string",
+          enum: ["passed", "blocking"],
+          description:
+            "Disposition of this review, matching the artifact's disposition line. RalphX records it durably so the review gate can still settle correctly if your run is cut short after this write.",
+        },
+        blocking_summary: {
+          type: "string",
+          description:
+            "Short summary of what blocks the change. Required when outcome is 'blocking'.",
+        },
       },
       required: [
         "content",
@@ -254,6 +265,7 @@ export const AGENT_WORKSPACE_TOOLS: Tool[] = [
         "target_scope",
         "head_sha",
         "diff_fingerprint",
+        "outcome",
       ],
     },
   },
@@ -539,13 +551,23 @@ export const AGENT_WORKSPACE_TOOLS: Tool[] = [
           type: "string",
           enum: ["fixed", "transient_ci", "pre_existing_on_base", "needs_human"],
           description:
-            "Use fixed only after pushing a real fix. transient_ci is only for GitHub Actions infrastructure failures; pre_existing_on_base requires evidence the failure reproduces on base; needs_human is for a blocker needing user action. Classify honestly rather than fabricating a commit.",
+            "Use fixed only after pushing a real fix. transient_ci is only for GitHub Actions infrastructure failures; pre_existing_on_base applies to check failures only and requires evidence the same check fails on base, never mergeability; needs_human is for a blocker needing user action. A completed base update is a real fix — report fixed with the new HEAD. Classify honestly rather than fabricating a commit.",
         },
         fix_commit_sha: {
           type: "string",
           pattern: "^[0-9a-f]{40}$",
           description:
             "Full 40-character SHA of the current committed workspace HEAD. Required for a fixed completion; RalphX verifies the actual branch head changed from dispatch.",
+        },
+        what_happened: {
+          type: "string",
+          description:
+            "Optional 1-2 plain-language sentences describing what happened. Write for someone who doesn't know what a CI runner is; summary stays the engineer-facing field. Max 480 characters; over-cap is rejected, not truncated.",
+        },
+        what_i_did: {
+          type: "string",
+          description:
+            "Optional 1-2 plain-language sentences describing what you did about it. Write for someone who doesn't know what a CI runner is; summary stays the engineer-facing field. Max 480 characters; over-cap is rejected, not truncated.",
         },
       },
       required: ["conversation_id", "summary"],
@@ -573,13 +595,23 @@ export const AGENT_WORKSPACE_TOOLS: Tool[] = [
           type: "string",
           enum: ["fixed", "transient_ci", "pre_existing_on_base", "needs_human"],
           description:
-            "Classify the repair outcome honestly: fixed after a real repair, transient_ci only for GitHub Actions infrastructure failures, pre_existing_on_base with evidence the failure reproduces on base, or needs_human for a blocker requiring user action.",
+            "Classify the repair outcome honestly: fixed after a real repair, transient_ci only for GitHub Actions infrastructure failures, pre_existing_on_base for check failures only with evidence the same check fails on base (never mergeability), or needs_human for a blocker requiring user action. A completed base update is a real fix — report fixed with the new HEAD.",
         },
         fix_commit_sha: {
           type: "string",
           pattern: "^[0-9a-f]{40}$",
           description:
             "Full 40-character SHA of the current committed workspace HEAD. Required for a fixed repair completion; RalphX verifies the actual branch head changed from dispatch.",
+        },
+        what_happened: {
+          type: "string",
+          description:
+            "Optional 1-2 plain-language sentences describing what happened. Write for someone who doesn't know what a CI runner is; summary stays the engineer-facing field. Max 480 characters; over-cap is rejected, not truncated.",
+        },
+        what_i_did: {
+          type: "string",
+          description:
+            "Optional 1-2 plain-language sentences describing what you did about it. Write for someone who doesn't know what a CI runner is; summary stays the engineer-facing field. Max 480 characters; over-cap is rejected, not truncated.",
         },
       },
       required: ["summary"],
@@ -823,7 +855,7 @@ export async function callGetWorkspaceReviewContextTool(
     runtimeContext
   );
   const path =
-    `agent-workspaces/${conversation_id}/workspace-review-context?include_review_packet=true`;
+    `agent-workspaces/${conversation_id}/workspace-review-context?include_review_packet=true&include_events=false`;
   const headers = buildRuntimeIdentityTransportHeaders({
     agentRunId: runtimeContext?.agentRunId,
     conversationId: runtimeContext?.conversationId,
@@ -911,6 +943,8 @@ export async function callWriteWorkspaceReviewArtifactTool(
     target_scope?: string;
     head_sha?: string;
     diff_fingerprint?: string;
+    outcome?: string;
+    blocking_summary?: string;
   };
   return callTauri(`agent-workspaces/${conversation_id}/workspace-review-artifact`, {
     title: artifactArgs.title,
@@ -920,6 +954,8 @@ export async function callWriteWorkspaceReviewArtifactTool(
     target_scope: artifactArgs.target_scope,
     head_sha: artifactArgs.head_sha,
     diff_fingerprint: artifactArgs.diff_fingerprint,
+    outcome: artifactArgs.outcome,
+    blocking_summary: artifactArgs.blocking_summary,
     created_by_run_id: resolveWorkspaceReviewCallerRunId(runtimeContext),
   });
 }
@@ -1068,12 +1104,14 @@ export async function callCompleteAgentWorkspacePrFixTool(
   args: unknown,
   runtimeContext?: AgentWorkspaceToolRuntimeContext
 ): Promise<unknown> {
-  const { conversation_id, summary, blocker, resolution, fix_commit_sha } = args as {
+  const { conversation_id, summary, blocker, resolution, fix_commit_sha, what_happened, what_i_did } = args as {
     conversation_id: string;
     summary: string;
     blocker?: string;
     resolution?: string;
     fix_commit_sha?: string;
+    what_happened?: string;
+    what_i_did?: string;
   };
 
   return callTauri(`agent-workspaces/${conversation_id}/complete-pr-fix`, {
@@ -1082,6 +1120,8 @@ export async function callCompleteAgentWorkspacePrFixTool(
     resolution,
     fix_commit_sha,
     created_by_run_id: resolveWorkspaceReviewCallerRunId(runtimeContext),
+    ...(what_happened === undefined ? {} : { what_happened }),
+    ...(what_i_did === undefined ? {} : { what_i_did }),
   });
 }
 
@@ -1090,11 +1130,13 @@ export async function callCompleteAgentWorkspaceRepairTool(
   args: unknown,
   runtimeContext?: AgentWorkspaceToolRuntimeContext,
 ): Promise<unknown> {
-  const { summary, blocker, resolution, fix_commit_sha } = (args && typeof args === "object" ? args : {}) as {
+  const { summary, blocker, resolution, fix_commit_sha, what_happened, what_i_did } = (args && typeof args === "object" ? args : {}) as {
     summary: string;
     blocker?: string;
     resolution?: string;
     fix_commit_sha?: string;
+    what_happened?: string;
+    what_i_did?: string;
   };
   const conversation_id = resolveRuntimeAgentWorkspaceConversationId(
     "complete_agent_workspace_repair",
@@ -1115,6 +1157,8 @@ export async function callCompleteAgentWorkspaceRepairTool(
     blocker,
     ...(resolution === undefined ? {} : { resolution }),
     ...(fix_commit_sha === undefined ? {} : { reported_fix_commit_sha: fix_commit_sha }),
+    ...(what_happened === undefined ? {} : { what_happened }),
+    ...(what_i_did === undefined ? {} : { what_i_did }),
   }, { headers });
 }
 

@@ -1097,6 +1097,7 @@ async fn resume_pr_supervision_redrive_does_not_grant_durable_publish_consent() 
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -1888,7 +1889,7 @@ async fn terminal_recovery_blocks_a_conflicted_durable_repair_without_effects() 
 }
 
 #[tokio::test]
-async fn startup_recovery_blocks_a_base_mismatch_without_effects() {
+async fn startup_recovery_retargets_a_clean_repair_behind_an_advanced_base() {
     let conversation_id = ChatConversationId::from_string("54545454-5454-5454-5454-545454545454");
     let fixture = setup_rewritten_repair_publish_fixture(
         conversation_id,
@@ -1909,7 +1910,56 @@ async fn startup_recovery_blocks_a_base_mismatch_without_effects() {
             .expect("recover base-mismatched repair"),
         1
     );
-    assert_recovery_blocked_without_effects(&state, mock_github.as_ref(), &conversation_id).await;
+    // The new behavior retargets instead of blocking: the old generation is superseded and a
+    // successor is dispatched toward the advanced base. The successor is not Blocked — it is in
+    // a dispatch phase (Requested or Repairing) waiting for the next recovery pass.
+    let successor = state
+        .app_state
+        .agent_workspace_repair_repo
+        .get_current_repair_attempt(&conversation_id)
+        .await
+        .expect("load retargeted successor")
+        .expect("a successor repair attempt must exist after retarget");
+    assert_ne!(
+        successor.phase,
+        AgentWorkspaceRepairPhase::Blocked,
+        "a clean repair behind a newer base must be retargeted into a new dispatch, not blocked"
+    );
+    // No GitHub side effects — retarget dispatches an agent run, not a direct push.
+    assert_eq!(
+        *mock_github
+            .push_branch_calls
+            .lock()
+            .expect("normal push counter"),
+        0,
+        "retarget must not enter the normal publisher"
+    );
+    assert_eq!(
+        *mock_github
+            .push_branch_with_expected_remote_oid_lease_calls
+            .lock()
+            .expect("exact push counter"),
+        0,
+        "retarget must not push the repair branch"
+    );
+    assert_eq!(
+        mock_github.create_calls(),
+        0,
+        "retarget must not create a pull request"
+    );
+    // The retarget event must be durably recorded so the publish panel shows the transition.
+    let events = state
+        .app_state
+        .agent_conversation_workspace_repo
+        .list_publication_events(&conversation_id)
+        .await
+        .expect("read retarget publication events");
+    assert!(
+        events
+            .iter()
+            .any(|e| e.step == "repair_base_advance_retargeted"),
+        "retarget must record a 'repair_base_advance_retargeted' publication event"
+    );
 }
 
 #[tokio::test]
@@ -2069,6 +2119,7 @@ async fn complete_repair_hands_off_auto_publish_to_durable_continuation() {
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -2112,6 +2163,7 @@ async fn complete_repair_hands_off_auto_publish_to_durable_continuation() {
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -2177,6 +2229,7 @@ async fn ready_repair_publish_uses_durable_continuation_not_normal_publisher() {
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -2603,6 +2656,7 @@ async fn passed_workspace_review_resumes_the_current_durable_repair_generation_b
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -2679,6 +2733,7 @@ async fn passed_workspace_review_resumes_the_current_durable_repair_generation_b
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -2746,6 +2801,7 @@ async fn passed_workspace_review_resumes_the_current_durable_repair_generation_b
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -2946,6 +3002,7 @@ async fn failed_workspace_review_blocks_durable_repair_without_starting_or_publi
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -3033,6 +3090,7 @@ async fn unavailable_workspace_reviewer_blocks_durable_repair_without_publishing
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -3158,6 +3216,7 @@ async fn repaired_auto_publish_continuation_uses_one_exact_lease_effect_and_push
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     ));
     continuation_gate.wait().await;
@@ -3171,6 +3230,7 @@ async fn repaired_auto_publish_continuation_uses_one_exact_lease_effect_and_push
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -3252,6 +3312,7 @@ async fn repaired_auto_publish_continuation_uses_one_exact_lease_effect_and_push
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -3428,6 +3489,7 @@ async fn repaired_auto_publish_blocks_when_base_advances_before_pr_handoff() {
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -3538,6 +3600,7 @@ async fn repaired_auto_publish_blocks_when_base_advances_before_pr_handoff() {
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -3671,6 +3734,7 @@ async fn complete_update_only_repair_auto_publishes_when_enabled() {
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
@@ -3854,6 +3918,7 @@ async fn complete_repair_uses_linked_plan_branch_for_ideation_workspace() {
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     ));
     tokio::select! {
@@ -4024,6 +4089,7 @@ async fn complete_repair_uses_linked_plan_branch_for_ideation_workspace() {
             blocker: None,
             resolution: None,
             reported_fix_commit_sha: None,
+            ..Default::default()
         }),
     )
     .await
