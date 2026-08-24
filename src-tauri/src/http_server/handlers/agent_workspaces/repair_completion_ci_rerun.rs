@@ -20,6 +20,7 @@ use crate::domain::entities::{AgentRunId, AgentWorkspaceRepairAttempt, ChatConve
 pub(super) async fn request_transient_ci_rerun(
     state: &HttpServerState,
     conversation_id: &ChatConversationId,
+    owning_conversation_id: &ChatConversationId,
     run_id: &AgentRunId,
     attempt: AgentWorkspaceRepairAttempt,
     workspace: &AgentConversationWorkspace,
@@ -71,7 +72,13 @@ pub(super) async fn request_transient_ci_rerun(
             Ok(completion_response("rerun_pending", message))
         }
         TransientCiRerunOutcome::ReservationStale => {
-            stale_completion_transition_response(state, conversation_id, run_id).await
+            stale_completion_transition_response(
+                state,
+                conversation_id,
+                owning_conversation_id,
+                run_id,
+            )
+            .await
         }
     }
 }

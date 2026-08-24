@@ -340,7 +340,8 @@ fn trusted_runtime_identity(
 
 async fn current_authorized_repair_attempt(
     state: &HttpServerState,
-    conversation_id: &ChatConversationId,
+    runtime_conversation_id: &ChatConversationId,
+    owning_conversation_id: &ChatConversationId,
     run_id: &AgentRunId,
 ) -> Result<AgentWorkspaceRepairCompletionAuthority, JsonError> {
     let run = state
@@ -352,13 +353,13 @@ async fn current_authorized_repair_attempt(
     let Some(run) = run else {
         return Ok(AgentWorkspaceRepairCompletionAuthority::Invalid);
     };
-    if run.conversation_id != *conversation_id {
+    if run.conversation_id != *runtime_conversation_id {
         return Ok(AgentWorkspaceRepairCompletionAuthority::Invalid);
     }
 
     let authority = classify_agent_workspace_repair_completion_authority(
         Arc::clone(&state.app_state.agent_workspace_repair_repo),
-        conversation_id,
+        owning_conversation_id,
         run_id,
     )
     .await
@@ -373,7 +374,7 @@ async fn current_authorized_repair_attempt(
         ) && state
             .app_state
             .agent_workspace_repair_repo
-            .get_repair_attempt_for_run(conversation_id, run_id)
+            .get_repair_attempt_for_run(owning_conversation_id, run_id)
             .await
             .map_err(|error| {
                 json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), None)
@@ -388,6 +389,53 @@ async fn current_authorized_repair_attempt(
         return Ok(AgentWorkspaceRepairCompletionAuthority::Invalid);
     }
     Ok(authority)
+}
+
+/// Maps a trusted fixer runtime to its owning workspace without trusting generic conversation
+/// parentage. Repository failures propagate so missing authority can never be inferred from a
+/// failed read.
+async fn resolve_owning_workspace_conversation(
+    state: &HttpServerState,
+    runtime_conversation_id: &ChatConversationId,
+) -> Result<ChatConversationId, JsonError> {
+    if state
+        .app_state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(runtime_conversation_id)
+        .await
+        .map_err(|error| json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), None))?
+        .is_some()
+    {
+        return Ok(*runtime_conversation_id);
+    }
+
+    if let Some(attempt) = state
+        .app_state
+        .agent_workspace_repair_repo
+        .get_unsettled_attempt_by_runtime_conversation(runtime_conversation_id)
+        .await
+        .map_err(|error| json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), None))?
+    {
+        return Ok(attempt.conversation_id);
+    }
+
+    let review_fixers = state
+        .app_state
+        .agent_conversation_workspace_repo
+        .list_active_workspace_review_fixers()
+        .await
+        .map_err(|error| json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), None))?;
+    if let Some(monitor) = review_fixers.into_iter().find(|monitor| {
+        monitor.review_fixer_conversation_id.as_ref() == Some(runtime_conversation_id)
+    }) {
+        return Ok(monitor.conversation_id);
+    }
+
+    Err(json_error(
+        StatusCode::CONFLICT,
+        "The repair runtime is not linked to an active agent workspace repair.",
+        None,
+    ))
 }
 
 fn authority_response(
@@ -504,10 +552,17 @@ async fn workspace_review_fixer_completion_fallback(
 /// different current generation/run is superseded.
 pub(super) async fn stale_completion_transition_response(
     state: &HttpServerState,
-    conversation_id: &ChatConversationId,
+    runtime_conversation_id: &ChatConversationId,
+    owning_conversation_id: &ChatConversationId,
     run_id: &AgentRunId,
 ) -> Result<Json<CompleteAgentWorkspaceRepairResponse>, JsonError> {
-    let authority = current_authorized_repair_attempt(state, conversation_id, run_id).await?;
+    let authority = current_authorized_repair_attempt(
+        state,
+        runtime_conversation_id,
+        owning_conversation_id,
+        run_id,
+    )
+    .await?;
     Ok(authority_response(authority)?.unwrap_or_else(|| {
         completion_response(
             "superseded",
@@ -579,14 +634,22 @@ pub(crate) async fn complete_agent_workspace_repair_for_trusted_run(
     let what_happened = validate_repair_narrative_field(req.what_happened, "what_happened")?;
     let what_i_did = validate_repair_narrative_field(req.what_i_did, "what_i_did")?;
 
-    let authority = current_authorized_repair_attempt(state, &conversation_id, &run_id).await?;
+    let owning_conversation_id =
+        resolve_owning_workspace_conversation(state, &conversation_id).await?;
+    let authority = current_authorized_repair_attempt(
+        state,
+        &conversation_id,
+        &owning_conversation_id,
+        &run_id,
+    )
+    .await?;
     let (attempt, resurrecting) = match authority {
         AgentWorkspaceRepairCompletionAuthority::Current(attempt) => (*attempt, false),
         AgentWorkspaceRepairCompletionAuthority::AlreadyBlocked if req.blocker.is_none() => {
             let attempt = state
                 .app_state
                 .agent_workspace_repair_repo
-                .get_repair_attempt_for_run(&conversation_id, &run_id)
+                .get_repair_attempt_for_run(&owning_conversation_id, &run_id)
                 .await
                 .map_err(|error| {
                     json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), None)
@@ -625,7 +688,8 @@ pub(crate) async fn complete_agent_workspace_repair_for_trusted_run(
             return Ok(authority_response(authority)?.expect("non-current authority responds"));
         }
     };
-    let workspace = load_agent_workspace_entity(state.app_state.as_ref(), &conversation_id).await?;
+    let workspace =
+        load_agent_workspace_entity(state.app_state.as_ref(), &owning_conversation_id).await?;
 
     if matches!(
         req.resolution,
@@ -634,6 +698,7 @@ pub(crate) async fn complete_agent_workspace_repair_for_trusted_run(
         return repair_completion_ci_rerun::request_transient_ci_rerun(
             state,
             &conversation_id,
+            &owning_conversation_id,
             &run_id,
             attempt,
             &workspace,
@@ -671,7 +736,13 @@ pub(crate) async fn complete_agent_workspace_repair_for_trusted_run(
             )),
             AgentWorkspaceRepairTransitionOutcome::Stale(_)
             | AgentWorkspaceRepairTransitionOutcome::Missing => {
-                stale_completion_transition_response(state, &conversation_id, &run_id).await
+                stale_completion_transition_response(
+                    state,
+                    &conversation_id,
+                    &owning_conversation_id,
+                    &run_id,
+                )
+                .await
             }
         };
     }
@@ -751,7 +822,13 @@ pub(crate) async fn complete_agent_workspace_repair_for_trusted_run(
             )),
             AgentWorkspaceRepairTransitionOutcome::Stale(_)
             | AgentWorkspaceRepairTransitionOutcome::Missing => {
-                stale_completion_transition_response(state, &conversation_id, &run_id).await
+                stale_completion_transition_response(
+                    state,
+                    &conversation_id,
+                    &owning_conversation_id,
+                    &run_id,
+                )
+                .await
             }
         };
     }
@@ -778,7 +855,13 @@ pub(crate) async fn complete_agent_workspace_repair_for_trusted_run(
             )),
             AgentWorkspaceRepairTransitionOutcome::Stale(_)
             | AgentWorkspaceRepairTransitionOutcome::Missing => {
-                stale_completion_transition_response(state, &conversation_id, &run_id).await
+                stale_completion_transition_response(
+                    state,
+                    &conversation_id,
+                    &owning_conversation_id,
+                    &run_id,
+                )
+                .await
             }
         };
     }
@@ -798,8 +881,13 @@ pub(crate) async fn complete_agent_workspace_repair_for_trusted_run(
                 AgentWorkspaceRepairTransitionOutcome::Stale(_)
                 | AgentWorkspaceRepairTransitionOutcome::Missing,
             ) => {
-                return stale_completion_transition_response(state, &conversation_id, &run_id)
-                    .await;
+                return stale_completion_transition_response(
+                    state,
+                    &conversation_id,
+                    &owning_conversation_id,
+                    &run_id,
+                )
+                .await;
             }
             Err(error) => {
                 tracing::warn!(
@@ -834,12 +922,19 @@ pub(crate) async fn complete_agent_workspace_repair_for_trusted_run(
         AgentWorkspaceRepairTransitionOutcome::Applied(attempt) => attempt,
         AgentWorkspaceRepairTransitionOutcome::Stale(_)
         | AgentWorkspaceRepairTransitionOutcome::Missing => {
-            return stale_completion_transition_response(state, &conversation_id, &run_id).await;
+            return stale_completion_transition_response(
+                state,
+                &conversation_id,
+                &owning_conversation_id,
+                &run_id,
+            )
+            .await;
         }
     };
     Box::pin(complete_reserved_agent_workspace_repair(
         state,
         &conversation_id,
+        &owning_conversation_id,
         &run_id,
         &workspace,
         reserved,
@@ -855,7 +950,8 @@ pub(crate) async fn complete_agent_workspace_repair_for_trusted_run(
 #[allow(clippy::too_many_arguments)]
 async fn complete_reserved_agent_workspace_repair(
     state: &HttpServerState,
-    conversation_id: &ChatConversationId,
+    runtime_conversation_id: &ChatConversationId,
+    owning_conversation_id: &ChatConversationId,
     run_id: &AgentRunId,
     workspace: &AgentConversationWorkspace,
     reserved: AgentWorkspaceRepairAttempt,
@@ -873,7 +969,7 @@ async fn complete_reserved_agent_workspace_repair(
     {
         tracing::warn!(
             target: "ralphx_lib::http::agent_workspace_repair",
-            conversation_id = %conversation_id,
+            conversation_id = %owning_conversation_id,
             attempt_id = %reserved.id,
             error = %error,
             "Repair completion lost its canonical Git target lease before validation"
@@ -903,7 +999,13 @@ async fn complete_reserved_agent_workspace_repair(
             )),
             AgentWorkspaceRepairTransitionOutcome::Stale(_)
             | AgentWorkspaceRepairTransitionOutcome::Missing => {
-                stale_completion_transition_response(state, conversation_id, run_id).await
+                stale_completion_transition_response(
+                    state,
+                    runtime_conversation_id,
+                    owning_conversation_id,
+                    run_id,
+                )
+                .await
             }
         };
     }
@@ -958,7 +1060,13 @@ async fn complete_reserved_agent_workspace_repair(
                 AgentWorkspaceRepairTransitionOutcome::Applied(_) => Err(validation_error),
                 AgentWorkspaceRepairTransitionOutcome::Stale(_)
                 | AgentWorkspaceRepairTransitionOutcome::Missing => {
-                    stale_completion_transition_response(state, conversation_id, run_id).await
+                    stale_completion_transition_response(
+                        state,
+                        runtime_conversation_id,
+                        owning_conversation_id,
+                        run_id,
+                    )
+                    .await
                 }
             };
         }
@@ -988,7 +1096,13 @@ async fn complete_reserved_agent_workspace_repair(
                 }
                 AgentWorkspaceRepairTransitionOutcome::Stale(_)
                 | AgentWorkspaceRepairTransitionOutcome::Missing => {
-                    stale_completion_transition_response(state, conversation_id, run_id).await
+                    stale_completion_transition_response(
+                        state,
+                        runtime_conversation_id,
+                        owning_conversation_id,
+                        run_id,
+                    )
+                    .await
                 }
             };
         }
@@ -1011,7 +1125,13 @@ async fn complete_reserved_agent_workspace_repair(
         AgentWorkspaceRepairTransitionOutcome::Applied(validated) => validated,
         AgentWorkspaceRepairTransitionOutcome::Stale(_)
         | AgentWorkspaceRepairTransitionOutcome::Missing => {
-            return stale_completion_transition_response(state, conversation_id, run_id).await;
+            return stale_completion_transition_response(
+                state,
+                runtime_conversation_id,
+                owning_conversation_id,
+                run_id,
+            )
+            .await;
         }
     };
     #[cfg(feature = "test-utils")]
@@ -1030,7 +1150,13 @@ async fn complete_reserved_agent_workspace_repair(
         AgentWorkspaceRepairTransitionOutcome::Applied(attempt) => attempt,
         AgentWorkspaceRepairTransitionOutcome::Stale(_)
         | AgentWorkspaceRepairTransitionOutcome::Missing => {
-            return stale_completion_transition_response(state, conversation_id, run_id).await;
+            return stale_completion_transition_response(
+                state,
+                runtime_conversation_id,
+                owning_conversation_id,
+                run_id,
+            )
+            .await;
         }
     };
     if continuation.phase == AgentWorkspaceRepairPhase::Blocked {
@@ -1047,7 +1173,7 @@ async fn complete_reserved_agent_workspace_repair(
     {
         tracing::warn!(
             target: "ralphx_lib::http::agent_workspace_repair",
-            conversation_id = %conversation_id,
+            conversation_id = %owning_conversation_id,
             error = %error,
             "Repair continuation publication is durably pending after completion"
         );

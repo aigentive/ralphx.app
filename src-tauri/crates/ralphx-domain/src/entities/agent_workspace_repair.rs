@@ -210,6 +210,9 @@ pub struct AgentWorkspaceRepairAttempt {
     pub phase: AgentWorkspaceRepairPhase,
     pub continuation: AgentWorkspaceRepairContinuation,
     pub reserved_agent_run_id: Option<AgentRunId>,
+    /// Dedicated child conversation hosting this attempt's fixer runs.
+    /// `None` means a legacy attempt whose runs live in `conversation_id` itself.
+    pub runtime_conversation_id: Option<ChatConversationId>,
     pub target_base_ref: String,
     pub target_base_commit: Option<String>,
     /// GitHub base tip targeted by a completed automatic update route for this attempt.
@@ -280,6 +283,7 @@ impl AgentWorkspaceRepairAttempt {
             phase: AgentWorkspaceRepairPhase::Requested,
             continuation,
             reserved_agent_run_id: None,
+            runtime_conversation_id: None,
             target_base_ref: target_base_ref.into(),
             target_base_commit: None,
             base_update_target_commit: None,
@@ -315,6 +319,15 @@ impl AgentWorkspaceRepairAttempt {
 
     pub fn is_unsettled(&self) -> bool {
         self.settled_at.is_none()
+    }
+
+    /// Conversation the fixer agent actually runs in.
+    ///
+    /// Falls back to the workspace conversation for legacy, parent-hosted attempts.
+    pub fn runtime_conversation_id(&self) -> &ChatConversationId {
+        self.runtime_conversation_id
+            .as_ref()
+            .unwrap_or(&self.conversation_id)
     }
 
     /// Local head that is not yet proven published, exactly as stored: the validated completion

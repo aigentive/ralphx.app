@@ -1671,6 +1671,7 @@ async fn blocked_retry_successor_with_a_different_target_base_commit_leaves_work
             target_identity.clone(),
             started,
             AgentRunId::from_string("repair-attempt-blocked-retry-base-commit-guard-run"),
+            None,
             "dispatching repair",
             None,
         )
@@ -1789,6 +1790,7 @@ async fn dispatch_checkpoint_never_advances_workspace_base_commit() {
             target_identity,
             started,
             AgentRunId::from_string("repair-attempt-dispatch-base-commit-guard-run"),
+            None,
             "dispatching repair",
             None,
         )
@@ -2372,6 +2374,7 @@ async fn dispatch_refuses_to_replace_an_open_external_effect() {
         target.clone(),
         attempt,
         AgentRunId::from_string("repair-dispatch-open-effect-run"),
+        None,
         "dispatch repair",
         None,
     )
@@ -2416,6 +2419,7 @@ async fn dispatch_reservation_releases_target_authority_for_stale_and_missing_ge
             target_identity.clone(),
             not_due,
             AgentRunId::from_string("not-due-dispatch-run"),
+            None,
             "not due",
             None,
         )
@@ -2458,6 +2462,7 @@ async fn dispatch_reservation_releases_target_authority_for_stale_and_missing_ge
             target_identity.clone(),
             attempt,
             AgentRunId::from_string("stale-dispatch-run"),
+            None,
             "stale dispatch",
             None,
         )
@@ -2494,6 +2499,7 @@ async fn dispatch_reservation_releases_target_authority_for_stale_and_missing_ge
             target_identity.clone(),
             missing,
             AgentRunId::from_string("missing-dispatch-run"),
+            None,
             "missing dispatch",
             None,
         )
@@ -3304,6 +3310,7 @@ async fn verified_base_advance_updates_one_active_generation_without_replacing_r
         expected_phase: AgentWorkspaceRepairPhase::Requested,
         expected_updated_at: started.updated_at,
         run_id: run_id.clone(),
+        runtime_conversation_id: None,
         updated_at: chrono::Utc::now(),
     };
     repair_repo.bind_repair_attempt_run(bound).await.unwrap();
@@ -3366,6 +3373,7 @@ async fn blocked_retry_coalesces_to_one_successor_generation_and_projects_reques
         target_identity.clone(),
         started,
         AgentRunId::from_string("repair-attempt-blocked-retry-run"),
+        None,
         "dispatching repair",
         None,
     )
@@ -3485,6 +3493,7 @@ async fn retryable_dispatch_failure_persists_one_due_retry_and_blocks_not_due_re
         target_identity.clone(),
         started,
         AgentRunId::from_string("repair-dispatch-due-retry-first"),
+        None,
         "dispatch repair",
         None,
     )
@@ -3530,6 +3539,7 @@ async fn retryable_dispatch_failure_persists_one_due_retry_and_blocks_not_due_re
         target_identity,
         scheduled.clone(),
         AgentRunId::from_string("repair-dispatch-due-retry-replay"),
+        None,
         "must not dispatch before due",
         None,
     )
@@ -3608,6 +3618,7 @@ async fn immediate_start_rejection_defers_recovery_redelivery_without_consuming_
             target_identity.clone(),
             current,
             AgentRunId::from_string(format!("repair-dispatch-immediate-start-{delivery}")),
+            None,
             "dispatch busy repair",
             None,
         )
@@ -3730,6 +3741,7 @@ async fn exhausted_or_nonretryable_dispatch_failure_blocks_once_and_releases_lea
             target_identity.clone(),
             current,
             AgentRunId::from_string(format!("repair-dispatch-exhaustion-{retry}")),
+            None,
             "dispatch repair",
             None,
         )
@@ -3857,6 +3869,7 @@ async fn foreign_canonical_target_owner_rejects_repair_dispatch_before_run_bindi
         target_identity.clone(),
         started.clone(),
         AgentRunId::from_string("repair-dispatch-foreign-owner-run"),
+        None,
         "dispatching repair",
         None,
     )
@@ -3920,6 +3933,7 @@ async fn exact_run_authority_distinguishes_current_stale_completed_and_blocked_a
                 expected_phase: AgentWorkspaceRepairPhase::Requested,
                 expected_updated_at: attempt.updated_at,
                 run_id: owner_run.clone(),
+                runtime_conversation_id: None,
                 updated_at: chrono::Utc::now(),
             },
         )
@@ -4002,6 +4016,7 @@ async fn exact_run_authority_distinguishes_current_stale_completed_and_blocked_a
                 expected_phase: AgentWorkspaceRepairPhase::Requested,
                 expected_updated_at: successor.updated_at,
                 run_id: successor_run.clone(),
+                runtime_conversation_id: None,
                 updated_at: successor.updated_at + chrono::Duration::microseconds(1),
             },
         )
@@ -4192,6 +4207,7 @@ async fn active_reconciliation_requires_current_successful_lifecycle_evidence() 
         .unwrap();
     assert!(!reconcile_active_agent_workspace_repair(
         Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+        Arc::clone(&workspace_repo) as Arc<dyn AgentWorkspaceRepairRepository>,
         Arc::clone(&run_repo) as Arc<dyn AgentRunRepository>,
         &workspace,
     )
@@ -4210,6 +4226,7 @@ async fn active_reconciliation_requires_current_successful_lifecycle_evidence() 
         .unwrap();
     assert!(reconcile_active_agent_workspace_repair(
         Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+        Arc::clone(&workspace_repo) as Arc<dyn AgentWorkspaceRepairRepository>,
         Arc::clone(&run_repo) as Arc<dyn AgentRunRepository>,
         &workspace,
     )
@@ -4255,6 +4272,7 @@ async fn stale_completion_claim_cannot_overwrite_a_failed_attempt() {
         .unwrap();
     let claim = current_agent_workspace_repair_claim_for_completion(
         Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+        Arc::clone(&workspace_repo) as Arc<dyn AgentWorkspaceRepairRepository>,
         Arc::clone(&run_repo) as Arc<dyn AgentRunRepository>,
         &workspace,
     )
@@ -4332,6 +4350,7 @@ async fn completion_requires_dispatch_evidence_for_the_current_claim() {
 
     assert!(current_agent_workspace_repair_claim_for_completion(
         Arc::clone(&workspace_repo) as Arc<dyn AgentConversationWorkspaceRepository>,
+        Arc::clone(&workspace_repo) as Arc<dyn AgentWorkspaceRepairRepository>,
         Arc::clone(&run_repo) as Arc<dyn AgentRunRepository>,
         &claimed_workspace,
     )
@@ -4351,7 +4370,8 @@ async fn completion_requires_dispatch_evidence_for_the_current_claim() {
         .unwrap();
     assert_eq!(
         current_agent_workspace_repair_claim_for_completion(
-            workspace_repo as Arc<dyn AgentConversationWorkspaceRepository>,
+            workspace_repo.clone() as Arc<dyn AgentConversationWorkspaceRepository>,
+            workspace_repo as Arc<dyn AgentWorkspaceRepairRepository>,
             run_repo as Arc<dyn AgentRunRepository>,
             &claimed_workspace,
         )

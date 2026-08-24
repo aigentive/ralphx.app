@@ -80,7 +80,8 @@ use crate::domain::services::GithubServiceTrait;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::memory::{
     MemoryAgentConversationWorkspaceRepository, MemoryAgentRunRepository,
-    MemoryBranchUpdateRepository, MemoryNotificationRepository, MemoryPlanBranchRepository,
+    MemoryBranchUpdateRepository, MemoryChatConversationRepository, MemoryNotificationRepository,
+    MemoryPlanBranchRepository,
 };
 use crate::tests::mock_github_service::MockGithubService;
 
@@ -453,6 +454,15 @@ impl RejectPostPushBaseTargetCheckpointRepo {
 
 #[async_trait]
 impl AgentWorkspaceRepairRepository for RejectPostPushBaseTargetCheckpointRepo {
+    async fn get_unsettled_attempt_by_runtime_conversation(
+        &self,
+        runtime_conversation_id: &ChatConversationId,
+    ) -> AppResult<Option<AgentWorkspaceRepairAttempt>> {
+        self.inner
+            .get_unsettled_attempt_by_runtime_conversation(runtime_conversation_id)
+            .await
+    }
+
     async fn get_current_repair_attempt(
         &self,
         conversation_id: &ChatConversationId,
@@ -731,6 +741,7 @@ async fn held_manual_unpublished_redrive_noop_falls_through_and_retains_the_hold
         Some(Arc::clone(&state.agent_run_repo)),
         Some(Arc::clone(&state.agent_workspace_repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -794,6 +805,7 @@ async fn held_unpublished_redrive_noop_falls_through_to_base_advanced_supersessi
         Some(agent_run_repo),
         Some(Arc::clone(&state.agent_workspace_repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -1999,6 +2011,7 @@ async fn repair_dispatch_remains_completable_when_success_event_persistence_fail
     assert_eq!(current.pr_supervision_status.as_deref(), Some("fixing"));
     assert!(current_agent_workspace_repair_claim_for_completion(
         workspace_repo,
+        concrete_workspace_repo.clone() as Arc<dyn AgentWorkspaceRepairRepository>,
         run_repo,
         &current,
     )
@@ -6302,6 +6315,7 @@ async fn missing_repair_repository_rejects_pr_conflict_without_side_effects() {
         None,
         None,
         Some(Arc::new(MemoryBranchUpdateRepository::new())),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
     )
     .await
@@ -6370,6 +6384,7 @@ async fn busy_pr_conflict_repair_does_not_disable_auto_merge_or_send_a_worker() 
     });
     let github = Arc::new(MockGithubService::new());
     let chat = Arc::new(MockChatService::new());
+    let chat_conversation_repo = Arc::new(MemoryChatConversationRepository::new());
 
     let error = super::route_agent_workspace_pr_conflict_repair_if_needed_with_repair_repo(
         Arc::clone(&github) as Arc<dyn GithubServiceTrait>,
@@ -6381,6 +6396,7 @@ async fn busy_pr_conflict_repair_does_not_disable_auto_merge_or_send_a_worker() 
         None,
         Some(repair_repo),
         Some(branch_update_repo),
+        Some(chat_conversation_repo),
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
     )
     .await
@@ -6444,6 +6460,7 @@ async fn live_pr_conflict_repair_repo_route_preserves_durable_authority_on_stale
         Arc::new(MemoryBranchUpdateRepository::new());
     let agent_run_repo = seeded_latest_pr_fixer_run_repo(&conversation_id).await;
     let github = Arc::new(MockGithubService::new());
+    let chat_conversation_repo = Arc::new(MemoryChatConversationRepository::new());
     let chat = Arc::new(MockChatService::with_agent_run_repo(Arc::clone(
         &agent_run_repo,
     )));
@@ -6462,6 +6479,7 @@ async fn live_pr_conflict_repair_repo_route_preserves_durable_authority_on_stale
             Some(agent_run_repo.clone()),
             Some(Arc::clone(&repair_repo)),
             Some(Arc::clone(&branch_update_repo)),
+            Some(chat_conversation_repo.clone()),
             chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         )
         .await
@@ -6484,6 +6502,16 @@ async fn live_pr_conflict_repair_repo_route_preserves_durable_authority_on_stale
         AgentWorkspaceRepairContinuation::ResumePrSupervision
     );
     assert_eq!(first.phase, AgentWorkspaceRepairPhase::Repairing);
+    let runtime_conversation_id = first
+        .runtime_conversation_id
+        .as_ref()
+        .expect("PR conflict dispatch must persist its fixer child");
+    assert_ne!(runtime_conversation_id, &conversation_id);
+    assert_eq!(
+        chat.get_sent_options().await[0].conversation_id_override,
+        Some(*runtime_conversation_id),
+        "the delivered run and durable attempt must use the same fixer child"
+    );
     assert_eq!(first.target_base_ref, "main");
     assert_eq!(
         first.target_base_commit.as_deref(),
@@ -6512,6 +6540,7 @@ async fn live_pr_conflict_repair_repo_route_preserves_durable_authority_on_stale
             Some(agent_run_repo),
             Some(Arc::clone(&repair_repo)),
             Some(Arc::clone(&branch_update_repo)),
+            Some(chat_conversation_repo),
             chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         )
         .await
@@ -6638,6 +6667,7 @@ async fn conflict_router_defers_unpublished_repair_head_without_join_or_agent_in
         None,
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
     )
     .await
@@ -6703,6 +6733,7 @@ async fn dispatched_pr_autofix_issue_kind(
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -6798,6 +6829,7 @@ async fn live_pr_autofix_suppresses_same_fingerprint_while_ci_rerun_is_pending()
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -6867,6 +6899,7 @@ async fn legacy_ci_rerun_fingerprint_settles_instead_of_hanging() {
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -6941,6 +6974,7 @@ async fn ci_rerun_hold_settles_once_reran_runs_are_terminal() {
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7014,6 +7048,7 @@ async fn ci_await_hold_suppresses_dispatch_and_survives_unchanged_classification
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7080,6 +7115,7 @@ async fn ci_hold_settles_when_head_moves() {
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7158,6 +7194,7 @@ async fn unrelated_conversation_dispatch_does_not_settle_a_ci_hold() {
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7221,6 +7258,7 @@ async fn route_with_base_conclusions(
     let github = Arc::new(MockGithubService::new());
     github.state().fetch_pr_health_result = Some(Ok(health));
     github.state().list_branch_check_conclusions_result = Some(base_conclusions);
+    let chat_conversation_repo = Arc::new(MemoryChatConversationRepository::new());
     let chat = Arc::new(MockChatService::with_agent_run_repo(Arc::clone(
         &agent_run_repo,
     )));
@@ -7234,6 +7272,7 @@ async fn route_with_base_conclusions(
         Some(agent_run_repo),
         Some(repair_repo),
         Some(branch_update_repo),
+        Some(chat_conversation_repo),
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7312,6 +7351,20 @@ async fn failure_absent_from_base_still_dispatches_a_fixer() {
 
     assert!(routed, "a check absent from base proves nothing about base");
     assert_eq!(chat.get_sent_messages().await.len(), 1);
+    let attempt = workspace_repo
+        .get_current_repair_attempt(&conversation_id)
+        .await
+        .expect("repair attempt should load")
+        .expect("PR autofix dispatch must persist an attempt");
+    let runtime_conversation_id = attempt
+        .runtime_conversation_id
+        .expect("PR autofix dispatch must persist its fixer child");
+    assert_ne!(runtime_conversation_id, conversation_id);
+    assert_eq!(
+        chat.get_sent_options().await[0].conversation_id_override,
+        Some(runtime_conversation_id),
+        "the delivered PR fixer run and durable attempt must share the child"
+    );
     assert!(!workspace_repo
         .list_publication_events(&conversation_id)
         .await
@@ -7413,6 +7466,7 @@ async fn exhausted_streak_fingerprint_suppresses_a_fresh_streak_until_health_cha
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7451,6 +7505,7 @@ async fn exhausted_streak_fingerprint_suppresses_a_fresh_streak_until_health_cha
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7488,6 +7543,7 @@ async fn exhausted_streak_fingerprint_suppresses_a_fresh_streak_until_health_cha
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7565,6 +7621,7 @@ async fn live_pr_autofix_unchanged_health_hold_suppresses_same_fingerprint_then_
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7603,6 +7660,7 @@ async fn live_pr_autofix_unchanged_health_hold_suppresses_same_fingerprint_then_
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7695,6 +7753,7 @@ async fn live_pr_autofix_new_base_evidence_supersedes_same_fingerprint_health_ho
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7802,6 +7861,7 @@ async fn live_pr_autofix_behind_at_already_updated_tip_enters_base_stale_hold() 
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7832,6 +7892,7 @@ async fn live_pr_autofix_behind_at_already_updated_tip_enters_base_stale_hold() 
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7924,6 +7985,7 @@ async fn live_pr_autofix_ci_hold_base_stale_marker_clears_once_when_no_longer_be
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7957,6 +8019,7 @@ async fn live_pr_autofix_ci_hold_base_stale_marker_clears_once_when_no_longer_be
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -7993,6 +8056,7 @@ async fn live_pr_autofix_ci_hold_base_stale_marker_clears_once_when_no_longer_be
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -8019,6 +8083,7 @@ async fn live_pr_autofix_ci_hold_base_stale_marker_clears_once_when_no_longer_be
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -8056,6 +8121,7 @@ async fn live_pr_autofix_ci_hold_base_stale_marker_clears_once_when_no_longer_be
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -8085,6 +8151,7 @@ async fn live_pr_autofix_ci_hold_base_stale_marker_clears_once_when_no_longer_be
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -8234,6 +8301,7 @@ async fn live_pr_autofix_ci_rerun_hold_behind_base_dirty_worktree_defers_without
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&project),
@@ -8428,6 +8496,7 @@ async fn live_pr_autofix_advanced_base_and_behind_updates_advanced_tip_first() {
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&project),
@@ -8623,6 +8692,7 @@ async fn live_pr_autofix_ci_rerun_hold_behind_base_updates_before_waiting() {
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&project),
@@ -8790,6 +8860,7 @@ async fn live_pr_autofix_behind_base_post_push_marker_rejection_recovers_from_ne
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&project),
@@ -8839,6 +8910,7 @@ async fn live_pr_autofix_behind_base_post_push_marker_rejection_recovers_from_ne
         Some(agent_run_repo),
         Some(repair_repo),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&project),
@@ -8966,6 +9038,7 @@ async fn live_pr_autofix_behind_base_with_foreign_target_lease_has_no_effects() 
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&project),
@@ -9055,6 +9128,7 @@ async fn live_pr_autofix_pre_existing_on_base_suppresses_same_fingerprint_then_r
         Some(agent_run_repo.clone()),
         Some(Arc::clone(&repair_repo)),
         Some(Arc::clone(&branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -9089,6 +9163,7 @@ async fn live_pr_autofix_pre_existing_on_base_suppresses_same_fingerprint_then_r
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -9158,6 +9233,7 @@ async fn live_pr_autofix_repair_repo_route_deduplicates_concurrent_dispatches() 
             Some(agent_run_repo.clone()),
             Some(Arc::clone(&repair_repo)),
             Some(Arc::clone(&branch_update_repo)),
+            None,
             chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
             None,
         ),
@@ -9170,6 +9246,7 @@ async fn live_pr_autofix_repair_repo_route_deduplicates_concurrent_dispatches() 
             Some(agent_run_repo.clone()),
             Some(Arc::clone(&repair_repo)),
             Some(Arc::clone(&branch_update_repo)),
+            None,
             chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
             None,
         )
@@ -9303,6 +9380,7 @@ async fn live_pr_autofix_repair_routed_signal_records_once_for_existing_attempt(
             Some(agent_run_repo.clone()),
             Some(Arc::clone(&repair_repo)),
             Some(Arc::clone(&branch_update_repo)),
+            None,
             chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
             None,
         )
@@ -9341,6 +9419,7 @@ async fn live_pr_autofix_repair_routed_signal_records_once_for_existing_attempt(
             Some(agent_run_repo.clone()),
             Some(Arc::clone(&repair_repo)),
             Some(Arc::clone(&branch_update_repo)),
+            None,
             chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
             None,
         )
@@ -9520,6 +9599,7 @@ async fn live_review_feedback_repair_repo_route_keeps_existing_continuation_auth
             Some(agent_run_repo.clone()),
             Some(Arc::clone(&repair_repo)),
             Some(Arc::clone(&branch_update_repo)),
+            None,
             chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
             None,
         )
@@ -9563,6 +9643,7 @@ async fn live_review_feedback_repair_repo_route_keeps_existing_continuation_auth
             Some(agent_run_repo),
             Some(Arc::clone(&repair_repo)),
             Some(Arc::clone(&branch_update_repo)),
+            None,
             chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
             None,
         )
@@ -10000,22 +10081,51 @@ async fn terminal_agent_workspace_pr_terminalization_stops_active_project_run() 
     let branch = expected_workspace_branch(&project, conversation_id_str);
     let workspace = cleanup_workspace_with_conversation(&project, &branch, conversation_id_str);
     let conversation_id = workspace.conversation_id.clone();
+    let concrete_workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
     let workspace_repo: Arc<dyn AgentConversationWorkspaceRepository> =
-        Arc::new(MemoryAgentConversationWorkspaceRepository::new());
+        concrete_workspace_repo.clone();
+    let repair_repo: Arc<dyn AgentWorkspaceRepairRepository> = concrete_workspace_repo;
     workspace_repo
         .create_or_update(workspace)
         .await
         .expect("workspace should persist");
+    let runtime_conversation_id =
+        ChatConversationId::from_string("poller-terminal-active-run-fixer-conversation");
+    let mut attempt = AgentWorkspaceRepairAttempt::new(
+        conversation_id.clone(),
+        AgentWorkspaceRepairSource::PrAutofix,
+        AgentWorkspaceRepairContinuation::ResumePrSupervision,
+        "main",
+        false,
+        true,
+        true,
+        None,
+        Utc::now(),
+    );
+    attempt.runtime_conversation_id = Some(runtime_conversation_id);
+    repair_repo
+        .start_or_join_repair_attempt(
+            crate::domain::repositories::StartOrJoinAgentWorkspaceRepairAttempt {
+                attempt,
+                reason: "active fixer cleanup proof".to_string(),
+                verified_newer_base: false,
+                compatibility_projection: None,
+                events: Vec::new(),
+            },
+        )
+        .await
+        .expect("repair attempt should persist");
 
     let agent_run_repo = Arc::new(MemoryAgentRunRepository::new());
     let run = agent_run_repo
-        .create(AgentRun::new(conversation_id.clone()))
+        .create(AgentRun::new(runtime_conversation_id))
         .await
         .expect("active run should persist");
     let chat = Arc::new(MockChatService::new());
 
     terminalize_agent_workspace_after_pr(
         Arc::clone(&workspace_repo),
+        repair_repo,
         Arc::clone(&agent_run_repo) as Arc<dyn AgentRunRepository>,
         None,
         Some(Arc::clone(&chat) as Arc<dyn crate::application::chat_service::ChatService>),
@@ -10027,7 +10137,7 @@ async fn terminal_agent_workspace_pr_terminalization_stops_active_project_run() 
 
     assert_eq!(
         chat.get_stop_agent_calls().await,
-        vec![(ChatContextType::Project, conversation_id.as_str())]
+        vec![(ChatContextType::Project, runtime_conversation_id.as_str())]
     );
     let updated_run = agent_run_repo
         .get_by_id(&run.id)
@@ -10050,8 +10160,10 @@ async fn terminal_agent_workspace_pr_poller_retries_runtime_shutdown_before_retu
     let branch = expected_workspace_branch(&project, conversation_id_str);
     let workspace = cleanup_workspace_with_conversation(&project, &branch, conversation_id_str);
     let conversation_id = workspace.conversation_id.clone();
+    let concrete_workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
     let workspace_repo: Arc<dyn AgentConversationWorkspaceRepository> =
-        Arc::new(MemoryAgentConversationWorkspaceRepository::new());
+        concrete_workspace_repo.clone();
+    let repair_repo: Arc<dyn AgentWorkspaceRepairRepository> = concrete_workspace_repo;
     workspace_repo
         .create_or_update(workspace)
         .await
@@ -10072,6 +10184,7 @@ async fn terminal_agent_workspace_pr_poller_retries_runtime_shutdown_before_retu
 
     super::terminalize_polled_agent_workspace(
         &workspace_repo,
+        &repair_repo,
         &agent_run_repo_dyn,
         &plan_branch_repo_dyn,
         &chat_dyn,
@@ -10110,7 +10223,9 @@ async fn terminal_agent_workspace_pr_poller_retries_authority_persistence_before
         .await
         .expect("workspace should persist");
     concrete_workspace_repo.fail_next_publication_update("authority unavailable");
-    let workspace_repo: Arc<dyn AgentConversationWorkspaceRepository> = concrete_workspace_repo;
+    let workspace_repo: Arc<dyn AgentConversationWorkspaceRepository> =
+        concrete_workspace_repo.clone();
+    let repair_repo: Arc<dyn AgentWorkspaceRepairRepository> = concrete_workspace_repo;
     let agent_run_repo: Arc<dyn AgentRunRepository> = Arc::new(MemoryAgentRunRepository::new());
     let plan_branch_repo: Arc<dyn crate::domain::repositories::PlanBranchRepository> =
         Arc::new(MemoryPlanBranchRepository::new());
@@ -10120,6 +10235,7 @@ async fn terminal_agent_workspace_pr_poller_retries_authority_persistence_before
 
     super::terminalize_polled_agent_workspace(
         &workspace_repo,
+        &repair_repo,
         &agent_run_repo,
         &plan_branch_repo,
         &chat_dyn,
@@ -10160,8 +10276,10 @@ async fn mismatched_polled_pr_terminalization_skips_publication_and_runtime_clea
     workspace.publication_pr_status = Some("open".to_string());
     workspace.publication_push_status = Some("pushed".to_string());
     let conversation_id = workspace.conversation_id.clone();
+    let concrete_workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
     let workspace_repo: Arc<dyn AgentConversationWorkspaceRepository> =
-        Arc::new(MemoryAgentConversationWorkspaceRepository::new());
+        concrete_workspace_repo.clone();
+    let repair_repo: Arc<dyn AgentWorkspaceRepairRepository> = concrete_workspace_repo;
     workspace_repo
         .create_or_update(workspace.clone())
         .await
@@ -10180,6 +10298,7 @@ async fn mismatched_polled_pr_terminalization_skips_publication_and_runtime_clea
 
     super::terminalize_polled_agent_workspace(
         &workspace_repo,
+        &repair_repo,
         &agent_run_repo,
         &plan_branch_repo,
         &chat_dyn,
@@ -10463,6 +10582,7 @@ async fn agent_workspace_closed_pr_polling_removes_worktree_and_branch() {
     let memory_workspace_repo = Arc::new(MemoryAgentConversationWorkspaceRepository::new());
     let workspace_repo: Arc<dyn AgentConversationWorkspaceRepository> =
         memory_workspace_repo.clone();
+    let repair_repo: Arc<dyn AgentWorkspaceRepairRepository> = memory_workspace_repo.clone();
     workspace_repo
         .create_or_update(workspace)
         .await
@@ -10481,13 +10601,14 @@ async fn agent_workspace_closed_pr_polling_removes_worktree_and_branch() {
         Arc::new(MemoryPlanBranchRepository::new()),
     );
 
-    registry.start_agent_workspace_polling(
+    registry.start_agent_workspace_polling_with_repair_repo(
         conversation_id.clone(),
         101,
         project,
         repo.path().to_path_buf(),
         Arc::clone(&workspace_repo),
         Arc::new(MemoryAgentRunRepository::new()),
+        repair_repo,
         Arc::new(MockChatService::new()),
     );
     tokio::time::timeout(Duration::from_secs(20), async {
@@ -11211,6 +11332,13 @@ struct LookupErrorRepairRepository;
 
 #[async_trait]
 impl AgentWorkspaceRepairRepository for LookupErrorRepairRepository {
+    async fn get_unsettled_attempt_by_runtime_conversation(
+        &self,
+        _runtime_conversation_id: &ChatConversationId,
+    ) -> AppResult<Option<AgentWorkspaceRepairAttempt>> {
+        unreachable!()
+    }
+
     async fn get_current_repair_attempt(
         &self,
         _conversation_id: &ChatConversationId,
@@ -11346,6 +11474,15 @@ impl RaceEvidenceRearmCheckpointRepo {
 
 #[async_trait]
 impl AgentWorkspaceRepairRepository for RaceEvidenceRearmCheckpointRepo {
+    async fn get_unsettled_attempt_by_runtime_conversation(
+        &self,
+        runtime_conversation_id: &ChatConversationId,
+    ) -> AppResult<Option<AgentWorkspaceRepairAttempt>> {
+        self.inner
+            .get_unsettled_attempt_by_runtime_conversation(runtime_conversation_id)
+            .await
+    }
+
     async fn get_current_repair_attempt(
         &self,
         conversation_id: &ChatConversationId,
@@ -12725,6 +12862,7 @@ async fn base_parity_transient_shape_repeat_poll_short_circuits_then_reenters_on
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat_second.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         Some(&health_a),
     )
@@ -13551,6 +13689,7 @@ async fn route_blocked_supersession(
         Some(agent_run_repo),
         Some(Arc::clone(&fixture.repair_repo)),
         Some(Arc::clone(&fixture.branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&fixture.project),
@@ -14149,9 +14288,12 @@ async fn blocked_needs_human_push_failure_keeps_phase_blocked() {
     let agent_run_repo = seeded_latest_pr_fixer_run_repo(&fixture.conversation_id).await;
     let github = Arc::new(MockGithubService::new());
     github.state().fetch_pr_health_result = Some(Ok(health));
-    github.state().push_branch_result =
-        Some(Err(AppError::GitOperation("simulated push failure".to_string())));
-    let chat = Arc::new(MockChatService::with_agent_run_repo(Arc::clone(&agent_run_repo)));
+    github.state().push_branch_result = Some(Err(AppError::GitOperation(
+        "simulated push failure".to_string(),
+    )));
+    let chat = Arc::new(MockChatService::with_agent_run_repo(Arc::clone(
+        &agent_run_repo,
+    )));
 
     super::route_agent_workspace_pr_autofix_if_needed_with_notifications(
         Arc::clone(&github) as Arc<dyn GithubServiceTrait>,
@@ -14162,6 +14304,7 @@ async fn blocked_needs_human_push_failure_keeps_phase_blocked() {
         Some(agent_run_repo),
         Some(Arc::clone(&fixture.repair_repo)),
         Some(Arc::clone(&fixture.branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&fixture.project),
@@ -14210,10 +14353,7 @@ async fn blocked_needs_human_already_fresh_keeps_phase_blocked() {
         blocked_needs_human_supersession_fixture("blocked-supersede-already-fresh", None, true)
             .await;
     // Merge main into the workspace branch locally so the branch is already up-to-date.
-    run_git(
-        &fixture.worktree,
-        &["merge", "--no-edit", "origin/main"],
-    );
+    run_git(&fixture.worktree, &["merge", "--no-edit", "origin/main"]);
     let health = behind_base_health(&fixture.dispatch_head, &fixture.observed_base_oid);
 
     let (_routed, github, _chat) = route_blocked_supersession(&fixture, health).await;
@@ -14382,12 +14522,9 @@ async fn blocked_needs_human_with_a_health_hold_is_never_settled() {
 /// promoting to `Ready` and clearing `blocker` with no head-scoped justification.
 #[tokio::test]
 async fn blocked_needs_human_already_updated_to_the_tip_keeps_its_blocker_when_ci_held() {
-    let fixture = blocked_needs_human_supersession_fixture(
-        "blocked-ci-held-already-updated",
-        None,
-        true,
-    )
-    .await;
+    let fixture =
+        blocked_needs_human_supersession_fixture("blocked-ci-held-already-updated", None, true)
+            .await;
     let mut with_ci_and_tip = fixture.attempt.clone();
     with_ci_and_tip.ci_rerun_count = 1;
     with_ci_and_tip.ci_rerun_fingerprint = Some("old-head:12345".to_string());
@@ -14448,12 +14585,8 @@ async fn blocked_needs_human_already_updated_to_the_tip_keeps_its_blocker_when_c
 /// silently promoted to Ready.
 #[tokio::test]
 async fn blocked_needs_human_with_a_base_stale_marker_is_left_untouched() {
-    let fixture = blocked_needs_human_supersession_fixture(
-        "blocked-base-stale-marker",
-        None,
-        true,
-    )
-    .await;
+    let fixture =
+        blocked_needs_human_supersession_fixture("blocked-base-stale-marker", None, true).await;
     let mut with_both_markers = fixture.attempt.clone();
     with_both_markers.pending_reasons.push(
         crate::application::agent_workspace_publish_repair_state::BASE_STALE_AFTER_UPDATE_REPAIR_REASON
@@ -14481,7 +14614,13 @@ async fn blocked_needs_human_with_a_base_stale_marker_is_left_untouched() {
     // release predicate's guards would all pass except for the new !blocked_base_staleness_candidate.
     let mut health = open_pr_health(&fixture.dispatch_head);
     health.sync_state.merge_state_status = Some(PrMergeStateStatus::Clean);
-    health.sync_state.base_ref_oid = Some(fixture.attempt.target_base_commit.clone().unwrap_or_default());
+    health.sync_state.base_ref_oid = Some(
+        fixture
+            .attempt
+            .target_base_commit
+            .clone()
+            .unwrap_or_default(),
+    );
 
     let (_routed, _github, _chat) = route_blocked_supersession(&fixture, health).await;
 
@@ -14543,13 +14682,19 @@ async fn blocked_needs_human_deferred_merge_dispatches_successor() {
     run_git(&fixture.worktree, &["commit", "-m", "main conflict"]);
     run_git(&fixture.worktree, &["push", "origin", "main"]);
     let new_base_oid = git_stdout(&fixture.worktree, &["rev-parse", "main"]);
-    run_git(&fixture.worktree, &["checkout", &fixture.workspace.branch_name]);
+    run_git(
+        &fixture.worktree,
+        &["checkout", &fixture.workspace.branch_name],
+    );
     // Create a conflicting change in the workspace branch.
     std::fs::write(fixture.worktree.join("CONFLICT.md"), "branch conflict\n")
         .expect("write conflict file on branch");
     run_git(&fixture.worktree, &["add", "."]);
     run_git(&fixture.worktree, &["commit", "-m", "branch conflict"]);
-    run_git(&fixture.worktree, &["push", "origin", &fixture.workspace.branch_name]);
+    run_git(
+        &fixture.worktree,
+        &["push", "origin", &fixture.workspace.branch_name],
+    );
 
     let health = behind_base_health(&fixture.dispatch_head, &new_base_oid);
 
