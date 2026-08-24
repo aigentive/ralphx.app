@@ -341,6 +341,8 @@ async fn child_hosted_repair_completion_resolves_and_settles_owning_workspace() 
                 blocker: Some("Waiting for a maintainer decision.".to_string()),
                 reported_fix_commit_sha: None,
                 resolution: None,
+                what_happened: None,
+                what_i_did: None,
             },
         )
         .await,
@@ -391,6 +393,8 @@ async fn unrelated_parented_child_cannot_complete_workspace_repair() {
             blocker: Some("This must be rejected.".to_string()),
             reported_fix_commit_sha: None,
             resolution: None,
+            what_happened: None,
+            what_i_did: None,
         },
     )
     .await;

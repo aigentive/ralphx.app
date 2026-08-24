@@ -6733,6 +6733,7 @@ async fn dispatched_pr_autofix_issue_kind(
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
     )
@@ -12861,6 +12862,7 @@ async fn base_parity_transient_shape_repeat_poll_short_circuits_then_reenters_on
         Some(agent_run_repo),
         Some(Arc::clone(&repair_repo)),
         Some(branch_update_repo),
+        None,
         chat_second.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         Some(&health_a),
     )
@@ -13687,6 +13689,7 @@ async fn route_blocked_supersession(
         Some(agent_run_repo),
         Some(Arc::clone(&fixture.repair_repo)),
         Some(Arc::clone(&fixture.branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&fixture.project),
@@ -14285,9 +14288,12 @@ async fn blocked_needs_human_push_failure_keeps_phase_blocked() {
     let agent_run_repo = seeded_latest_pr_fixer_run_repo(&fixture.conversation_id).await;
     let github = Arc::new(MockGithubService::new());
     github.state().fetch_pr_health_result = Some(Ok(health));
-    github.state().push_branch_result =
-        Some(Err(AppError::GitOperation("simulated push failure".to_string())));
-    let chat = Arc::new(MockChatService::with_agent_run_repo(Arc::clone(&agent_run_repo)));
+    github.state().push_branch_result = Some(Err(AppError::GitOperation(
+        "simulated push failure".to_string(),
+    )));
+    let chat = Arc::new(MockChatService::with_agent_run_repo(Arc::clone(
+        &agent_run_repo,
+    )));
 
     super::route_agent_workspace_pr_autofix_if_needed_with_notifications(
         Arc::clone(&github) as Arc<dyn GithubServiceTrait>,
@@ -14298,6 +14304,7 @@ async fn blocked_needs_human_push_failure_keeps_phase_blocked() {
         Some(agent_run_repo),
         Some(Arc::clone(&fixture.repair_repo)),
         Some(Arc::clone(&fixture.branch_update_repo)),
+        None,
         chat.clone() as Arc<dyn crate::application::chat_service::ChatService>,
         None,
         Some(&fixture.project),
@@ -14346,10 +14353,7 @@ async fn blocked_needs_human_already_fresh_keeps_phase_blocked() {
         blocked_needs_human_supersession_fixture("blocked-supersede-already-fresh", None, true)
             .await;
     // Merge main into the workspace branch locally so the branch is already up-to-date.
-    run_git(
-        &fixture.worktree,
-        &["merge", "--no-edit", "origin/main"],
-    );
+    run_git(&fixture.worktree, &["merge", "--no-edit", "origin/main"]);
     let health = behind_base_health(&fixture.dispatch_head, &fixture.observed_base_oid);
 
     let (_routed, github, _chat) = route_blocked_supersession(&fixture, health).await;
@@ -14518,12 +14522,9 @@ async fn blocked_needs_human_with_a_health_hold_is_never_settled() {
 /// promoting to `Ready` and clearing `blocker` with no head-scoped justification.
 #[tokio::test]
 async fn blocked_needs_human_already_updated_to_the_tip_keeps_its_blocker_when_ci_held() {
-    let fixture = blocked_needs_human_supersession_fixture(
-        "blocked-ci-held-already-updated",
-        None,
-        true,
-    )
-    .await;
+    let fixture =
+        blocked_needs_human_supersession_fixture("blocked-ci-held-already-updated", None, true)
+            .await;
     let mut with_ci_and_tip = fixture.attempt.clone();
     with_ci_and_tip.ci_rerun_count = 1;
     with_ci_and_tip.ci_rerun_fingerprint = Some("old-head:12345".to_string());
@@ -14584,12 +14585,8 @@ async fn blocked_needs_human_already_updated_to_the_tip_keeps_its_blocker_when_c
 /// silently promoted to Ready.
 #[tokio::test]
 async fn blocked_needs_human_with_a_base_stale_marker_is_left_untouched() {
-    let fixture = blocked_needs_human_supersession_fixture(
-        "blocked-base-stale-marker",
-        None,
-        true,
-    )
-    .await;
+    let fixture =
+        blocked_needs_human_supersession_fixture("blocked-base-stale-marker", None, true).await;
     let mut with_both_markers = fixture.attempt.clone();
     with_both_markers.pending_reasons.push(
         crate::application::agent_workspace_publish_repair_state::BASE_STALE_AFTER_UPDATE_REPAIR_REASON
@@ -14617,7 +14614,13 @@ async fn blocked_needs_human_with_a_base_stale_marker_is_left_untouched() {
     // release predicate's guards would all pass except for the new !blocked_base_staleness_candidate.
     let mut health = open_pr_health(&fixture.dispatch_head);
     health.sync_state.merge_state_status = Some(PrMergeStateStatus::Clean);
-    health.sync_state.base_ref_oid = Some(fixture.attempt.target_base_commit.clone().unwrap_or_default());
+    health.sync_state.base_ref_oid = Some(
+        fixture
+            .attempt
+            .target_base_commit
+            .clone()
+            .unwrap_or_default(),
+    );
 
     let (_routed, _github, _chat) = route_blocked_supersession(&fixture, health).await;
 
@@ -14679,13 +14682,19 @@ async fn blocked_needs_human_deferred_merge_dispatches_successor() {
     run_git(&fixture.worktree, &["commit", "-m", "main conflict"]);
     run_git(&fixture.worktree, &["push", "origin", "main"]);
     let new_base_oid = git_stdout(&fixture.worktree, &["rev-parse", "main"]);
-    run_git(&fixture.worktree, &["checkout", &fixture.workspace.branch_name]);
+    run_git(
+        &fixture.worktree,
+        &["checkout", &fixture.workspace.branch_name],
+    );
     // Create a conflicting change in the workspace branch.
     std::fs::write(fixture.worktree.join("CONFLICT.md"), "branch conflict\n")
         .expect("write conflict file on branch");
     run_git(&fixture.worktree, &["add", "."]);
     run_git(&fixture.worktree, &["commit", "-m", "branch conflict"]);
-    run_git(&fixture.worktree, &["push", "origin", &fixture.workspace.branch_name]);
+    run_git(
+        &fixture.worktree,
+        &["push", "origin", &fixture.workspace.branch_name],
+    );
 
     let health = behind_base_health(&fixture.dispatch_head, &new_base_oid);
 

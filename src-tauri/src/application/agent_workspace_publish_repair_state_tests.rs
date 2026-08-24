@@ -1671,6 +1671,7 @@ async fn blocked_retry_successor_with_a_different_target_base_commit_leaves_work
             target_identity.clone(),
             started,
             AgentRunId::from_string("repair-attempt-blocked-retry-base-commit-guard-run"),
+            None,
             "dispatching repair",
             None,
         )
@@ -1789,6 +1790,7 @@ async fn dispatch_checkpoint_never_advances_workspace_base_commit() {
             target_identity,
             started,
             AgentRunId::from_string("repair-attempt-dispatch-base-commit-guard-run"),
+            None,
             "dispatching repair",
             None,
         )

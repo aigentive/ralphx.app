@@ -72,7 +72,13 @@ pub(super) async fn request_transient_ci_rerun(
             Ok(completion_response("rerun_pending", message))
         }
         TransientCiRerunOutcome::ReservationStale => {
-            stale_completion_transition_response(state, conversation_id, run_id).await
+            stale_completion_transition_response(
+                state,
+                conversation_id,
+                owning_conversation_id,
+                run_id,
+            )
+            .await
         }
     }
 }
